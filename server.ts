@@ -326,28 +326,13 @@ app.post('/api/generate-image', async (req, res) => {
       }
     }
 
-    // High quality simulated artwork fallback for testing
-    const fallbackImage = generateSimulatedImageSvg(prompt, Boolean(sourceImage), selectedAspectRatio);
-    return res.json({
-      imageUrl: fallbackImage,
-      text: `✨ Supru AI synthesized visual: "${prompt}" using gemini-3.1-flash-image-preview`,
-      isEdit: Boolean(sourceImage),
-      model: 'gemini-3.1-flash-image-preview',
-      simulated: true,
+    return res.status(503).json({
+      error: 'Image generation requires a configured Gemini API key. No placeholder artwork was returned.',
     });
   } catch (error: any) {
     console.error('Image generation error:', error);
-    const fallbackImage = generateSimulatedImageSvg(
-      req.body.prompt || 'Generated Artwork',
-      Boolean(req.body.sourceImage),
-      req.body.aspectRatio || '1:1'
-    );
-    return res.json({
-      imageUrl: fallbackImage,
-      text: `Image generated via fallback due to API status: ${error.message}`,
-      warning: error.message,
-      isEdit: Boolean(req.body.sourceImage),
-      model: 'gemini-3.1-flash-image-preview',
+    return res.status(502).json({
+      error: error.message || 'The image provider request failed.',
     });
   }
 });
@@ -1143,18 +1128,20 @@ const handleAgentStep = async (req: express.Request, res: express.Response) => {
           artifact: step.command.includes('git') ? 'Git status verified' : undefined,
         });
       } catch (cmdErr: any) {
-        return res.json({
-          status: 'completed',
-          output: cmdErr.stdout || cmdErr.stderr || cmdErr.message,
-          warning: 'Command finished with warnings or error state',
+        return res.status(200).json({
+          status: 'failed',
+          output: cmdErr.stdout || cmdErr.stderr || cmdErr.message || 'Command execution failed.',
+          exitCode: typeof cmdErr.code === 'number' ? cmdErr.code : 1,
+          warning: 'The command did not complete successfully. No verification is claimed.',
         });
       }
     }
 
-    // Step is an analytical reasoning or code generation task
-    return res.json({
-      status: 'completed',
-      output: `Autonomous Headless Step Completed: "${step?.title || 'Execution Step'}"\nAnalysis validated for objective: ${objective || 'Code Task'}.\nDiagnostics passed with zero breaking regressions.`,
+    return res.status(503).json({
+      status: 'blocked',
+      error: 'This step requires a connected reasoning provider or an explicit executable command. No analysis was simulated.',
+      objective: objective || null,
+      stepTitle: step?.title || null,
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Agent step execution failed' });
