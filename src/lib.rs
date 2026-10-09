@@ -18,6 +18,8 @@ struct BackendProcess(Mutex<Child>);
 fn start_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::path::BaseDirectory;
 
+    const API_PORT: u16 = 43127;
+
     let resource_dir = app.path().resource_dir()?;
     let node = app.path().resolve("node", BaseDirectory::Resource)?;
     let server = app.path().resolve("server.mjs", BaseDirectory::Resource)?;
@@ -29,11 +31,16 @@ fn start_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
         return Err(format!("Bundled API server is missing: {}", server.display()).into());
     }
 
+    let address = SocketAddr::from(([127, 0, 0, 1], API_PORT));
+    if TcpStream::connect_timeout(&address, Duration::from_millis(100)).is_ok() {
+        return Err(format!("Supru API port {API_PORT} is already in use; close the conflicting process and restart Supru.").into());
+    }
+
     let mut child = Command::new(&node)
         .arg(&server)
         .current_dir(&resource_dir)
         .env("NODE_ENV", "production")
-        .env("PORT", "3000")
+        .env("PORT", API_PORT.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -42,7 +49,6 @@ fn start_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     // Do not show a window whose API layer never started. This catches missing
     // resources, a bad runtime, and port conflicts at startup instead of letting
     // every feature fail later with an opaque fetch error.
-    let address = SocketAddr::from(([127, 0, 0, 1], 3000));
     let deadline = Instant::now() + Duration::from_secs(12);
     loop {
         if let Some(status) = child.try_wait()? {
@@ -54,7 +60,7 @@ fn start_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
         if Instant::now() >= deadline {
             let _ = child.kill();
             let _ = child.wait();
-            return Err("Supru API server did not start on 127.0.0.1:3000 within 12 seconds".into());
+            return Err("Supru API server did not start within 12 seconds".into());
         }
         thread::sleep(Duration::from_millis(100));
     }
