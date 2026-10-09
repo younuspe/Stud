@@ -98,33 +98,6 @@ const PRESET_PROJECTS: OrchestratorProject[] = [
   }
 ];
 
-const INITIAL_BUGS: OrchestratorBug[] = [
-  {
-    id: 'bug-101',
-    title: 'AST Parser Memory Allocation Leak in Large Files',
-    file: 'src/services/token_parser.ts',
-    line: 84,
-    severity: 'high',
-    errorDetails: 'FATAL: Max buffer exceeded while tokenizing 48,000 lines of generated code. Memory spike: +380MB.',
-    recommendedTool: 'token_budgeter',
-    recommendedModel: 'Gemini 2.5 Pro (Deep Reasoning)',
-    status: 'open',
-    solutionDiff: `// Optimized Token Rearrangement chunking:\n- const rawTokens = tokenizeEntireFile(hugeBuffer);\n+ const chunks = streamChunkAST(hugeBuffer, { maxChunkTokens: 4096 });\n+ const prunedContext = pruneIrrelevantASTNodes(chunks);`
-  },
-  {
-    id: 'bug-102',
-    title: 'Type Mismatch in Localhost Provider Handshake',
-    file: 'src/providers/ollama_adapter.ts',
-    line: 112,
-    severity: 'medium',
-    errorDetails: 'TypeError: Provider response format does not match expected ModelPayload. Missing "choices" array.',
-    recommendedTool: 'type_checker',
-    recommendedModel: 'Gemini 2.5 Flash (Quick Triage)',
-    status: 'open',
-    solutionDiff: `// Safe adapter normalization:\n- return res.data.choices[0].message;\n+ return res.data.message?.content || res.data.response || res.data.choices?.[0]?.message?.content || '';`
-  }
-];
-
 export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   localConfig,
   onOpenLocalSettings,
@@ -135,7 +108,7 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
 }) => {
   const [projects, setProjects] = useState<OrchestratorProject[]>(PRESET_PROJECTS);
   const [activeProjectId, setActiveProjectId] = useState<string>(PRESET_PROJECTS[0].id);
-  const [bugs, setBugs] = useState<OrchestratorBug[]>(INITIAL_BUGS);
+  const [bugs, setBugs] = useState<OrchestratorBug[]>([]);
   const [activeTab, setActiveTab] = useState<'pipeline' | 'protocol' | 'overview' | 'tools' | 'tokens' | 'bugs'>('pipeline');
   const [pillObjective, setPillObjective] = useState('');
 
@@ -299,8 +272,8 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10.5px] text-emerald-300">
               <Coins size={12} />
-              <span className="font-bold">Tokens Saved:</span>
-              <span className="font-mono">{activeProject.tokensSaved.toLocaleString()} (~54%)</span>
+              <span className="font-bold">Token Savings:</span>
+              <span className="font-mono">Not measured</span>
             </div>
 
             <div className="flex items-center gap-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 px-2.5 py-1 text-[10.5px] text-purple-300">
