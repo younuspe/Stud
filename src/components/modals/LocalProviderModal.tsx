@@ -213,7 +213,7 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
             <div className="space-y-3 rounded-2xl border border-[#272738] bg-[#151522] p-4">
               <div className="text-xs font-bold text-white flex items-center justify-between">
                 <span>Localhost Endpoint Setup</span>
-                <span className="text-[10px] text-emerald-400 font-mono">No API key required</span>
+                <span className="text-[10px] text-emerald-400 font-mono">{config.provider === 'custom_local' ? 'API key optional' : 'No API key required'}</span>
               </div>
 
               <div className="space-y-1">
@@ -226,6 +226,20 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
                   className="w-full rounded-xl border border-[#2b2b3c] bg-[#101018] px-3.5 py-2 text-xs font-mono text-white outline-none focus:border-amber-500/60"
                 />
               </div>
+
+              {config.provider === 'custom_local' && (
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-gray-300">Endpoint API Key (optional)</label>
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    value={config.apiKey || ''}
+                    onChange={(event) => onUpdateConfig({ apiKey: event.target.value })}
+                    placeholder="Bearer token if your endpoint requires one"
+                    className="w-full rounded-xl border border-[#2b2b3c] bg-[#101018] px-3.5 py-2 text-xs font-mono text-white outline-none focus:border-amber-500/60"
+                  />
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-gray-300">Model Name / Tag</label>
