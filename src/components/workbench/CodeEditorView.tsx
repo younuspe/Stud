@@ -521,7 +521,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
   const isTauriDesktop = Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 
   const refreshWorkspaceEntries = async (root: string) => {
-    const entries = await invoke<WorkspaceEntry[]>('workspace_list', { root });
+    const entries = await invoke<WorkspaceEntry[]>('workspace_list');
     setWorkspaceEntries(entries);
     return entries;
   };
@@ -536,7 +536,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
         setActiveFileId(existing.id);
         return;
       }
-      const content = await invoke<string>('workspace_read_file', { root, relativePath });
+      const content = await invoke<string>('workspace_read_file', { relativePath });
       const id = `workspace:${relativePath}`;
       const file: EditorFile = {
         id,
@@ -614,7 +614,6 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
     setWorkspaceStatus('');
     try {
       await invoke('workspace_write_file', {
-        root: workspaceRoot,
         relativePath: targetPath.trim(),
         content: activeFile.content,
       });
@@ -622,7 +621,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
       setFiles((previous) => previous.map((file) => file.id === activeFileId
         ? { ...file, path: savedPath, name: savedPath, isModified: false }
         : file));
-      setWorkspaceEntries(await invoke<WorkspaceEntry[]>('workspace_list', { root: workspaceRoot }));
+      setWorkspaceEntries(await invoke<WorkspaceEntry[]>('workspace_list'));
       setWorkspaceStatus(`Saved ${savedPath}`);
     } catch (error) {
       setWorkspaceStatus(error instanceof Error ? error.message : String(error));
@@ -632,10 +631,17 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
   };
 
   useEffect(() => {
-    if (!workspaceRoot || !isTauriDesktop) return;
-    refreshWorkspaceEntries(workspaceRoot).catch((error) => {
-      setWorkspaceStatus(error instanceof Error ? error.message : String(error));
-    });
+    if (!isTauriDesktop) return;
+    invoke<string | null>('restore_workspace')
+      .then(async (restoredRoot) => {
+        if (!restoredRoot) return;
+        setWorkspaceRoot(restoredRoot);
+        try { localStorage.setItem('supru_workspace_root', restoredRoot); } catch {}
+        await refreshWorkspaceEntries(restoredRoot);
+      })
+      .catch((error) => {
+        setWorkspaceStatus(error instanceof Error ? error.message : String(error));
+      });
   }, []);
 
   // If a file was sent from GitHub or CLI
