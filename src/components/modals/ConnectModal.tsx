@@ -129,7 +129,7 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
                 <span>Roundtrip Ping</span>
               </div>
               <div className="font-semibold text-white">
-                {pingLatency ? `${pingLatency} ms` : 'Testing...'}
+                {isPinging ? 'Testing...' : pingLatency !== null ? `${pingLatency} ms` : 'Not tested'}
               </div>
             </div>
 
@@ -147,7 +147,7 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
                 <span>API Status</span>
               </div>
               <div className="font-semibold text-emerald-400">
-                {serverInfo.hasApiKey ? 'API Key Configured' : 'API Key Missing'}
+                {serverInfo.hasApiKey ? 'API Key Configured' : 'No Cloud API Key'}
               </div>
             </div>
           </div>
