@@ -131,6 +131,16 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     setVoiceNotice,
   } = useSpeechListener();
 
+  // Keep the floating pill connected to this studio without navigating away.
+  useEffect(() => {
+    const handleWorkspacePrompt = (event: Event) => {
+      const detail = (event as CustomEvent<{ text?: string }>).detail;
+      if (detail?.text) setPrompt(detail.text);
+    };
+    window.addEventListener('supru-generative-prompt', handleWorkspacePrompt);
+    return () => window.removeEventListener('supru-generative-prompt', handleWorkspacePrompt);
+  }, []);
+
   // Handle Speech dictation
   const toggleSpeech = () => {
     if (isListening) {
