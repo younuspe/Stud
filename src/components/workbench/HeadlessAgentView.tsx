@@ -100,8 +100,8 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
   // Dropdown states for uncluttered UI
   const [openDropdown, setOpenDropdown] = useState<'milestone' | 'governance' | 'pipelineActions' | 'presets' | null>(null);
-  // Default to true for zero-interaction end-to-end workflow (User request)
-  const [autoApproveGates, setAutoApproveGates] = useState<boolean>(true);
+  // File writes always pause for explicit human approval.
+  const [autoApproveGates, setAutoApproveGates] = useState<boolean>(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -138,11 +138,18 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
   // Active Human Approval Modal
   const [activeApprovalModal, setActiveApprovalModal] = useState<HunterApprovalRequest | null>(null);
+  const [pendingFileEdit, setPendingFileEdit] = useState<{
+    relativePath: string;
+    content: string;
+    reason: string;
+    artifact: HunterAgentArtifact;
+    resumeArtifacts: Record<string, HunterAgentArtifact>;
+  } | null>(null);
 
   // Pipeline Execution State
   const [isPipelineRunning, setIsPipelineRunning] = useState<boolean>(false);
   const [isPipelinePaused, setIsPipelinePaused] = useState<boolean>(false);
-  const [isZeroInteraction, setIsZeroInteraction] = useState<boolean>(true);
+  const [isZeroInteraction, setIsZeroInteraction] = useState<boolean>(false);
   const [isPipelineComplete, setIsPipelineComplete] = useState<boolean>(false);
   const [currentRunningAgentIndex, setCurrentRunningAgentIndex] = useState<number>(-1);
 
@@ -200,10 +207,61 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
       const response = await invoke<string>('chat_completion', {
         provider, endpointUrl: localConfig.endpointUrl, modelName: localConfig.modelName, apiKey: localConfig.apiKey || null, temperature: 0.2,
         messages: [
-          { role: 'system', content: 'You are the ' + agent.role + ' in Supru Hunter. Duties: ' + agent.duties.join('; ') + '. Boundaries: ' + agent.boundaries.join('; ') + '. You have no tools in this step. Do not claim to inspect files, run commands, edit code, or verify tests. State what evidence/tools are still needed.' },
+          { role: 'system', content: agent.id === 'coder' ? 'You are the Code Implementer in Supru Hunter. Return ONLY one valid JSON object with exactly these fields: path (relative path of one EXISTING file from the supplied workspace inventory), content (the COMPLETE replacement file content as a JSON string), reason (brief explanation). Do not use markdown fences or extra text. Never return a diff. Never claim that you wrote or tested the file. If a safe, useful edit cannot be proposed from the supplied context, return JSON with path empty and explain why in reason. Preserve unrelated code and conventions.' : 'You are the ' + agent.role + ' in Supru Hunter. Duties: ' + agent.duties.join('; ') + '. Boundaries: ' + agent.boundaries.join('; ') + '. You have no tools in this step. Do not claim to inspect files beyond the supplied workspace context, run commands, edit code, or verify tests. State what evidence/tools are still needed.' },
           { role: 'user', content: 'User objective:\n' + pipelineObjective + '\n\nPrior agent outputs:\n' + (prior || '(No prior outputs.)') + '\n\nProvide your actual ' + agent.role + ' response for this objective.' }
         ]
       });
+      if (agent.id === 'coder') {
+        let proposal: { path?: unknown; content?: unknown; reason?: unknown };
+        try {
+          const candidate = response.match(/\{[\s\S]*\}/)?.[0];
+          if (!candidate) throw new Error('Coder did not return a JSON proposal.');
+          proposal = JSON.parse(candidate);
+        } catch (parseError) {
+          throw new Error('Coder response was not valid proposal JSON: ' + (parseError instanceof Error ? parseError.message : String(parseError)));
+        }
+        if (typeof proposal.path !== 'string' || !proposal.path.trim() || typeof proposal.content !== 'string' || !proposal.content.trim()) {
+          throw new Error(typeof proposal.reason === 'string' && proposal.reason.trim()
+            ? 'Coder could not produce an applicable edit: ' + proposal.reason
+            : 'Coder proposal must contain a relative path and complete file content.');
+        }
+        const relativePath = proposal.path.trim().replace(/\\/g, '/');
+        if (relativePath.startsWith('/') || relativePath.split('/').some((part) => !part || part === '.' || part === '..') || /(^|\/)(\.git|node_modules|target)(\/|$)/.test(relativePath)) {
+          throw new Error('Coder proposed an unsafe or unsupported workspace path: ' + relativePath);
+        }
+        const workspaceFiles = await invoke<string[]>('list_workspace_files', { workspaceRoot: workspacePath.trim(), relativeDir: null });
+        if (!workspaceFiles.includes(relativePath)) {
+          throw new Error('Coder proposed "' + relativePath + '", but it is not an existing file in the selected workspace inventory. No file was written.');
+        }
+        if (proposal.content.length > 1024 * 1024) throw new Error('Proposed file exceeds the 1 MiB write limit.');
+        const artifact: HunterAgentArtifact = {
+          agentId: agent.id,
+          summary: 'Prepared an edit proposal for ' + relativePath + '. Waiting for human approval.',
+          artifactContent: response,
+          timestamp: Date.now()
+        };
+        const request: HunterApprovalRequest = {
+          id: 'appr-' + Date.now(),
+          action: 'write_workspace_file',
+          agentId: agent.id,
+          risk: 'medium',
+          whatWillHappen: 'Replace the complete contents of ' + relativePath + ' with the reviewed proposal below.',
+          why: typeof proposal.reason === 'string' ? proposal.reason : 'The Coder proposed this edit for the user objective.',
+          affectedFiles: [relativePath],
+          status: 'pending',
+          timestamp: Date.now()
+        };
+        const resumeArtifacts = { ...contextArtifacts, [agent.id]: artifact };
+        setPendingFileEdit({ relativePath, content: proposal.content, reason: request.why, artifact, resumeArtifacts });
+        setApprovals((prev) => [request, ...prev]);
+        setActiveApprovalModal(request);
+        setAgentArtifacts((prev) => ({ ...prev, [agent.id]: artifact }));
+        setAgents((prev) => prev.map((item, i) => i === index ? { ...item, status: 'waiting_approval' } : item));
+        setTerminalLogs((prev) => [...prev, '[coder] Prepared a real file-edit proposal for ' + relativePath + '.', '[Permission Gate] Pipeline paused. Review the proposed source and explicitly approve or reject the write.']);
+        setIsPipelineRunning(false);
+        setCurrentRunningAgentIndex(index);
+        return;
+      }
       const artifact: HunterAgentArtifact = { agentId: agent.id, summary: response.slice(0, 500), artifactContent: response, timestamp: Date.now() };
       setAgentArtifacts((prev) => ({ ...prev, [agent.id]: artifact }));
       setAgents((prev) => prev.map((item, i) => i === index ? { ...item, status: 'done' } : item));
