@@ -68,28 +68,6 @@
     }
   },
   "plugins": {
-    "fs": {
-      "scope": {
-        "allow": [
-          "$APPDATA/supru/**",
-          "$HOME/.supru/**",
-          "$RESOURCE/**"
-        ]
-      }
-    },
-    "shell": {
-      "scope": {
-        "allow": [
-          "cargo *",
-          "npm *",
-          "node *",
-          "git *",
-          "python *",
-          "rustc *",
-          "tauri *"
-        ]
-      }
-    },
     "updater": {
       "active": false,
       "endpoints": [
