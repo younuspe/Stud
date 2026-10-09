@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Workflow, 
   Play, 
@@ -136,6 +136,20 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   const [activeProjectId, setActiveProjectId] = useState<string>(PRESET_PROJECTS[0].id);
   const [bugs, setBugs] = useState<OrchestratorBug[]>(INITIAL_BUGS);
   const [activeTab, setActiveTab] = useState<'pipeline' | 'protocol' | 'overview' | 'tools' | 'tokens' | 'bugs'>('pipeline');
+  const [pillObjective, setPillObjective] = useState('');
+
+  // The shared pill submits objectives into this workspace and never redirects to Chat.
+  useEffect(() => {
+    const receiveObjective = (event: Event) => {
+      const objective = (event as CustomEvent<string>).detail;
+      if (typeof objective === 'string' && objective.trim()) {
+        setPillObjective(objective.trim());
+        setActiveTab('pipeline');
+      }
+    };
+    window.addEventListener('supru-orchestrator-prompt', receiveObjective);
+    return () => window.removeEventListener('supru-orchestrator-prompt', receiveObjective);
+  }, []);
   
   // Token size rearrangement state
   const [tokenChunkSize, setTokenChunkSize] = useState<number>(8192);
@@ -295,6 +309,18 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
             </div>
           </div>
         </div>
+
+        {pillObjective && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300">Objective received from Supru Pill</div>
+              <div className="mt-1 break-words text-xs text-white">{pillObjective}</div>
+              <div className="mt-1 text-[10px] text-gray-400">Queued in this workspace. No agent execution is claimed until a real run is started.</div>
+            </div>
+            <button type="button" onClick={() => { onTriggerHunter?.(pillObjective); }} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-black hover:bg-amber-400">Send objective to Hunter</button>
+            <button type="button" onClick={() => setPillObjective('')} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-gray-300 hover:bg-white/5">Dismiss</button>
+          </div>
+        )}
 
         {/* Navigation Tabs */}
         <div className="mt-3 flex items-center gap-1 border-t border-[#1a1a27] pt-2 text-[11px] overflow-x-auto">
