@@ -67,6 +67,67 @@ async fn execute_terminal_command(command: String, cwd: Option<String>) -> Resul
     })
 }
 
+
+#[tauri::command]
+async fn list_workspace_files(workspace_root: String, relative_dir: Option<String>) -> Result<Vec<String>, String> {
+    let root = PathBuf::from(workspace_root).canonicalize()
+        .map_err(|e| format!("Workspace root is unavailable: {e}"))?;
+    if !root.is_dir() { return Err("Workspace root must be a directory.".into()); }
+    let target = match relative_dir {
+        Some(value) if !value.trim().is_empty() => {
+            let relative = PathBuf::from(value.trim());
+            if relative.is_absolute() || relative.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_))) {
+                return Err("Directory must be a safe relative path inside the workspace.".into());
+            }
+            root.join(relative).canonicalize().map_err(|e| format!("Directory is unavailable: {e}"))?
+        }
+        _ => root.clone(),
+    };
+    if !target.starts_with(&root) || !target.is_dir() {
+        return Err("Directory escapes the selected workspace or is not a directory.".into());
+    }
+    let mut files = Vec::new();
+    for entry in walkdir::WalkDir::new(&target)
+        .follow_links(false)
+        .max_depth(5)
+        .into_iter()
+        .filter_entry(|entry| {
+            let name = entry.file_name().to_string_lossy();
+            !matches!(name.as_ref(), ".git" | "node_modules" | "target" | "dist" | ".next" | "vendor")
+        })
+    {
+        let entry = entry.map_err(|e| format!("Could not inspect workspace: {e}"))?;
+        if !entry.file_type().is_file() { continue; }
+        let canonical = entry.path().canonicalize().map_err(|e| format!("Could not resolve file path: {e}"))?;
+        if !canonical.starts_with(&root) { continue; }
+        if let Ok(relative) = canonical.strip_prefix(&root) {
+            files.push(relative.to_string_lossy().replace('\\\\', "/"));
+            if files.len() >= 300 { break; }
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+#[tauri::command]
+async fn read_workspace_file(workspace_root: String, relative_path: String) -> Result<String, String> {
+    let root = PathBuf::from(workspace_root).canonicalize()
+        .map_err(|e| format!("Workspace root is unavailable: {e}"))?;
+    if !root.is_dir() { return Err("Workspace root must be a directory.".into()); }
+    let relative = PathBuf::from(relative_path.trim());
+    if relative.as_os_str().is_empty() || relative.is_absolute()
+        || relative.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_))) {
+        return Err("File path must be a safe relative path inside the workspace.".into());
+    }
+    let target = root.join(relative).canonicalize().map_err(|e| format!("File is unavailable: {e}"))?;
+    if !target.starts_with(&root) || !target.is_file() {
+        return Err("File escapes the selected workspace or is not a regular file.".into());
+    }
+    let metadata = std::fs::metadata(&target).map_err(|e| format!("Could not inspect file: {e}"))?;
+    if metadata.len() > 512 * 1024 { return Err("File exceeds the 512 KiB read limit.".into()); }
+    std::fs::read_to_string(&target).map_err(|e| format!("Could not read UTF-8 file: {e}"))
+}
+
 #[derive(serde::Deserialize)]
 struct ChatMessageInput {
     role: String,
@@ -317,7 +378,7 @@ async fn test_provider_connection(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![execute_terminal_command, chat_completion, test_provider_connection])
+        .invoke_handler(tauri::generate_handler![execute_terminal_command, chat_completion, test_provider_connection, list_workspace_files, read_workspace_file])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
