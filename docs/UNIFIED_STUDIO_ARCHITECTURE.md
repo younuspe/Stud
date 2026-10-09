@@ -151,3 +151,32 @@ Do not duplicate the source artifact as unrelated copies in each tool. Different
 - Real execution results—not hard-coded demo results—drive status, tests, and completion claims.
 - The packaged desktop app can start and reach its backend without requiring a separate manually launched development server.
 - No build or workflow is triggered automatically during this repair phase.
+
+
+## Required File Explorer — first-class workspace panel
+
+The desktop app must include a real, persistent **File Explorer**. It is a core feature, not an optional later enhancement and not a decorative/mock tree.
+
+### Explorer UI
+- A collapsible left sidebar with a project-root selector and expandable/collapsible directory tree.
+- Show folders and files with names and appropriate icons; support refresh, expand/collapse, and loading/empty/error states.
+- Context menu and toolbar actions: **New File**, **New Folder**, **Open**, **Rename**, **Duplicate** where safe, **Delete** with confirmation, **Copy Path**, and **Reveal in Finder** on macOS.
+- Search/filter project files; show modified/unsaved indicators and unsaved-change confirmation before closing or switching files.
+- Open selected files in the central editor/work surface without switching to Chat or losing the current Pill context.
+- Keep explorer selection, open editor tabs, project root, and current artifact identity synchronized with the shared project state.
+- Support common source, text, configuration, document, and asset files. Unknown formats must show a clear open/preview limitation, not silently fail.
+
+### Functional and security requirements
+- The tree must come from the actual project filesystem through the desktop backend, never from hard-coded sample entries.
+- All filesystem operations must go through the Rust-authorized desktop boundary (or the explicitly configured secure backend bridge); the renderer must not gain unrestricted filesystem access.
+- Enforce workspace scope, symlink/path traversal protection, permission checks, and clear errors.
+- File creation/editing must write real files; rename/delete must affect the real filesystem only after policy checks and required confirmation.
+- Editing must support save, dirty state, diff/review, and recoverable checkpoints/version history where applicable.
+- Display actual operation results and errors. Do not show success when a backend call failed or the desktop backend is unavailable.
+
+### Acceptance tests
+1. Opening the installed desktop app shows the selected project’s real directory tree.
+2. Expand/collapse, file selection, search, refresh, and open-in-editor work.
+3. New file/folder, edit/save, rename, and delete perform real operations with correct confirmations and error handling.
+4. The Pill can act on the selected file or selection without navigating away from the current workspace.
+5. The explorer remains usable when no AI provider is configured; file browsing/editing must not depend on an LLM.
