@@ -127,7 +127,7 @@ Store non-secret settings in a versioned configuration file such as `.supru/ai-t
 - Generative Studio can create/edit a real artifact through configured providers, preview it, revise it, and preserve versions.
 - Kilo Code-like external agents and Supru's own agent are selectable only when their adapters are available and authorized.
 - Every role prompt, routing preference, and tool policy is editable; permission enforcement itself cannot be weakened by a role prompt.
-- No build or workflow is automatically started by these configuration changes.
+- Workflow execution is controlled by the repository's configured triggers and explicit authorization. The scoped macOS build is enabled for the current authorized verification run.
 
 
 ## Required coding workspace integration: File Explorer
