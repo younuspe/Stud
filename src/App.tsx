@@ -51,70 +51,16 @@ const DEFAULT_STUDIO_WINDOWS: Record<StudioWindowId, StudioWindowState> = {
   orchestrator: { id: 'orchestrator', title: 'Autonomous Model Orchestrator', isOpen: false, isUndocked: false },
 };
 
-const INITIAL_THREADS: ChatThread[] = [
-  {
-    id: 'thread-demo-1',
-    title: 'Quantum computing algorithms',
-    createdAt: Date.now() - 3600000 * 2,
-    updatedAt: Date.now() - 3600000 * 2,
-    isPinned: true,
-    persona: 'supru_cat',
-    messages: [
-      {
-        id: 'msg-1',
-        role: 'user',
-        content: 'Explain Shor’s algorithm and quantum superposition in simple terms.',
-        timestamp: Date.now() - 3600000 * 2,
-      },
-      {
-        id: 'msg-2',
-        role: 'assistant',
-        content: `*Purrs with quantum resonance* 🐾\n\nThink of a classical computer bit like a coin lying flat on a tabletop: it is stubbornly heads (0) or tails (1). But a **qubit** in quantum superposition? That coin is spinning wildly in mid-air—possessing the probabilities of both states simultaneously until an observer slaps a paw down on it!\n\n### Shor's Algorithm Breakdown\n1. **The Classical Bottleneck**: Factoring large numbers (like RSA 2048-bit keys) takes billions of years on classical supercomputers.\n2. **The Quantum Leap**: Shor’s algorithm transforms factoring into *period finding* on a modular exponential function.\n3. **Quantum Fourier Transform (QFT)**: Interference amplifies the correct mathematical period while cancelling out noise.\n\n\`\`\`typescript\n// Conceptual representation of quantum superposition state\ninterface QubitState {\n  alpha: number; // Amplitude for |0>\n  beta: number;  // Amplitude for |1>\n  measure: () => 0 | 1;\n}\n\`\`\`\n\n*Meow to wow!* Once cryptographically relevant quantum computers arrive, classical prime factorization falls in polynomial time instead of exponential. Shall we discuss post-quantum lattice cryptography next?`,
-        timestamp: Date.now() - 3600000 * 2 + 15000,
-      },
-    ],
-  },
-  {
-    id: 'thread-demo-2',
-    title: 'Cyberpunk cat screenplay',
-    createdAt: Date.now() - 86400000,
-    updatedAt: Date.now() - 86400000,
-    isPinned: false,
-    persona: 'creative_writer',
-    messages: [
-      {
-        id: 'msg-3',
-        role: 'user',
-        content: 'Give me an opening scene for a neo-noir film where an augmented cat hacks a mega-corp server.',
-        timestamp: Date.now() - 86400000,
-      },
-      {
-        id: 'msg-4',
-        role: 'assistant',
-        content: `**SCENE START**\n\n**EXT. NEO-SHINJUKU - NIGHT (RAIN)**\n\nNeon holo-billboards bleed chromatic pink and amber into the obsidian puddles of District 9.\n\nOn the edge of the Arasaka-Biotech skyscraper cornice sits **SUPRU**—an augmented tuxedo cat whose left eye hums with an amber-optic reticle.\n\nSupru's cybernetic whiskers twitch, sampling encrypted radio packets in the smog.\n\n**SUPRU (V.O.)**\n*Humans build firewalls with five-thousand-digit keys. But they always forget the ventilation shaft.* \n\nSupru coils silken muscles and leaps. 60 feet down. No parachute. A silent magnetic grapple deploys from the tail, whipping around a heat vent.\n\n*CLINK.* Four padded paws touch the server room glass. Supru taps the biometric laser sensor with an organic claw.\n\n*Access Granted.*\n\n**SCENE END**`,
-        timestamp: Date.now() - 86400000 + 10000,
-      },
-    ],
-  },
-  {
-    id: 'thread-demo-3',
-    title: 'React 19 & Tailwind 4 setup',
-    createdAt: Date.now() - 86400000 * 3,
-    updatedAt: Date.now() - 86400000 * 3,
-    isPinned: false,
-    persona: 'code_architect',
-    messages: [],
-  },
-];
+const INITIAL_THREADS: ChatThread[] = [];
 
 const DEFAULT_SETTINGS: UserSettings = {
   persona: 'supru_cat',
   temperature: 0.7,
   voiceEnabled: true,
   soundEffects: true,
-  userName: 'Ahvan',
-  userEmail: 'younuspe@gmail.com',
-  isLoggedIn: true,
+  userName: '',
+  userEmail: '',
+  isLoggedIn: false,
   avatarSeed: 'supru_cat',
 };
 
@@ -132,7 +78,10 @@ export default function App() {
       const saved = localStorage.getItem(STORAGE_KEY_THREADS);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) {
+          // Remove demo conversations from older prototype installs; keep only user-created threads.
+          return parsed.filter((thread) => !String(thread?.id ?? '').startsWith('thread-demo-'));
+        }
       }
     } catch {
       // Use defaults
@@ -140,7 +89,7 @@ export default function App() {
     return INITIAL_THREADS;
   });
 
-  const [activeThreadId, setActiveThreadId] = useState<string | null>('thread-demo-3');
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
 
   // User settings
   const [settings, setSettings] = useState<UserSettings>(() => {
