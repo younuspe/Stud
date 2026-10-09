@@ -150,6 +150,14 @@ export interface OrchestrationSettings {
   verificationReserveFraction?: number;
   /** Persist a recoverable checkpoint after each meaningful work unit. */
   checkpointAfterEachWorkUnit?: boolean;
+  /** Hard ceiling for total retries for one operation; runtime clamps to project policy. */
+  maxRetriesPerOperation?: number;
+  /** Stop/replan after this many consecutive no-progress retries. */
+  maxNoProgressRetries?: number;
+  /** Minimum fraction of total budget reserved for integration, Reviewer, and Judge. */
+  
+  /** Hard cap for concurrent agent execution. */
+  maxConcurrentAgentsHardCap?: number;
   stopOnFirstFailure: boolean;
   requireIndependentReview: boolean;
   checkpointBeforeWrites: boolean;
