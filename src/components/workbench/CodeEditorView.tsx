@@ -520,7 +520,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
 
   const isTauriDesktop = Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
 
-  const refreshWorkspaceEntries = async (root: string) => {
+  const refreshWorkspaceEntries = async () => {
     const entries = await invoke<WorkspaceEntry[]>('workspace_list');
     setWorkspaceEntries(entries);
     return entries;
@@ -576,7 +576,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
       if (!selected) return;
       localStorage.setItem('supru_workspace_root', selected);
       setWorkspaceRoot(selected);
-      const entries = await refreshWorkspaceEntries(selected);
+      const entries = await refreshWorkspaceEntries();
       if (entries.some((entry) => !entry.isDir)) {
         await handleOpenWorkspaceFile(entries.find((entry) => !entry.isDir)!.path, selected, true);
       } else {
@@ -637,7 +637,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
         if (!restoredRoot) return;
         setWorkspaceRoot(restoredRoot);
         try { localStorage.setItem('supru_workspace_root', restoredRoot); } catch {}
-        await refreshWorkspaceEntries(restoredRoot);
+        await refreshWorkspaceEntries();
       })
       .catch((error) => {
         setWorkspaceStatus(error instanceof Error ? error.message : String(error));
