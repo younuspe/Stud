@@ -1116,6 +1116,24 @@ app.post('/api/keys/test', async (req, res) => {
 });
 
 // Google AI Studio style prompt to code generator ("Generate by Message")
+function extractCodeFromMarkdown(text: string, _language: string): { code: string; explanation: string } {
+  const source = String(text || '').trim();
+  if (!source) return { code: '', explanation: '' };
+
+  const matches = [...source.matchAll(/```[^\\n]*\\n([\\s\\S]*?)```/g)];
+  if (matches.length > 0) {
+    const code = matches.map((match) => match[1].trim()).filter(Boolean).join('\\n\\n');
+    const explanation = source.replace(/```[^\\n]*\\n[\\s\\S]*?```/g, '').trim();
+    return { code, explanation };
+  }
+
+  // Some compatible providers return raw source instead of fenced Markdown.
+  const looksLikeSource = /^(<!doctype\\s+html|<html|import\\s|export\\s|const\\s|let\\s|var\\s|function\\s|class\\s|def\\s|fn\\s|package\\s|#include|\\{)/i.test(source);
+  return looksLikeSource
+    ? { code: source, explanation: '' }
+    : { code: '', explanation: source };
+}
+
 app.post('/api/studio/generate', async (req, res) => {
   const {
     prompt,
