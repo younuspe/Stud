@@ -649,50 +649,10 @@ function generateSimulatedSupruResponse(prompt: string, persona: string): string
 // ==========================================
 // CLI & TERMINAL COMMAND RUNNER
 // ==========================================
-app.post('/api/terminal/execute', async (req, res) => {
-  const { command, cwd = process.cwd() } = req.body;
-  if (!command || typeof command !== 'string') {
-    return res.status(400).json({ error: 'Command string is required' });
-  }
-
-  const startTime = Date.now();
-  const trimmed = command.trim();
-
-  // Handle built-in internal commands
-  if (trimmed === 'clear') {
-    return res.json({
-      output: '',
-      exitCode: 0,
-      durationMs: 1,
-      command: trimmed,
-      clearScreen: true,
-    });
-  }
-
-  try {
-    const { stdout, stderr } = await execPromise(trimmed, {
-      cwd: path.resolve(cwd),
-      timeout: 15000,
-      maxBuffer: 1024 * 1024 * 5, // 5MB buffer
-      env: { ...process.env, TERM: 'xterm-256color', PAGER: 'cat' },
-    });
-
-    const durationMs = Date.now() - startTime;
-    return res.json({
-      output: stdout || stderr || '(Command executed with no output)',
-      exitCode: stderr && !stdout ? 1 : 0,
-      durationMs,
-      command: trimmed,
-    });
-  } catch (error: any) {
-    const durationMs = Date.now() - startTime;
-    return res.json({
-      output: error.stdout ? `${error.stdout}\n${error.stderr || error.message}` : (error.stderr || error.message || 'Execution error'),
-      exitCode: error.code || 1,
-      durationMs,
-      command: trimmed,
-    });
-  }
+app.post('/api/terminal/execute', (_req, res) => {
+  return res.status(410).json({
+    error: 'HTTP-based shell execution is disabled. Use the native Rust workspace command so execution stays bound to the selected workspace.',
+  });
 });
 
 // ==========================================
