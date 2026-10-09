@@ -784,7 +784,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                 {/* Master Action Controls: Clean Primary + Actions Dropdown */}
                 <div className="flex flex-wrap items-center gap-2">
                   <button
-                    onClick={() => handleRunFullPipeline(true)}
+                    onClick={() => handleRunFullPipeline(false)}
                     disabled={isPipelineRunning}
                     className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 px-3.5 py-1.5 text-xs font-black text-neutral-950 hover:brightness-110 active:scale-95 transition-all shadow-[0_0_20px_rgba(245,158,11,0.35)] disabled:opacity-50"
                     title="Execute full 8-agent pipeline from Lead to Judge with zero human interaction needed in between"
@@ -841,7 +841,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                           className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-white/[0.08] text-amber-300 font-semibold"
                         >
                           <Zap size={12} className="text-amber-400" />
-                          <span>Run Autonomous (Auto-Approve)</span>
+                          <span>Run Pipeline (approval required)</span>
                         </button>
 
                         <button
@@ -1586,6 +1586,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
       {activeApprovalModal && (
         <HunterHumanApprovalModal
           request={activeApprovalModal}
+          proposalContent={pendingFileEdit?.content}
           onApprove={handleApproveAction}
           onReject={handleRejectAction}
           onClose={() => setActiveApprovalModal(null)}
