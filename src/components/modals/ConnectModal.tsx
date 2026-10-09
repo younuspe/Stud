@@ -33,7 +33,7 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
   serverInfo,
 }) => {
   const [isPinging, setIsPinging] = useState(false);
-  const [pingLatency, setPingLatency] = useState<number | null>(42);
+  const [pingLatency, setPingLatency] = useState<number | null>(null);
 
   if (!isOpen) return null;
 
@@ -42,12 +42,15 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
     soundFx.playClick();
     const start = performance.now();
     try {
-      await fetch('/api/status');
+      const response = await fetch('/api/status');
+      if (!response.ok) throw new Error('Local API health check failed.');
+      const data = await response.json();
+      if (data.status !== 'online') throw new Error('Local API is offline.');
       const diff = Math.round(performance.now() - start);
       setPingLatency(diff);
       soundFx.playMeowChime();
     } catch {
-      setPingLatency(120);
+      setPingLatency(null);
     } finally {
       setIsPinging(false);
     }
@@ -90,7 +93,7 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
                   {isConnected ? 'Neural Synapse Active' : 'Disconnected'}
                 </div>
                 <div className="text-xs text-gray-400">
-                  {isConnected ? 'Connected to Gemini 3.8 Flash' : 'Tap to reconnect'}
+                  {isConnected ? `Connected to ${serverInfo.model}` : 'Provider is not connected'}
                 </div>
               </div>
             </div>
@@ -106,7 +109,7 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
                   : 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
               }`}
             >
-              {isConnected ? 'Disconnect' : 'Connect'}
+              {isConnected ? 'Test Again' : 'Test Connection'}
             </button>
           </div>
 
@@ -135,7 +138,7 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
                 <Server size={14} className="text-sky-400" />
                 <span>Server Runtime</span>
               </div>
-              <div className="font-semibold text-white">Express + Vite (Full-stack)</div>
+              <div className="font-semibold text-white">Tauri + Rust + Node API</div>
             </div>
 
             <div className="rounded-2xl border border-[#20202d] bg-[#15151f] p-3.5 space-y-1">
@@ -144,7 +147,7 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
                 <span>API Status</span>
               </div>
               <div className="font-semibold text-emerald-400">
-                {serverInfo.hasApiKey ? 'Secrets Key Active' : 'Intelligent Core Active'}
+                {serverInfo.hasApiKey ? 'API Key Configured' : 'API Key Missing'}
               </div>
             </div>
           </div>
