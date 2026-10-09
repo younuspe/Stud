@@ -1,7 +1,6 @@
 name: macOS desktop build
 
-# Manual-only after the explicitly requested verification run.
-# Do not build automatically on each code commit.
+# Manual verification is preferred. Push builds remain limited to explicit Rust entry-point changes.
 on:
   workflow_dispatch:
   push:
@@ -32,8 +31,25 @@ jobs:
         with:
           targets: aarch64-apple-darwin
 
-      - name: Install frontend dependencies
-        run: npm install --legacy-peer-deps
+      - name: Validate desktop configuration
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("tauri.conf.json")
+          config = json.loads(path.read_text())
+          fs = config.get("plugins", {}).get("fs", {})
+          if "scope" in fs:
+              raise SystemExit("Invalid Tauri v2 config: plugins.fs.scope must not be in tauri.conf.json")
+          minimum = config.get("bundle", {}).get("macOS", {}).get("minimumSystemVersion")
+          if not minimum or tuple(map(int, minimum.split("."))) < (11, 0):
+              raise SystemExit(f"Apple Silicon build must declare macOS 11.0 or newer; found {minimum!r}")
+          print(f"Validated {path}: plugins.fs={fs}, macOS minimum={minimum}")
+          PY
+
+      - name: Install frontend dependencies from lockfile
+        run: npm ci --legacy-peer-deps
 
       - name: Convert cat icon to RGBA PNG for Tauri
         run: |
@@ -54,7 +70,59 @@ jobs:
       - name: Build unsigned macOS DMG
         run: npm run tauri:build -- --bundles dmg
 
+      - name: Smoke-test the app executable from the packaged DMG
+        env:
+          RUST_BACKTRACE: "1"
+        run: |
+          set -euo pipefail
+          DMG="$(find target/release/bundle/dmg -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$DMG"
+          MOUNT_DIR="$(mktemp -d)"
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT_DIR"
+          cleanup() {
+            hdiutil detach "$MOUNT_DIR" -quiet || true
+            rm -rf "$MOUNT_DIR"
+          }
+          trap cleanup EXIT
+          APP_PATH="$(find "$MOUNT_DIR" -maxdepth 2 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          APP_BIN="$APP_PATH/Contents/MacOS/supru"
+          test -x "$APP_BIN"
+          python3 - "$APP_BIN" <<'PY'
+          import subprocess
+          import sys
+
+          executable = sys.argv[1]
+          process = subprocess.Popen(
+              [executable],
+              stdout=subprocess.PIPE,
+              stderr=subprocess.STDOUT,
+              text=True,
+              env=None,
+          )
+          try:
+              output, _ = process.communicate(timeout=12)
+          except subprocess.TimeoutExpired:
+              process.terminate()
+              try:
+                  output, _ = process.communicate(timeout=3)
+              except subprocess.TimeoutExpired:
+                  process.kill()
+                  output, _ = process.communicate()
+              if output:
+                  print(output)
+              print("PASS: packaged app remained running for 12 seconds; no immediate startup panic.")
+              raise SystemExit(0)
+
+          if output:
+              print(output)
+          raise SystemExit(
+              f"FAIL: packaged app exited before the 12-second startup window (exit={process.returncode})."
+          )
+          PY
+
       - name: Upload DMG
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: supru-ai-macos-dmg
