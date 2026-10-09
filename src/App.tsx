@@ -982,6 +982,8 @@ export default function App() {
             {workspaceView === 'agent' && (
               <HeadlessAgentView
                 initialObjective={agentInitialObjective}
+                localConfig={localConfig}
+                activeCustomModel={activeCustomModel}
                 onSendToChat={(report) => {
                   handleSendMessage(report);
                   setWorkspaceView('chat');
