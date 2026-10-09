@@ -54,7 +54,6 @@ import {
   INITIAL_HUNTER_APPROVALS,
   INITIAL_HUNTER_JUDGE_VERDICT,
   INITIAL_WORKBENCH_FILES,
-  generateHunterAgentArtifact,
   HunterAgentArtifact
 } from '../../utils/hunterMasterData';
 import { HunterFloatingPill } from './hunter/HunterFloatingPill';
@@ -90,9 +89,9 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
   // Supru Hunter Master State
   const [agents, setAgents] = useState<HunterAgentDefinition[]>(INITIAL_HUNTER_AGENTS);
-  const [evidenceList, setEvidenceList] = useState<HunterEvidence[]>(INITIAL_HUNTER_EVIDENCE);
-  const [approvals, setApprovals] = useState<HunterApprovalRequest[]>(INITIAL_HUNTER_APPROVALS);
-  const [judgeVerdict, setJudgeVerdict] = useState<HunterJudgeVerdict>(INITIAL_HUNTER_JUDGE_VERDICT);
+  const [evidenceList, setEvidenceList] = useState<HunterEvidence[]>([]);
+  const [approvals, setApprovals] = useState<HunterApprovalRequest[]>([]);
+  const [judgeVerdict, setJudgeVerdict] = useState<HunterJudgeVerdict>({ status: 'blocked', milestone: 'Not yet verified', criteria: [], evidence: [], remainingRisks: ['No task execution or verification has been recorded yet.'], timestamp: Date.now() });
   const [files, setFiles] = useState<EditorFile[]>(INITIAL_WORKBENCH_FILES);
   const [activeFile, setActiveFile] = useState<EditorFile>(INITIAL_WORKBENCH_FILES[0]);
   const [activeMilestone, setActiveMilestone] = useState<'M1' | 'M2' | 'M3' | 'M4'>('M2');
@@ -121,23 +120,15 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   };
 
   // Agent Artifacts (Generated per agent during pipeline execution)
-  const [agentArtifacts, setAgentArtifacts] = useState<Record<string, HunterAgentArtifact>>({
-    lead: generateHunterAgentArtifact('lead', PRESET_PIPELINE_OBJECTIVES[0]),
-    researcher: generateHunterAgentArtifact('researcher', PRESET_PIPELINE_OBJECTIVES[0]),
-    planner: generateHunterAgentArtifact('planner', PRESET_PIPELINE_OBJECTIVES[0]),
-    architect: generateHunterAgentArtifact('architect', PRESET_PIPELINE_OBJECTIVES[0]),
-  });
+  const [agentArtifacts, setAgentArtifacts] = useState<Record<string, HunterAgentArtifact>>({});
 
   // Selected agent for inspection modal
   const [inspectedAgent, setInspectedAgent] = useState<HunterAgentDefinition | null>(null);
 
   // Terminal PTY logs
   const [terminalLogs, setTerminalLogs] = useState<string[]>([
-    'Tauri / Rust Execution Layer Initialized.',
-    'PTY Session mounted: portable-pty (xterm.js ready)',
-    'Loaded policy: deny > ask > allow.',
-    '$ cargo check --package supru-core -> OK (0.42s)',
-    '$ cargo test test_permission_resolution -> 6 passed (12ms)'
+    'Hunter ready. No commands have been run in this session.',
+    'Evidence and verification status will appear only after real execution.'
   ]);
 
   // Floating Pill visibility
