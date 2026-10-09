@@ -84,7 +84,7 @@ app.get('/api/status', (req, res) => {
     model: 'gemini-3.8-flash',
     imageModel: 'gemini-3.1-flash-image-preview',
     videoModel: 'veo-3.1-fast-generate-preview',
-    version: '2.5.0',
+    version: '0.1.0',
     app: 'Supru AI',
   });
 });
