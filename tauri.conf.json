@@ -33,9 +33,7 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "public/favicon.ico",
-      "public/favicon.png",
-      "public/apple-touch-icon.png"
+      "public/AppIcon.icns"
     ],
     "resources": [
       "server.ts"
