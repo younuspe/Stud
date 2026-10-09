@@ -14,6 +14,7 @@ import { soundFx } from '../../../utils/audio';
 
 interface HunterHumanApprovalModalProps {
   request: HunterApprovalRequest;
+  proposalContent?: string;
   onApprove: (id: string) => void;
   onReject: (id: string, reason: string) => void;
   onClose: () => void;
@@ -21,6 +22,7 @@ interface HunterHumanApprovalModalProps {
 
 export const HunterHumanApprovalModal: React.FC<HunterHumanApprovalModalProps> = ({
   request,
+  proposalContent,
   onApprove,
   onReject,
   onClose
@@ -113,6 +115,13 @@ export const HunterHumanApprovalModal: React.FC<HunterHumanApprovalModalProps> =
               ))}
             </div>
           </div>
+
+          {proposalContent && (
+            <div className="rounded-xl bg-[#050505] p-2.5 border border-amber-500/20">
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-amber-300">Proposed complete file contents</div>
+              <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] text-gray-200">{proposalContent}</pre>
+            </div>
+          )}
 
           {/* Requesting Agent */}
           <div className="flex items-center justify-between text-[11px] text-gray-400 px-1">
