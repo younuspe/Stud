@@ -173,7 +173,26 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
       if (localConfig.provider === 'offline_core') throw new Error('No chat model is configured for Offline Core. Select Ollama, LM Studio, or a cloud provider.');
       if (!localConfig.modelName.trim()) throw new Error('Select a model in provider settings before running Hunter.');
       const provider = localConfig.provider === 'gemini_cloud' ? 'gemini_cloud' : localConfig.provider === 'ollama_local' ? 'ollama' : localConfig.provider === 'lmstudio_local' ? 'lmstudio' : 'custom';
-      const prior = Object.values(agentArtifacts).map((artifact) => '[' + artifact.agentId + ']\n' + artifact.artifactContent).join('\n\n');
+      if (!workspacePath.trim()) throw new Error('Set the project folder path before starting Hunter.');
+      let contextArtifacts = priorArtifacts;
+      if (index === 0) {
+        const paths = await invoke<string[]>('list_workspace_files', { workspaceRoot: workspacePath.trim(), relativeDir: null });
+        const preferred = paths.filter((path) => /(^|\/)(README\.md|package\.json|Cargo\.toml|pyproject\.toml|tsconfig\.json|vite\.config\.[^/]+|src\/App\.tsx|src\/lib\.rs|src\/main\.rs|AGENTS\.md|SKILL\.md)$/i.test(path)).slice(0, 10);
+        let snapshot = 'Workspace file inventory (up to 300 files):\n' + paths.join('\n');
+        for (const path of preferred) {
+          try {
+            const content = await invoke<string>('read_workspace_file', { workspaceRoot: workspacePath.trim(), relativePath: path });
+            const remaining = 24000 - snapshot.length;
+            if (remaining <= 0) break;
+            snapshot += '\n\n--- ' + path + ' ---\n' + content.slice(0, Math.min(remaining, 6000));
+          } catch (readError) {
+            snapshot += '\n\nCould not read ' + path + ': ' + (readError instanceof Error ? readError.message : String(readError));
+          }
+        }
+        contextArtifacts = { ...priorArtifacts, workspace_snapshot: { agentId: 'workspace_snapshot', summary: 'Read real files from the selected workspace.', artifactContent: snapshot, timestamp: Date.now() } };
+        setTerminalLogs((prev) => [...prev, 'Read workspace inventory and selected project files from: ' + workspacePath.trim()]);
+      }
+      const prior = Object.values(contextArtifacts).map((artifact) => '[' + artifact.agentId + ']\n' + artifact.artifactContent).join('\n\n');
       const response = await invoke<string>('chat_completion', {
         provider, endpointUrl: localConfig.endpointUrl, modelName: localConfig.modelName, apiKey: localConfig.apiKey || null, temperature: 0.2,
         messages: [
@@ -186,7 +205,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
       setAgents((prev) => prev.map((item, i) => i === index ? { ...item, status: 'done' } : item));
       setTerminalLogs((prev) => [...prev, '[' + agent.id + '] Received ' + response.length + ' characters from the configured model. No tools executed in this handoff.']);
       soundFx.playClick();
-      if (!isPausedRef.current) await executeAgentStep(index + 1, { ...priorArtifacts, [agent.id]: artifact }); else setIsPipelineRunning(false);
+      if (!isPausedRef.current) await executeAgentStep(index + 1, { ...contextArtifacts, [agent.id]: artifact }); else setIsPipelineRunning(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setAgents((prev) => prev.map((item, i) => i === index ? { ...item, status: 'failed' } : item));
