@@ -166,9 +166,9 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   const activeProject = projects.find(p => p.id === activeProjectId) || projects[0];
 
   // Execute only real, fixed project checks. Tools without an implementation report that fact.
-  const handleExecuteTool = async (toolName: OrchestratorToolName) => {
+  const handleExecuteTool = async (toolName: OrchestratorToolName): Promise<boolean> => {
     soundFx.playClick();
-    if (isCallingTool) return;
+    if (isCallingTool) return false;
     setIsCallingTool(true);
     setActiveTool(toolName);
     const startedAt = Date.now();
@@ -218,34 +218,35 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
       setIsCallingTool(false);
       if (status === 'success') soundFx.playChime();
     }
+    return status === 'success';
   };
 
-  // Bug handling workflows
-  const handleResolveBugWithTool = (bug: OrchestratorBug) => {
+  // Bug workflows must not report a fix until a real edit and verification occur.
+  const handleResolveBugWithTool = async (bug: OrchestratorBug) => {
     soundFx.playClick();
-    handleExecuteTool(bug.recommendedTool);
-    setTimeout(() => {
-      setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'verifying' } : b));
-    }, 800);
+    setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'investigating' } : b));
+    const succeeded = await handleExecuteTool(bug.recommendedTool);
+    setBugs(prev => prev.map(b => b.id === bug.id
+      ? { ...b, status: succeeded ? 'verifying' : 'open' }
+      : b));
   };
 
   const handleResolveBugWithModel = (bug: OrchestratorBug) => {
     soundFx.playClick();
-    // Rearrange model dynamically to handle the bug
     setSelectedReasoningModel(bug.recommendedModel);
     setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'investigating' } : b));
-    setTimeout(() => {
-      setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'fixed' } : b));
-      soundFx.playChime();
-    }, 1200);
+    onSendToChat?.(
+      `Investigate this reported issue using ${bug.recommendedModel}. Do not claim it is fixed without editing the actual file and running verification.\n\nIssue: ${bug.title}\nFile: ${bug.file}\nDetails: ${bug.errorDetails}\n\nProposed change for review (not yet applied):\n${bug.solutionDiff || 'No patch proposal available.'}`
+    );
   };
 
   const handleApplyBugPatch = (bug: OrchestratorBug) => {
     soundFx.playClick();
-    setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'fixed' } : b));
-    soundFx.playChime();
     if (onOpenInEditor && bug.solutionDiff) {
-      onOpenInEditor(bug.file.split('/').pop() || 'patch.ts', bug.solutionDiff);
+      setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'investigating' } : b));
+      onOpenInEditor(bug.file.split('/').pop() || 'patch-proposal.ts', bug.solutionDiff);
+    } else {
+      setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'open' } : b));
     }
   };
 
