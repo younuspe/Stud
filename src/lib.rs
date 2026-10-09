@@ -101,7 +101,7 @@ async fn list_workspace_files(workspace_root: String, relative_dir: Option<Strin
         let canonical = entry.path().canonicalize().map_err(|e| format!("Could not resolve file path: {e}"))?;
         if !canonical.starts_with(&root) { continue; }
         if let Ok(relative) = canonical.strip_prefix(&root) {
-            files.push(relative.to_string_lossy().replace('\\\\', "/"));
+            files.push(relative.to_string_lossy().replace('\\', "/"));
             if files.len() >= 300 { break; }
         }
     }
