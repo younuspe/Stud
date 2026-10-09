@@ -69,6 +69,169 @@ fn start_backend(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceEntry {
+    path: String,
+    name: String,
+    is_dir: bool,
+    size: u64,
+}
+
+fn canonical_workspace_root(root: &str) -> Result<std::path::PathBuf, String> {
+    let canonical = std::path::Path::new(root)
+        .canonicalize()
+        .map_err(|error| format!("Cannot open workspace folder: {error}"))?;
+    if !canonical.is_dir() {
+        return Err("The selected workspace is not a directory.".into());
+    }
+    Ok(canonical)
+}
+
+fn safe_relative_path(relative_path: &str) -> Result<std::path::PathBuf, String> {
+    use std::path::{Component, Path};
+    let relative = Path::new(relative_path);
+    if relative.is_absolute()
+        || relative.components().any(|component| {
+            !matches!(component, Component::Normal(_))
+        })
+    {
+        return Err("The path must be relative to the selected workspace and cannot contain '..'.".into());
+    }
+    Ok(relative.to_path_buf())
+}
+
+#[tauri::command]
+fn select_workspace(app: tauri::AppHandle) -> Option<String> {
+    use tauri_plugin_dialog::DialogExt;
+    app.dialog()
+        .file()
+        .blocking_pick_folder()
+        .and_then(|selected| selected.into_path().ok())
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+fn workspace_list(root: String) -> Result<Vec<WorkspaceEntry>, String> {
+    use std::path::Path;
+    let root = canonical_workspace_root(&root)?;
+    let ignored = [".git", "node_modules", "target", "dist", ".next", ".venv", "venv"];
+    let mut entries = Vec::new();
+
+    for entry in walkdir::WalkDir::new(&root)
+        .max_depth(8)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        if entry.depth() == 0 {
+            continue;
+        }
+        let path = entry.path();
+        let relative = path.strip_prefix(&root).map_err(|error| error.to_string())?;
+        if relative.components().any(|component| {
+            let part = component.as_os_str().to_string_lossy();
+            ignored.iter().any(|ignored_part| part == *ignored_part)
+        }) {
+            continue;
+        }
+        if entry.file_type().is_symlink() {
+            continue;
+        }
+        let is_dir = entry.file_type().is_dir();
+        if !is_dir && !entry.file_type().is_file() {
+            continue;
+        }
+        let metadata = entry.metadata().map_err(|error| error.to_string())?;
+        entries.push(WorkspaceEntry {
+            path: relative.to_string_lossy().replace('\\\\', "/"),
+            name: Path::new(path).file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            is_dir,
+            size: metadata.len(),
+        });
+        if entries.len() >= 1500 {
+            break;
+        }
+    }
+
+    entries.sort_by(|a, b| {
+        b.is_dir.cmp(&a.is_dir).then_with(|| a.path.to_lowercase().cmp(&b.path.to_lowercase()))
+    });
+    Ok(entries)
+}
+
+#[tauri::command]
+fn workspace_read_file(root: String, relative_path: String) -> Result<String, String> {
+    use std::fs;
+    let root = canonical_workspace_root(&root)?;
+    let relative = safe_relative_path(&relative_path)?;
+    let target = root.join(relative);
+    let canonical_target = target
+        .canonicalize()
+        .map_err(|error| format!("Cannot open file: {error}"))?;
+    if !canonical_target.starts_with(&root) {
+        return Err("The requested file is outside the selected workspace.".into());
+    }
+    let metadata = fs::metadata(&canonical_target).map_err(|error| error.to_string())?;
+    if !metadata.is_file() {
+        return Err("Only files can be opened in the editor.".into());
+    }
+    if metadata.len() > 5 * 1024 * 1024 {
+        return Err("Files larger than 5 MB cannot be opened in the editor.".into());
+    }
+    fs::read_to_string(canonical_target)
+        .map_err(|error| format!("File is not readable UTF-8 text: {error}"))
+}
+
+#[tauri::command]
+fn workspace_write_file(root: String, relative_path: String, content: String) -> Result<(), String> {
+    use std::fs::{self, OpenOptions};
+    use std::io::Write;
+    use std::path::Path;
+
+    if content.len() > 5 * 1024 * 1024 {
+        return Err("Files larger than 5 MB cannot be saved from the editor.".into());
+    }
+
+    let root = canonical_workspace_root(&root)?;
+    let relative = safe_relative_path(&relative_path)?;
+    if relative.as_os_str().is_empty() || relative.file_name().is_none() {
+        return Err("A file name is required.".into());
+    }
+    let target = root.join(&relative);
+    let parent = target.parent().ok_or("The file path has no parent directory.")?;
+    let canonical_parent = parent
+        .canonicalize()
+        .map_err(|error| format!("Parent folder does not exist: {error}"))?;
+    if !canonical_parent.starts_with(&root) {
+        return Err("The requested file is outside the selected workspace.".into());
+    }
+
+    if let Ok(metadata) = fs::symlink_metadata(&target) {
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err("Refusing to overwrite a symlink or non-file path.".into());
+        }
+    }
+
+    let temporary = canonical_parent.join(format!(".supru-tmp-{}", uuid::Uuid::new_v4()));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|error| format!("Cannot create temporary save file: {error}"))?;
+    if let Err(error) = file.write_all(content.as_bytes()).and_then(|_| file.sync_all()) {
+        let _ = fs::remove_file(&temporary);
+        return Err(format!("Cannot write file: {error}"));
+    }
+    drop(file);
+    if let Err(error) = fs::rename(&temporary, &target) {
+        let _ = fs::remove_file(&temporary);
+        return Err(format!("Cannot replace target file: {error}"));
+    }
+    Ok(())
+}
+
 /// Starts the native Supru desktop shell.
 ///
 /// Development runs the API/Vite server through `npm run dev`. Packaged builds
@@ -81,7 +244,13 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![
+            select_workspace,
+            workspace_list,
+            workspace_read_file,
+            workspace_write_file
+        ]);
 
     #[cfg(not(debug_assertions))]
     let builder = builder.setup(|app| start_backend(app));
