@@ -177,7 +177,7 @@ fn workspace_list(workspace: tauri::State<'_, SelectedWorkspace>) -> Result<Vec<
         .filter_entry(|entry| {
             entry.depth() == 0
                 || !ignored.iter().any(|ignored_part| {
-                    entry.file_name().to_string_lossy() == *ignored_part
+                    entry.file_name().to_string_lossy().as_ref() == *ignored_part
                 })
         })
         .filter_map(Result::ok)
@@ -189,7 +189,7 @@ fn workspace_list(workspace: tauri::State<'_, SelectedWorkspace>) -> Result<Vec<
         let relative = path.strip_prefix(&root).map_err(|error| error.to_string())?;
         if relative.components().any(|component| {
             let part = component.as_os_str().to_string_lossy();
-            ignored.iter().any(|ignored_part| part == *ignored_part)
+            ignored.iter().any(|ignored_part| part.as_ref() == *ignored_part)
         }) {
             continue;
         }
@@ -203,7 +203,7 @@ fn workspace_list(workspace: tauri::State<'_, SelectedWorkspace>) -> Result<Vec<
         let metadata = entry.metadata().map_err(|error| error.to_string())?;
         entries.push(WorkspaceEntry {
             path: relative.to_string_lossy().replace('\\', "/"),
-            name: Path::new(path).file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            name: path.file_name().unwrap_or_default().to_string_lossy().into_owned(),
             is_dir,
             size: metadata.len(),
         });
