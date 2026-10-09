@@ -86,6 +86,13 @@ Do not duplicate the source artifact as unrelated copies in each tool. Different
 - Non-destructive operations create previews and reversible versions.
 - No claim of pixel-level editing for non-image assets or semantic editing for files until that adapter exists.
 
+### 3.5 Generative Studio — App Builder
+- Provide an explicit App Builder mode alongside image, motion, 3D, and atomic UI creation.
+- Generate a complete editable application from a natural-language specification using the configured Studio generation provider.
+- Initial target: self-contained HTML/CSS/JavaScript; framework-based outputs only when configured and supported.
+- Show generated source and a sandboxed live preview; allow iterative revisions and opening the source in the code editor.
+- Report provider errors honestly. Do not label generated code tested or production-ready without checks, or execute/write generated code automatically.
+
 ### 4. Web Builder
 - Visual canvas plus component/DOM tree, responsive breakpoints, styles, assets, and live preview.
 - Changes must remain synchronized with generated HTML/CSS/JS or the chosen framework source.
