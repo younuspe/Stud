@@ -35,10 +35,21 @@ jobs:
       - name: Install frontend dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Convert cat icon to a real PNG for Tauri
+      - name: Convert cat icon to RGBA PNG for Tauri
         run: |
+          python3 -m venv .venv-icon
+          .venv-icon/bin/python -m pip install --upgrade pip Pillow
           mkdir -p icons
-          sips -s format png src/assets/images/cat_icon.png --out icons/icon.png
+          .venv-icon/bin/python - <<'PY'
+          from PIL import Image
+          source = Image.open("src/assets/images/cat_icon.jpg")
+          icon = source.convert("RGBA")
+          icon.save("icons/icon.png", format="PNG")
+          check = Image.open("icons/icon.png")
+          if check.mode != "RGBA":
+              raise SystemExit(f"Expected RGBA icon, got {check.mode}")
+          print(f"Verified icons/icon.png: mode={check.mode}, size={check.size}")
+          PY
 
       - name: Build unsigned macOS DMG
         run: npm run tauri:build -- --bundles dmg
