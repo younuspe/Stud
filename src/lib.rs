@@ -128,6 +128,41 @@ async fn read_workspace_file(workspace_root: String, relative_path: String) -> R
     std::fs::read_to_string(&target).map_err(|e| format!("Could not read UTF-8 file: {e}"))
 }
 
+
+#[tauri::command]
+async fn write_workspace_file(workspace_root: String, relative_path: String, content: String) -> Result<String, String> {
+    let root = PathBuf::from(workspace_root).canonicalize()
+        .map_err(|e| format!("Workspace root is unavailable: {e}"))?;
+    if !root.is_dir() { return Err("Workspace root must be a directory.".into()); }
+    if content.len() > 1024 * 1024 { return Err("File content exceeds the 1 MiB write limit.".into()); }
+    let relative = PathBuf::from(relative_path.trim());
+    if relative.as_os_str().is_empty() || relative.is_absolute()
+        || relative.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_))) {
+        return Err("File path must be a safe relative path inside the workspace.".into());
+    }
+    if relative.components().any(|c| matches!(c, std::path::Component::Normal(name) if matches!(name.to_string_lossy().as_ref(), ".git" | "node_modules" | "target"))) {
+        return Err("Writes inside .git, node_modules, and target are blocked.".into());
+    }
+    let file_name = relative.file_name().ok_or_else(|| "File path must include a filename.".to_string())?;
+    let parent = root.join(relative.parent().unwrap_or_else(|| std::path::Path::new(""))).canonicalize()
+        .map_err(|e| format!("Parent directory must already exist: {e}"))?;
+    if !parent.starts_with(&root) { return Err("Parent directory escapes the selected workspace.".into()); }
+    let target = parent.join(file_name);
+    if target.exists() {
+        let canonical_target = target.canonicalize().map_err(|e| format!("Could not resolve target file: {e}"))?;
+        if !canonical_target.starts_with(&root) || !canonical_target.is_file() {
+            return Err("Target escapes the selected workspace or is not a regular file.".into());
+        }
+    }
+    let temp = parent.join(format!(".supru-write-{}-{}.tmp", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
+    std::fs::write(&temp, content).map_err(|e| format!("Could not stage file content: {e}"))?;
+    if let Err(error) = std::fs::rename(&temp, &target) {
+        let _ = std::fs::remove_file(&temp);
+        return Err(format!("Could not commit file atomically: {error}"));
+    }
+    Ok(format!("Wrote {} bytes to {}", content.len(), target.strip_prefix(&root).unwrap_or(&target).display()))
+}
+
 #[derive(serde::Deserialize)]
 struct ChatMessageInput {
     role: String,
@@ -378,7 +413,7 @@ async fn test_provider_connection(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![execute_terminal_command, chat_completion, test_provider_connection, list_workspace_files, read_workspace_file])
+        .invoke_handler(tauri::generate_handler![execute_terminal_command, chat_completion, test_provider_connection, list_workspace_files, read_workspace_file, write_workspace_file])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
