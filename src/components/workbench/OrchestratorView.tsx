@@ -102,8 +102,8 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   
   // Token size rearrangement state
   const [tokenChunkSize, setTokenChunkSize] = useState<number>(8192);
-  const [selectedTriageModel, setSelectedTriageModel] = useState<string>('Gemini 2.5 Flash');
-  const [selectedReasoningModel, setSelectedReasoningModel] = useState<string>('Gemini 2.5 Pro');
+  const [selectedTriageModel, setSelectedTriageModel] = useState<string>(localConfig.modelName || '');
+  const [selectedReasoningModel, setSelectedReasoningModel] = useState<string>(localConfig.modelName || '');
   const [pruningStrategy, setPruningStrategy] = useState<'ast' | 'sliding' | 'strict'>('ast');
 
   // Tool calling facility state
@@ -122,6 +122,66 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   }, [projects, activeProjectId]);
 
   // Execute only real, fixed project checks. Tools without an implementation report that fact.
+  const handleRunTask = async (taskId: string) => {
+    const project = projects.find((item) => item.id === activeProjectId);
+    const task = project?.tasks.find((item) => item.id === taskId);
+    if (!project || !task || runningTaskId) return;
+
+    const updateTask = (changes: Partial<typeof task>) => {
+      setProjects((previous) => previous.map((item) => item.id !== project.id ? item : {
+        ...item,
+        tasks: item.tasks.map((current) => current.id === taskId ? { ...current, ...changes } : current),
+      }));
+    };
+
+    setRunningTaskId(taskId);
+    updateTask({ status: 'in_progress', error: undefined });
+    try {
+      if (task.stage === 'test') {
+        const command = "if [ -f Cargo.toml ]; then cargo check; elif [ -f package.json ]; then npm run lint; else echo 'No supported Cargo.toml or package.json was found.' >&2; exit 2; fi";
+        const result = await invoke<{ stdout: string; stderr: string; exitCode: number; durationMs: number }>(
+          'run_workspace_command',
+          { command },
+        );
+        const output = [result.stdout, result.stderr].filter(Boolean).join('\\n') || '(No command output)';
+        const resultText = `Command: ${command}\nExit code: ${result.exitCode}\nDuration: ${result.durationMs} ms\n\n${output}`;
+        updateTask({ status: result.exitCode === 0 ? 'completed' : 'failed', result: resultText, error: result.exitCode === 0 ? undefined : 'Workspace check failed; inspect the captured output.' });
+      } else if (task.stage === 'plan' || task.stage === 'code' || task.stage === 'bugfix') {
+        const modelName = task.assignedModel || localConfig.modelName || 'gemini-3.8-flash';
+        const systemPrompt = task.stage === 'plan'
+          ? 'You are an engineering planner. Produce a concrete plan with assumptions, dependencies, and acceptance criteria. Do not claim tools ran or files changed.'
+          : 'You are a coding agent preparing a proposal for human review. Provide a concrete patch or complete file content when enough context is available. Do not claim it was applied to disk or tested.';
+        const response = await fetch('/api/local-chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: localConfig.provider,
+            endpointUrl: localConfig.endpointUrl,
+            modelName: localConfig.provider === 'gemini_cloud' ? (modelName.startsWith('gemini-') ? modelName : 'gemini-3.8-flash') : modelName,
+            apiKey: localConfig.apiKey,
+            temperature: 0.2,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: `Project: ${project.name}\nObjective: ${project.description}\nTask: ${task.title}\n\nReturn the work product for this task and clearly list missing context.` },
+            ],
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || `Model request failed (HTTP ${response.status}).`);
+        const resultText = String(data.reply || '').trim();
+        if (!resultText) throw new Error('The selected provider returned an empty result.');
+        updateTask({ status: 'completed', result: resultText, error: undefined });
+      } else {
+        throw new Error('Deployment tasks are blocked until a real deployment adapter and approval policy are configured.');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      updateTask({ status: 'failed', error: message, result: undefined });
+    } finally {
+      setRunningTaskId(null);
+    }
+  };
+
   const handleExecuteTool = async (toolName: OrchestratorToolName): Promise<boolean> => {
     soundFx.playClick();
     if (isCallingTool) return false;
@@ -407,8 +467,9 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
                       activeModel: selectedReasoningModel,
                       fallbackModel: selectedTriageModel,
                       tasks: [
-                        { id: `t-${Date.now()}-1`, title: 'Define interface contracts', stage: 'plan', status: 'pending', assignedModel: selectedReasoningModel },
-                        { id: `t-${Date.now()}-2`, title: 'Execute code generation & unit verification', stage: 'code', status: 'pending', assignedModel: selectedTriageModel }
+                        { id: `t-${Date.now()}-1`, title: 'Create an implementation plan', stage: 'plan', status: 'pending', assignedModel: selectedReasoningModel },
+                        { id: `t-${Date.now()}-2`, title: 'Prepare a code proposal (no automatic file writes)', stage: 'code', status: 'pending', assignedModel: selectedTriageModel },
+                        { id: `t-${Date.now()}-3`, title: 'Run workspace checks', stage: 'test', status: 'pending', assignedModel: selectedTriageModel }
                       ]
                     };
                     setProjects(prev => [...prev, newProj]);
