@@ -211,7 +211,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
           claim: `Workspace check returned exit code ${exitCode}`,
           command,
           exitCode,
-          filePath: workspaceRoot,
+          filePath: localStorage.getItem('supru_workspace_root') || undefined,
           outputSnippet: commandOutput.slice(0, 1200),
           timestamp: Date.now(),
           isVerified: exitCode === 0,
