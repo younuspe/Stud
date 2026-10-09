@@ -96,17 +96,23 @@ async fn execute_sandboxed_command(command: String, cwd: String) -> Result<Termi
             return Err("macOS sandbox-exec is unavailable. Refusing to run the command without isolation.".to_string());
         }
 
-        let work_state = workspace.join(".supru-sandbox");
+        let work_state = std::env::temp_dir().join(format!("supru-sandbox-{}", uuid::Uuid::new_v4()));
         let temp_dir = work_state.join("tmp");
         let npm_cache = work_state.join("npm-cache");
+        let home_dir = work_state.join("home");
         fs::create_dir_all(&temp_dir).map_err(|e| format!("Could not create sandbox temp directory: {e}"))?;
         fs::create_dir_all(&npm_cache).map_err(|e| format!("Could not create sandbox npm cache: {e}"))?;
+        fs::create_dir_all(&home_dir).map_err(|e| format!("Could not create sandbox home directory: {e}"))?;
+        let work_state = work_state.canonicalize().map_err(|e| format!("Could not resolve sandbox temp directory: {e}"))?;
+        let temp_dir = work_state.join("tmp");
+        let npm_cache = work_state.join("npm-cache");
+        let home_dir = work_state.join("home");
 
         fn profile_path(path: &Path) -> String {
             path.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"")
         }
         let workspace_path = profile_path(&workspace);
-        let temp_path = profile_path(&temp_dir);
+        let work_state_path = profile_path(&work_state);
         let profile = format!(r#"(version 1)
 (deny default)
 (allow process*)
@@ -126,10 +132,8 @@ async fn execute_sandboxed_command(command: String, cwd: String) -> Result<Termi
 (allow file-write* (subpath "/dev"))
 (allow file-read* (subpath "{workspace_path}"))
 (allow file-write* (subpath "{workspace_path}"))
-(allow file-read* (subpath "{temp_path}"))
-(allow file-write* (subpath "{temp_path}"))
-(allow file-read* (literal "/private/tmp"))
-(allow file-write* (literal "/private/tmp"))
+(allow file-read* (subpath "{work_state_path}"))
+(allow file-write* (subpath "{work_state_path}"))
 "#);
         let profile_file = std::env::temp_dir().join(format!("supru-seatbelt-{}.sb", uuid::Uuid::new_v4()));
         fs::write(&profile_file, profile).map_err(|e| format!("Could not create sandbox policy: {e}"))?;
@@ -138,20 +142,32 @@ async fn execute_sandboxed_command(command: String, cwd: String) -> Result<Termi
         let mut process = Command::new(sandbox_exec);
         process
             .kill_on_drop(true)
+            .env_clear()
             .arg("-f")
             .arg(&profile_file)
             .arg("/bin/zsh")
             .arg("-c")
             .arg(&command)
             .current_dir(&workspace)
+            .env("HOME", &home_dir)
             .env("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
             .env("TMPDIR", &temp_dir)
-            .env("npm_config_cache", &npm_cache);
+            .env("npm_config_cache", &npm_cache)
+            .env("LANG", "en_US.UTF-8");
         let execution = timeout(Duration::from_secs(120), process.output()).await;
         let _ = fs::remove_file(&profile_file);
-        let output = execution
-            .map_err(|_| "Sandboxed command timed out after 120 seconds.".to_string())?
-            .map_err(|e| format!("Failed to start macOS sandbox: {e}"))?;
+        let output = match execution {
+            Ok(Ok(output)) => output,
+            Ok(Err(e)) => {
+                let _ = fs::remove_dir_all(&work_state);
+                return Err(format!("Failed to start macOS sandbox: {e}"));
+            }
+            Err(_) => {
+                let _ = fs::remove_dir_all(&work_state);
+                return Err("Sandboxed command timed out after 120 seconds.".to_string());
+            }
+        };
+        let _ = fs::remove_dir_all(&work_state);
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
