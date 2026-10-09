@@ -113,6 +113,10 @@ async fn execute_sandboxed_command(command: String, cwd: String) -> Result<Termi
 (allow sysctl-read)
 (allow file-read* (subpath "/System"))
 (allow file-read* (subpath "/usr"))
+(allow file-read* (subpath "/etc"))
+(allow file-read* (subpath "/private/etc"))
+(allow file-read* (subpath "/opt/homebrew"))
+(allow file-read* (subpath "/usr/local"))
 (allow file-read* (subpath "/bin"))
 (allow file-read* (subpath "/sbin"))
 (allow file-read* (subpath "/Library"))
@@ -137,9 +141,10 @@ async fn execute_sandboxed_command(command: String, cwd: String) -> Result<Termi
             .arg("-f")
             .arg(&profile_file)
             .arg("/bin/zsh")
-            .arg("-lc")
+            .arg("-c")
             .arg(&command)
             .current_dir(&workspace)
+            .env("PATH", "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
             .env("TMPDIR", &temp_dir)
             .env("npm_config_cache", &npm_cache);
         let execution = timeout(Duration::from_secs(120), process.output()).await;
@@ -191,7 +196,7 @@ async fn list_workspace_files(workspace_root: String, relative_dir: Option<Strin
         .into_iter()
         .filter_entry(|entry| {
             let name = entry.file_name().to_string_lossy();
-            !matches!(name.as_ref(), ".git" | "node_modules" | "target" | "dist" | ".next" | "vendor")
+            !matches!(name.as_ref(), ".git" | "node_modules" | "target" | "dist" | ".next" | "vendor" | ".supru-sandbox")
         })
     {
         let entry = entry.map_err(|e| format!("Could not inspect workspace: {e}"))?;
