@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { 
   X, 
   Sparkles, 
@@ -172,18 +173,32 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
     setTestResult(null);
 
     try {
-      const res = await fetch('/api/studio/test-connection', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider,
-          modelId: modelId.trim() || 'default',
-          apiKey: authMode === 'with_key' ? apiKey.trim() : undefined,
-          endpointUrl: endpointUrl.trim() || undefined,
-        }),
-      });
-
-      const data = await res.json();
+      let data: { status: string; message?: string; latencyMs?: number };
+      if (isTauri()) {
+        const started = performance.now();
+        data = await invoke<{ status: string; message: string; models: string[] }>(
+          'test_provider_connection',
+          {
+            provider,
+            endpointUrl: endpointUrl.trim(),
+            modelName: modelId.trim() || 'default',
+            apiKey: authMode === 'with_key' ? (apiKey.trim() || null) : null,
+          }
+        );
+        data.latencyMs = Math.round(performance.now() - started);
+      } else {
+        const res = await fetch('/api/studio/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider,
+            modelId: modelId.trim() || 'default',
+            apiKey: authMode === 'with_key' ? apiKey.trim() : undefined,
+            endpointUrl: endpointUrl.trim() || undefined,
+          }),
+        });
+        data = await res.json();
+      }
       setTestResult({
         status: data.status === 'online' ? 'online' : 'offline',
         message: data.message || (data.status === 'online' ? 'Connection verified!' : 'Connection failed'),
