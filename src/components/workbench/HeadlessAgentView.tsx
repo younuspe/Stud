@@ -203,6 +203,63 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
         contextArtifacts = { ...priorArtifacts, workspace_snapshot: { agentId: 'workspace_snapshot', summary: 'Read real files from the selected workspace.', artifactContent: snapshot, timestamp: Date.now() } };
         setTerminalLogs((prev) => [...prev, 'Read workspace inventory and selected project files from: ' + workspacePath.trim()]);
       }
+      if (agent.id === 'tester') {
+        const paths = await invoke<string[]>('list_workspace_files', { workspaceRoot: workspacePath.trim(), relativeDir: null });
+        const packagePath = paths.find((path) => path === 'package.json');
+        if (!packagePath) {
+          const message = 'No root package.json was found; this Tester pass cannot run npm checks. No test success is claimed.';
+          contextArtifacts = { ...contextArtifacts, test_execution: { agentId: 'test_execution', summary: 'No supported project test commands were available.', artifactContent: message, timestamp: Date.now() } };
+          setTerminalLogs((prev) => [...prev, '[tester] ' + message]);
+        } else {
+          const packageText = await invoke<string>('read_workspace_file', { workspaceRoot: workspacePath.trim(), relativePath: packagePath });
+          const packageData = JSON.parse(packageText) as { scripts?: Record<string, string>; dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+          const scripts = packageData.scripts || {};
+          const dependencies = { ...(packageData.dependencies || {}), ...(packageData.devDependencies || {}) };
+          const commands: string[] = [];
+          if (scripts.lint) commands.push('npm run lint');
+          if (scripts.test) {
+            if (dependencies.vitest) commands.push('npm test -- --run');
+            else if (dependencies.jest) commands.push('npm test -- --runInBand');
+            else commands.push('npm test');
+          }
+          if (scripts.build) commands.push('npm run build');
+          const results: string[] = [];
+          let allChecksPassed = commands.length > 0;
+          for (const command of commands) {
+            const result = await invoke<{ output: string; exitCode: number; durationMs: number }>('execute_terminal_command', {
+              command,
+              cwd: workspacePath.trim(),
+            });
+            const passed = result.exitCode === 0;
+            results.push('$ ' + command + '\n' + result.output + '\nExit code: ' + result.exitCode + ' | Duration: ' + result.durationMs + ' ms');
+            setEvidenceList((prev) => [{
+              id: 'ev-test-' + Date.now() + '-' + results.length,
+              type: command.includes('lint') ? 'lint' : command.includes('test') ? 'test' : 'compiler',
+              claim: command + (passed ? ' completed with exit code 0' : ' failed with exit code ' + result.exitCode),
+              command,
+              exitCode: result.exitCode,
+              outputSnippet: result.output.slice(0, 2000),
+              timestamp: Date.now(),
+              isVerified: passed,
+            }, ...prev]);
+            setTerminalLogs((prev) => [...prev, '[tester] ' + command + ' exited ' + result.exitCode + ' after ' + result.durationMs + ' ms.']);
+            if (!passed) { allChecksPassed = false; break; }
+          }
+          if (commands.length === 0) {
+            results.push('No lint, test, or build scripts were declared in package.json. No commands were run.');
+            allChecksPassed = false;
+          }
+          contextArtifacts = {
+            ...contextArtifacts,
+            test_execution: {
+              agentId: 'test_execution',
+              summary: allChecksPassed ? 'All executed project checks exited successfully.' : 'Checks are incomplete or at least one command failed; do not certify this task.',
+              artifactContent: results.join('\n\n'),
+              timestamp: Date.now(),
+            },
+          };
+        }
+      }
       const prior = Object.values(contextArtifacts).map((artifact) => '[' + artifact.agentId + ']\n' + artifact.artifactContent).join('\n\n');
       const response = await invoke<string>('chat_completion', {
         provider, endpointUrl: localConfig.endpointUrl, modelName: localConfig.modelName, apiKey: localConfig.apiKey || null, temperature: 0.2,
