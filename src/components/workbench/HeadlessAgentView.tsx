@@ -199,6 +199,11 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   // Run Entire Pipeline from Start (End-to-End Workflow with Zero Interaction)
   const handleRunFullPipeline = (autoApprove: boolean = true) => {
     soundFx.playClick();
+    if (!pipelineObjective.trim()) {
+      setTerminalLogs((prev) => [...prev, 'Enter a task objective before starting Hunter.']);
+      setIsPipelineRunning(false);
+      return;
+    }
     setAutoApproveGates(autoApprove);
     setIsZeroInteraction(autoApprove);
     setIsPipelinePaused(false);
