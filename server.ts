@@ -4,11 +4,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { exec, execSync } from 'child_process';
-import util from 'util';
+import { execSync } from 'child_process';
 import { GoogleGenAI, GenerateVideosOperation } from '@google/genai';
-
-const execPromise = util.promisify(exec);
 
 dotenv.config();
 
@@ -942,45 +939,15 @@ app.post('/api/github/contents', async (req, res) => {
 // ==========================================
 // HEADLESS AGENT RUNNER API
 // ==========================================
-const handleAgentStep = async (req: express.Request, res: express.Response) => {
-  const { objective, step, previousOutputs = [] } = req.body;
-
-  try {
-    // If step has a shell command, execute it locally!
-    if (step && step.command) {
-      try {
-        const { stdout, stderr } = await execPromise(step.command, {
-          timeout: 10000,
-          env: { ...process.env, TERM: 'xterm-256color' },
-        });
-        return res.json({
-          status: 'completed',
-          output: stdout || stderr || 'Command executed successfully.',
-          artifact: step.command.includes('git') ? 'Git status verified' : undefined,
-        });
-      } catch (cmdErr: any) {
-        return res.status(200).json({
-          status: 'failed',
-          output: cmdErr.stdout || cmdErr.stderr || cmdErr.message || 'Command execution failed.',
-          exitCode: typeof cmdErr.code === 'number' ? cmdErr.code : 1,
-          warning: 'The command did not complete successfully. No verification is claimed.',
-        });
-      }
-    }
-
-    return res.status(503).json({
-      status: 'blocked',
-      error: 'This step requires a connected reasoning provider or an explicit executable command. No analysis was simulated.',
-      objective: objective || null,
-      stepTitle: step?.title || null,
-    });
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message || 'Agent step execution failed' });
-  }
+const disabledAgentCommandRoute = (_req: express.Request, res: express.Response) => {
+  return res.status(410).json({
+    status: 'blocked',
+    error: 'Direct HTTP agent command execution is disabled. Use the native Rust workspace command for commands and /api/local-chat for model reasoning.',
+  });
 };
 
-app.post('/api/agent/execute-step', handleAgentStep);
-app.post('/api/agent/step', handleAgentStep);
+app.post('/api/agent/execute-step', disabledAgentCommandRoute);
+app.post('/api/agent/step', disabledAgentCommandRoute);
 
 // ==========================================
 // GOOGLE AI STUDIO / EXTERNAL MODEL CONNECTIONS
