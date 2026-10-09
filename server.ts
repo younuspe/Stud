@@ -931,6 +931,44 @@ app.post('/api/local-chat', async (req, res) => {
   const { messages, provider, endpointUrl, modelName = 'llama3', temperature = 0.7, apiKey: customKey } = req.body;
 
   try {
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'A non-empty messages array is required.' });
+    }
+
+    if (provider === 'gemini_cloud' || provider === 'gemini') {
+      const activeKey = customKey || apiKey;
+      if (!activeKey || activeKey === 'MY_GEMINI_API_KEY') {
+        return res.status(503).json({ error: 'Gemini requires a real API key. Configure it in provider settings before using the agent.' });
+      }
+      const client = new GoogleGenAI({
+        apiKey: activeKey,
+        httpOptions: { headers: { 'User-Agent': 'supru-desktop' } },
+      });
+      const systemInstruction = messages
+        .filter((message: any) => message.role === 'system')
+        .map((message: any) => message.content)
+        .join('\\n\\n');
+      const contents = messages
+        .filter((message: any) => message.role !== 'system')
+        .map((message: any) => ({
+          role: message.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: String(message.content ?? '') }],
+        }));
+      const response = await client.models.generateContent({
+        model: modelName || 'gemini-3.8-flash',
+        contents,
+        config: {
+          systemInstruction,
+          temperature: typeof temperature === 'number' ? temperature : 0.2,
+        },
+      });
+      const reply = response.text;
+      if (!reply || !reply.trim()) {
+        return res.status(502).json({ error: 'Gemini returned an empty response.' });
+      }
+      return res.json({ reply });
+    }
+
     if (provider === 'ollama_local' || provider === 'ollama') {
       const targetUrl = endpointUrl || 'http://localhost:11434';
       const ollamaUrl = `${targetUrl.replace(/\/$/, '')}/api/chat`;
