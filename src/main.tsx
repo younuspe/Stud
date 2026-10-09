@@ -11,10 +11,10 @@ if (nativeWindow.__TAURI_INTERNALS__) {
   const nativeFetch = window.fetch.bind(window);
   window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     if (typeof input === 'string' && input.startsWith('/api/')) {
-      return nativeFetch(`http://127.0.0.1:3000${input}`, init);
+      return nativeFetch(`http://127.0.0.1:43127${input}`, init);
     }
     if (input instanceof URL && input.pathname.startsWith('/api/')) {
-      return nativeFetch(new URL(input.pathname + input.search, 'http://127.0.0.1:3000'), init);
+      return nativeFetch(new URL(input.pathname + input.search, 'http://127.0.0.1:43127'), init);
     }
     return nativeFetch(input, init);
   }) as typeof window.fetch;
