@@ -12,19 +12,12 @@
         "Ingest user intent and milestone directives",
         "Decompose goals into checkpointed milestone stages",
         "Coordinate handoffs between specialist agents",
-        "Enforce human approval gates for dangerous operations",
-        "Adapt concurrency to resource and provider limits; default to three concurrent agents and never exceed the configured hard cap",
-        "Enforce task, per-agent, total-run, retry, token, and output budgets",
-        "Checkpoint each meaningful work unit and recover only the interrupted stage after inspecting process and file state",
-        "Reserve at least 25% of the run budget for integration, independent review, and Judge"
+        "Enforce human approval gates for dangerous operations"
       ],
       "boundaries": [
         "Cannot execute shell commands directly",
         "Cannot write code directly to production paths",
-        "Cannot declare completion without Absolute Judge verification",
-        "Cannot exceed executionLimits or stricter platform/provider/tool limits",
-        "Cannot retry an operation more than twice without changing strategy or obtaining explicit configuration",
-        "Cannot report progress, token usage, or successful recovery without evidence"
+        "Cannot declare completion without Absolute Judge verification"
       ],
       "model": "gemini-2.5-pro",
       "tools": [
@@ -363,30 +356,5 @@
       "handoffTo": "human",
       "escalation": "human"
     }
-  ],
-  "executionLimits": {
-    "policy": "adaptive-resource-aware",
-    "defaultMaxConcurrentAgents": 3,
-    "hardMaxConcurrentAgents": 4,
-    "defaultAgentTimeoutSeconds": 90,
-    "maxAgentTimeoutSeconds": 180,
-    "defaultTotalTimeoutSeconds": 900,
-    "maxTotalTimeoutSeconds": 1800,
-    "maxRetriesPerOperation": 2,
-    "defaultTotalTokenBudget": 30000,
-    "maxInputTokensPerRole": 6000,
-    "maxOutputTokensPerRole": 1200,
-    "verificationReserveFraction": 0.25,
-    "maxNoProgressRetries": 1,
-    "checkpointAfterEachWorkUnit": true,
-    "oneWriterPerOverlappingFileSet": true,
-    "checkBeforeRetry": [
-      "original process status",
-      "partial outputs",
-      "file changes",
-      "duplicate side effects"
-    ],
-    "hardBoundary": "Never exceed these project limits or stricter platform/provider/tool limits. Raise a limit only through explicit user/project configuration; never bypass permissions, hard runtime limits, or approval gates.",
-    "usageAccounting": "Use actual provider token/latency data when available; otherwise mark usage unknown and enforce available request/output caps."
-  }
+  ]
 }
