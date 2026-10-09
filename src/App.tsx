@@ -508,7 +508,7 @@ export default function App() {
     // Natural-language development requests open Hunter instead of being treated
     // as ordinary Q&A. Hunter still requires a project folder and explicit approval
     // before it writes any proposed file changes.
-    const developmentRequest = /\\b(?:\\/fix|\\/debug|self[- ]develop|fix (?:it|this|that|the issue|the bug|the connection|the model connection|my project|my code)|debug (?:this|that|the issue|my project|my code)|repair (?:this|that|the issue|my project|my code)|investigate (?:this|that) bug|change the code|edit the project|make (?:this|that|the app) work)\\b/i.test(text);
+    const developmentRequest = /\b(?:\/fix|\/debug|self[- ]develop|fix (?:it|this|that|the issue|the bug|the connection|the model connection|my project|my code)|debug (?:this|that|the issue|my project|my code)|repair (?:this|that|the issue|my project|my code)|investigate (?:this|that) bug|change the code|edit the project|make (?:this|that|the app) work)\b/i.test(text);
     if (developmentRequest && !attachment) {
       setAgentInitialObjective(text.trim());
       setWorkspaceView('agent');
