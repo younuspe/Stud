@@ -156,7 +156,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   }, [initialObjective]);
 
   // Each handoff calls the configured provider. No fabricated tool results or verification.
-  const executeAgentStep = async (index: number): Promise<void> => {
+  const executeAgentStep = async (index: number, priorArtifacts: Record<string, HunterAgentArtifact> = agentArtifacts): Promise<void> => {
     if (index >= agents.length) {
       setIsPipelineRunning(false);
       setIsPipelineComplete(true);
@@ -188,7 +188,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
       setAgents((prev) => prev.map((item, i) => i === index ? { ...item, status: 'done' } : item));
       setTerminalLogs((prev) => [...prev, '[' + agent.id + '] Received ' + response.length + ' characters from the configured model. No tools executed in this handoff.']);
       soundFx.playClick();
-      if (!isPausedRef.current) await executeAgentStep(index + 1); else setIsPipelineRunning(false);
+      if (!isPausedRef.current) await executeAgentStep(index + 1, { ...priorArtifacts, [agent.id]: artifact }); else setIsPipelineRunning(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setAgents((prev) => prev.map((item, i) => i === index ? { ...item, status: 'failed' } : item));
