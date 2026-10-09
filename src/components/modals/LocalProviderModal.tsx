@@ -177,6 +177,23 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
             </div>
           </div>
 
+          {config.provider === 'gemini_cloud' && (
+            <div className="space-y-2 rounded-2xl border border-[#272738] bg-[#151522] p-4">
+              <label className="text-xs font-semibold text-gray-200">Gemini API Key</label>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={config.apiKey || ''}
+                onChange={(e) => onUpdateConfig({ apiKey: e.target.value })}
+                placeholder="Paste your Gemini API key"
+                className="w-full rounded-xl border border-[#2b2b3c] bg-[#101018] px-3.5 py-2 text-xs font-mono text-white outline-none focus:border-amber-500/60"
+              />
+              <p className="text-[10px] leading-relaxed text-gray-500">
+                Required for cloud chat. Use local Ollama or LM Studio if you want to work without a cloud key.
+              </p>
+            </div>
+          )}
+
           {/* Localhost Configuration Details (if local provider selected) */}
           {config.provider !== 'gemini_cloud' && config.provider !== 'offline_core' && (
             <div className="space-y-3 rounded-2xl border border-[#272738] bg-[#151522] p-4">
