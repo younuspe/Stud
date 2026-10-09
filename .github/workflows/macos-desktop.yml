@@ -30,6 +30,11 @@ jobs:
       - name: Install frontend dependencies
         run: npm install --legacy-peer-deps
 
+      - name: Convert cat icon to a real PNG for Tauri
+        run: |
+          mkdir -p icons
+          sips -s format png src/assets/images/cat_icon.png --out icons/icon.png
+
       - name: Build unsigned macOS DMG
         run: npm run tauri:build -- --bundles dmg
 
