@@ -680,24 +680,18 @@ app.post('/api/chat', async (req, res) => {
         },
       });
 
-      const reply = response.text || "Meow! I'm purring over your question, but returned an empty thought. Let's try again!";
+      const reply = response.text;
+      if (!reply) return res.status(502).json({ error: 'The configured AI provider returned an empty response.' });
       return res.json({ reply });
     }
 
-    // Graceful fallback for local development or sandbox without key
-    const latestUserMsg = messages[messages.length - 1]?.content || '';
-    const simulatedReply = generateSimulatedSupruResponse(latestUserMsg, persona);
-    return res.json({ reply: simulatedReply, simulated: true });
+    return res.status(503).json({
+      error: 'Gemini is not configured. Connect a cloud provider or select a local model in Settings.',
+    });
   } catch (error: any) {
     console.error('Error generating chat response:', error);
-    // Return friendly fallback rather than crashing
-    const simulatedReply = generateSimulatedSupruResponse(
-      req.body.messages?.[req.body.messages.length - 1]?.content || '',
-      req.body.persona || 'supru_cat'
-    );
-    return res.json({
-      reply: simulatedReply,
-      warning: error.message || 'API request had an issue; served intelligent response.',
+    return res.status(502).json({
+      error: error.message || 'The configured AI provider request failed.',
     });
   }
 });
@@ -720,7 +714,7 @@ app.post('/api/chat/stream', async (req, res) => {
   const validMessages = messages.filter((m) => m && typeof m.content === 'string' && m.content.trim().length > 0);
   const effectiveMessages = validMessages.length > 0 ? validMessages : messages;
   const latestUserMsg = effectiveMessages[effectiveMessages.length - 1]?.content || '';
-  const systemInstruction = PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat;
+  const systemInstruction = (PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat) + "\n\nLanguage policy: Understand the user's message in the language they use, including Malayalam or English. Unless they explicitly request another output language, always write the response in English. If the user speaks Malayalam, do not reply in Malayalam; answer in clear English.";
 
 
   if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
