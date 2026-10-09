@@ -1,5 +1,4 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
@@ -2177,20 +2176,29 @@ function synthesizeCreativeCode(prompt: string, currentCode: string, lang: strin
 // Vite middleware or static serving
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    // Keep Vite as a development-only dependency. The packaged runtime ships
+    // the API server without needing Vite's dev server in the app bundle.
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
-    app.get('*', (req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
-    });
+    // In a Tauri bundle, the WebView serves the frontend from Tauri resources.
+    // Only serve dist when it exists beside this server (e.g. a conventional
+    // production web deployment); the packaged API server need not duplicate it.
+    const distPath = path.resolve(__dirname, 'dist');
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get('*', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
+    }
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Supru AI server active at http://0.0.0.0:${PORT}`);
+  // The API is local to this desktop app. Do not expose a command-capable API
+  // server on every network interface.
+  app.listen(PORT, '127.0.0.1', () => {
+    console.log(`Supru AI API server active at http://127.0.0.1:${PORT}`);
   });
 }
 
