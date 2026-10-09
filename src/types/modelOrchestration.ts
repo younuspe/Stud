@@ -154,9 +154,7 @@ export interface OrchestrationSettings {
   maxRetriesPerOperation?: number;
   /** Stop/replan after this many consecutive no-progress retries. */
   maxNoProgressRetries?: number;
-  /** Minimum fraction of total budget reserved for integration, Reviewer, and Judge. */
-  
-  /** Hard cap for concurrent agent execution. */
+    /** Hard cap for concurrent agent execution. */
   maxConcurrentAgentsHardCap?: number;
   stopOnFirstFailure: boolean;
   requireIndependentReview: boolean;
@@ -165,6 +163,31 @@ export interface OrchestrationSettings {
   /** IDs of configured seats; default team should include three distinct coder roles. */
   seatIds: string[];
 }
+
+/** Safe Supru Studio defaults. The trusted runtime must validate and enforce these values. */
+export const DEFAULT_ORCHESTRATION_SETTINGS: OrchestrationSettings = {
+  mode: 'sequential',
+  maxConcurrentModels: 3,
+  maxConcurrentAgents: 3,
+  maxConcurrentAgentsHardCap: 4,
+  maxRetries: 2,
+  maxRetriesPerOperation: 2,
+  maxNoProgressRetries: 1,
+  totalTimeoutSeconds: 900,
+  maxAgentTimeoutSeconds: 90,
+  maxTotalTimeoutSeconds: 1800,
+  totalTokenBudget: 30000,
+  maxInputTokensPerRole: 6000,
+  maxOutputTokensPerRole: 1200,
+  verificationReserveFraction: 0.25,
+  summarizeBetweenRoles: true,
+  checkpointAfterEachWorkUnit: true,
+  stopOnFirstFailure: false,
+  requireIndependentReview: true,
+  checkpointBeforeWrites: true,
+  pauseForHighRiskActions: true,
+  seatIds: ['lead', 'researcher', 'planner', 'architect', 'coder-1', 'coder-2', 'coder-3', 'reviewer', 'judge'],
+};
 
 export type ToolRisk = 'read-only' | 'low' | 'medium' | 'high' | 'critical';
 export type PermissionDecision = 'deny' | 'ask' | 'allow';
