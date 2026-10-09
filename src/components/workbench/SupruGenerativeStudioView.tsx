@@ -93,6 +93,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   const [selectedStyle, setSelectedStyle] = useState('sovereign-dark');
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('16:9');
   const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [guidanceScale, setGuidanceScale] = useState(7.5);
   const [refractiveIndex, setRefractiveIndex] = useState(1.42);
   const [emotionalFrequency, setEmotionalFrequency] = useState(432); // Hz
@@ -348,6 +349,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     if (!prompt.trim() || isSynthesizing) return;
     soundFx.playChime();
     setIsSynthesizing(true);
+    setGenerationError(null);
 
     try {
       if (activeMode === 'visual') {
@@ -378,8 +380,8 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
             soundFx.playChime();
           }
         } else {
-          // Synthetic high-res fallback
-          setCurrentResultImage('/cat_icon.png');
+          const message = await res.text().catch(() => '');
+          setGenerationError(`Image generation failed (${res.status}). ${message.slice(0, 240)}`.trim());
         }
       } else if (activeMode === 'motion') {
         // Trigger Veo Video API
@@ -395,10 +397,19 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           const data = await res.json();
           if (data.videoUrl) {
             setCurrentResultVideo(data.videoUrl);
+          } else {
+            setGenerationError(data.error || 'Video service returned no video URL.');
           }
+        } else {
+          const message = await res.text().catch(() => '');
+          setGenerationError(`Video generation failed (${res.status}). ${message.slice(0, 240)}`.trim());
         }
+      } else {
+        setGenerationError(`The ${activeMode} mode currently provides a local interactive preview; it does not call a generation model yet.`);
       }
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setGenerationError(`Generation failed: ${message}`);
       console.error('Genesis Manifestation error:', err);
     } finally {
       setIsSynthesizing(false);
@@ -424,6 +435,14 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[#050508] text-gray-200 select-none">
+      {generationError && (
+        <div role="alert" className="mx-4 mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+          <div className="flex items-start justify-between gap-3">
+            <span>{generationError}</span>
+            <button type="button" onClick={() => setGenerationError(null)} className="shrink-0 text-rose-300 hover:text-white" aria-label="Dismiss generation error">×</button>
+          </div>
+        </div>
+      )}
       {/* =========================================================================
           TOP BAR: SUPRU GENERATIVE STUDIO IDENTITY & MODE SELECTOR
           ========================================================================= */}
