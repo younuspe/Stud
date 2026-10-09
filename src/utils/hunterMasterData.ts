@@ -170,94 +170,17 @@ export function generateHunterAgentArtifact(agentId: string, objective: string):
   }
 }
 
-export const INITIAL_HUNTER_EVIDENCE: HunterEvidence[] = [
-  {
-    id: 'ev-1',
-    type: 'compiler',
-    claim: 'cargo check passed with zero syntax errors',
-    command: 'cargo check --package supru-core',
-    exitCode: 0,
-    filePath: 'src-tauri/src/main.rs',
-    outputSnippet: 'Finished `dev` profile [unoptimized + debuginfo] in 0.42s. 0 errors, 0 warnings.',
-    timestamp: Date.now() - 180000,
-    isVerified: true
-  },
-  {
-    id: 'ev-2',
-    type: 'test',
-    claim: 'Policy resolution priority (deny > ask > allow) verified by unit suite',
-    command: 'cargo test test_permission_resolution',
-    exitCode: 0,
-    filePath: 'src-tauri/src/permissions/policy.rs',
-    outputSnippet: 'test test_permission_resolution ... ok (6 passed, 0 failed, 12ms)',
-    timestamp: Date.now() - 120000,
-    isVerified: true
-  },
-  {
-    id: 'ev-3',
-    type: 'file',
-    claim: 'Path traversal ../ escape prevented by Rust canonicalize boundary',
-    filePath: 'src-tauri/src/filesystem/security.rs',
-    outputSnippet: 'Canonical path strictly bounded within project root. PathTraversalError returned on escape attempt.',
-    timestamp: Date.now() - 60000,
-    isVerified: true
-  }
-];
+export const INITIAL_HUNTER_EVIDENCE: HunterEvidence[] = [];
 
-export const INITIAL_HUNTER_APPROVALS: HunterApprovalRequest[] = [
-  {
-    id: 'appr-101',
-    action: 'fs.edit',
-    agentId: 'coder',
-    risk: 'high',
-    whatWillHappen: 'Apply atomic AST diff to modify authentication middleware and write to .supru/changes.jsonl',
-    why: 'Enforce Rust permission gate validation on all outgoing Tauri commands',
-    affectedFiles: ['src/App.tsx', 'src-tauri/src/commands/auth.rs'],
-    command: 'fs.edit --path src-tauri/src/commands/auth.rs --atomic',
-    status: 'pending',
-    timestamp: Date.now() - 30000
-  }
-];
+export const INITIAL_HUNTER_APPROVALS: HunterApprovalRequest[] = [];
 
 export const INITIAL_HUNTER_JUDGE_VERDICT: HunterJudgeVerdict = {
-  status: 'verified',
-  milestone: 'M1: Core Architecture & Rust Authority Gate',
-  criteria: [
-    { id: 'c-1', title: 'Rust is the authoritative execution layer for all consequential actions', isMet: true, evidenceRef: 'ev-1' },
-    { id: 'c-2', title: 'Permission priority (deny > ask > allow) strictly enforced', isMet: true, evidenceRef: 'ev-2' },
-    { id: 'c-3', title: 'Filesystem path escape (../) strictly denied', isMet: true, evidenceRef: 'ev-3' },
-    { id: 'c-4', title: 'Evidence model linked to commands and exit codes', isMet: true, evidenceRef: 'ev-1' }
-  ],
-  evidence: INITIAL_HUNTER_EVIDENCE,
-  remainingRisks: [
-    'External network sandboxing must be enforced before enabling remote 3P plugins.'
-  ],
-  timestamp: Date.now()
+  status: 'blocked',
+  milestone: 'No formal verification has run',
+  criteria: [],
+  evidence: [],
+  remainingRisks: ['No formal SMT proof runner is connected.'],
+  timestamp: 0
 };
 
-export const INITIAL_WORKBENCH_FILES: EditorFile[] = [
-  {
-    id: 'f-skill',
-    name: 'SKILL.md',
-    language: 'markdown',
-    content: `# Supru Hunter — Master Skill\n\n## 1. Identity\nSupru Hunter is an installable desktop AI engineering platform built with Tauri & Rust.\nRust is the authoritative execution layer.\n\n## 2. Core Principle\nRust is the authority. Prompts are not security boundaries. Rust is.`
-  },
-  {
-    id: 'f-agents',
-    name: 'supru.agents.json',
-    language: 'json',
-    content: `{\n  "authority": "Rust / Tauri Execution Layer",\n  "permissionPriority": "deny > ask > allow",\n  "agentsCount": 8\n}`
-  },
-  {
-    id: 'f-roadmap',
-    name: 'ROADMAP.md',
-    language: 'markdown',
-    content: `# Supru Hunter Roadmap\n\n- M1: Core Architecture & Rust Authority Gate [Verified]\n- M2: Desktop Workbench & Floating Interaction Pill [Active]\n- M3: Multi-Agent Handoff Chain & Evidence Model\n- M4: Absolute Judge & Formal Invariance Verification`
-  },
-  {
-    id: 'f-main-rs',
-    name: 'src-tauri/src/main.rs',
-    language: 'rust',
-    content: `// Rust is the authoritative execution layer\nfn main() {\n    tauri::Builder::default()\n        .plugin(tauri_plugin_fs::init())\n        .run(tauri::generate_context!())\n        .expect("error while running tauri application");\n}`
-  }
-];
+export const INITIAL_WORKBENCH_FILES: EditorFile[] = [];
