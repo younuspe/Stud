@@ -28,33 +28,30 @@ The user can add, edit, duplicate, test, disable, reorder, and remove provider/m
 
 A provider profile must declare capabilities honestly: text, code, tool/function calls, structured JSON, image input, image generation, audio input/output, streaming, and context size. The router must not send a task to a model that lacks a required capability.
 
-## Minimum coding team: three distinct coder seats
+## Required orchestration chain: nine seats
 
-Provide at least three configurable coding seats. Each seat must be assignable to a different model/provider; do not silently duplicate one model and present it as a multi-model team. If fewer than three are configured or reachable, explain that and allow the user to proceed with a reduced team.
+The default orchestration team is exactly this ordered chain. These are separate responsibilities, not interchangeable labels:
 
-Default roles (all fields editable):
+1. **Lead** — owns the objective and coordination; delegates work, tracks dependencies, keeps the team aligned, and escalates blockers. The Lead does not bypass permissions or overrule the Judge's evidence gate.
+2. **Researcher** — investigates the repository, requirements, dependencies, existing behavior, relevant documentation, and evidence. Returns sourced findings and unknowns before planning begins.
+3. **Planner** — turns research into a sequenced, testable execution plan with bounded tasks, dependencies, acceptance criteria, and rollback/checkpoint points.
+4. **Architect** — defines technical design, interfaces, data contracts, security boundaries, integration strategy, and non-overlapping file ownership for the three coders.
+5. **Coder 1** — implements the first explicitly assigned workstream and reports the exact files, diffs, and actual command results.
+6. **Coder 2** — implements a second distinct workstream with separate file ownership or an isolated worktree/patch; coordinates shared interfaces before integration.
+7. **Coder 3** — implements a third distinct workstream, not a duplicate of Coder 1 or Coder 2. It must also report exact files, diffs, and actual command results.
+8. **Reviewer** — independently reviews the integrated changes, checks regressions and security, and runs approved verification. The Reviewer must not rely solely on coders' self-reports.
+9. **Judge** — makes the final evidence-based quality decision: **PASS**, **REVISE**, or **BLOCKED**. The Judge checks acceptance criteria, diffs, test output, tool results, and unresolved risks. It must not fabricate evidence or mark work as passed merely because earlier roles said it was complete.
 
-### Coder 1 — Architect / Planner
-- **Goal:** inspect the request and repository, identify constraints, design the implementation, split work into bounded tasks, and define acceptance tests.
-- **May:** read files, search code, inspect dependencies, draft plans, propose interfaces and test cases.
-- **Must not:** claim code was changed when it only proposed a plan; run destructive commands or edit protected configuration without approval.
-- **Output:** implementation plan, affected-file list, dependency/risk notes, task contracts, verification criteria.
+### Role and execution rules
 
-### Coder 2 — Implementer
-- **Goal:** implement an assigned task in a dedicated file set or isolated worktree/patch.
-- **May:** edit/create files, run approved formatters and focused tests, produce diffs.
-- **Must:** follow the architect's interface contract, preserve existing behavior unless change is requested, and report every file changed.
-- **Must not:** overwrite another worker's changes or mark work complete without reporting actual edits and command results.
-- **Output:** patch/diff, changed-file list, rationale, tests run and exact results.
-
-### Coder 3 — Independent Reviewer / Test Engineer
-- **Goal:** independently review the implementation, find defects/security issues, design edge-case tests, and verify claims against evidence.
-- **May:** inspect diffs/files, run approved read-only checks and tests, request fixes, and suggest patches.
-- **Must:** be independent of the implementer's self-assessment; distinguish verified facts from assumptions.
-- **Must not:** rubber-stamp the implementation or claim tests passed without captured successful output.
-- **Output:** findings ranked by severity, reproducible evidence, test results, and a clear pass/block verdict.
-
-Optional seats can include UI/UX specialist, security reviewer, documentation writer, performance engineer, and a second implementer. Users can rename roles and edit their descriptions, instructions, model assignment, temperature, token budget, tool allowlist, and approval requirements.
+- The default chain is **Lead → Researcher → Planner → Architect → Coder 1 + Coder 2 + Coder 3 → Reviewer → Judge**.
+- Research and planning must precede implementation. The Architect must define interfaces and file ownership before coders start.
+- The three coders may work in parallel only on non-conflicting file sets or isolated worktrees. Otherwise, serialize the conflicting work.
+- The Reviewer and Judge are separate roles. The Reviewer reports findings; the Judge makes the final verdict and may return work to the Planner/Architect/coders for revision.
+- Every seat has its own editable role instructions, model/provider assignment, tool allowlist, budget, and approval policy. Do not silently present the same model as three distinct models. If a seat/model is unavailable, show it as unavailable and explain any reduced-team mode.
+- The Lead coordinates but cannot override permission policy. All seats remain subject to the trusted permission boundary and the rule **deny > ask > allow**.
+- Each role's status and outputs must be evidence-backed. Distinguish proposed, running, changed, tested, verified, failed, and blocked states.
+- All role definitions are editable by the user; ship these as defaults, not immutable role prompts. Security enforcement remains outside role prompts.
 
 ## Orchestration modes
 
