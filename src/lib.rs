@@ -210,6 +210,99 @@ async fn chat_completion(
     reply.filter(|s| !s.trim().is_empty()).ok_or_else(|| "Provider returned no text content. Check the selected model and provider response format.".to_string())
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProviderTestResult {
+    status: String,
+    message: String,
+    models: Vec<String>,
+}
+
+#[tauri::command]
+async fn test_provider_connection(
+    provider: String,
+    endpoint_url: String,
+    model_name: String,
+    api_key: Option<String>,
+) -> ProviderTestResult {
+    let kind = provider.to_lowercase();
+    let endpoint = endpoint_url.trim().trim_end_matches('/');
+    let key = api_key.as_deref().unwrap_or("").trim();
+    if kind == "offline_core" {
+        return ProviderTestResult {
+            status: "offline".into(),
+            message: "The built-in offline model engine is not implemented yet. Select Ollama or another real provider.".into(),
+            models: vec![],
+        };
+    }
+    if (kind == "gemini_cloud" || kind == "gemini" || kind == "openai" || kind == "anthropic" || kind == "deepseek" || kind == "groq") && key.is_empty() {
+        return ProviderTestResult {
+            status: "offline".into(),
+            message: "API key is missing. Add the provider key before testing the connection.".into(),
+            models: vec![],
+        };
+    }
+
+    let base = if endpoint.is_empty() {
+        match kind.as_str() {
+            "gemini_cloud" | "gemini" => "https://generativelanguage.googleapis.com",
+            "ollama_local" | "ollama" => "http://127.0.0.1:11434",
+            "lmstudio_local" | "lmstudio" => "http://127.0.0.1:1234/v1",
+            "anthropic" => "https://api.anthropic.com",
+            "deepseek" => "https://api.deepseek.com/v1",
+            "groq" => "https://api.groq.com/openai/v1",
+            _ => "https://api.openai.com/v1",
+        }
+    } else { endpoint };
+
+    let (url, auth) = if kind == "ollama_local" || kind == "ollama" {
+        (format!("{}/api/tags", base), "none")
+    } else if kind == "gemini_cloud" || kind == "gemini" {
+        (format!("{}/v1beta/models?key={}", base, key), "none")
+    } else if kind == "anthropic" {
+        (format!("{}/v1/models", base), "anthropic")
+    } else {
+        let url = if base.ends_with("/models") { base.to_string() } else { format!("{}/models", base) };
+        (url, "bearer")
+    };
+
+    let client = match reqwest::Client::builder().timeout(Duration::from_secs(10)).build() {
+        Ok(client) => client,
+        Err(e) => return ProviderTestResult { status: "offline".into(), message: format!("Could not initialize network client: {e}"), models: vec![] },
+    };
+    let mut request = client.get(&url);
+    match auth {
+        "bearer" if !key.is_empty() => { request = request.bearer_auth(key); }
+        "anthropic" => { request = request.header("x-api-key", key).header("anthropic-version", "2023-06-01"); }
+        _ => {}
+    }
+    match request.send().await {
+        Ok(response) => {
+            let status = response.status();
+            match response.text().await {
+                Ok(text) if status.is_success() => {
+                    let value = serde_json::from_str::<serde_json::Value>(&text).unwrap_or(serde_json::Value::Null);
+                    let models = if kind == "ollama_local" || kind == "ollama" {
+                        value.get("models").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect()).unwrap_or_default()
+                    } else if kind == "gemini_cloud" || kind == "gemini" {
+                        value.get("models").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(|n| n.strip_prefix("models/").unwrap_or(n).to_string())).collect()).unwrap_or_default()
+                    } else {
+                        value.get("data").or_else(|| value.get("models")).and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|m| m.get("id").or_else(|| m.get("name")).and_then(|n| n.as_str()).map(str::to_string)).collect()).unwrap_or_default()
+                    };
+                    let model_note = if model_name.trim().is_empty() { "No model selected.".to_string() } else if models.is_empty() { format!("Connected, but the provider did not return a model list. Selected model: {}.", model_name) } else if models.iter().any(|m| m == model_name.trim() || m.ends_with(&format!("/{}", model_name.trim()))) { format!("Connected. Selected model '{}' is listed by the provider.", model_name) } else { format!("Connected, but selected model '{}' was not found in the returned model list.", model_name) };
+                    ProviderTestResult { status: "online".into(), message: model_note, models }
+                }
+                Ok(text) => {
+                    let detail = text.chars().take(500).collect::<String>();
+                    ProviderTestResult { status: "offline".into(), message: format!("Provider returned HTTP {status}: {detail}"), models: vec![] }
+                }
+                Err(e) => ProviderTestResult { status: "offline".into(), message: format!("Could not read provider response: {e}"), models: vec![] }
+            }
+        }
+        Err(e) => ProviderTestResult { status: "offline".into(), message: format!("Connection failed: {e}"), models: vec![] }
+    }
+}
+
 /// Starts the native Supru desktop shell.
 /// The filesystem plugin's only global config option is requireLiteralLeadingDot;
 /// path scopes and shell command scopes belong in Tauri v2 capability permissions.
@@ -220,7 +313,7 @@ async fn chat_completion(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![execute_terminal_command, chat_completion])
+        .invoke_handler(tauri::generate_handler![execute_terminal_command, chat_completion, test_provider_connection])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
