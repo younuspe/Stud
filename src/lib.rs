@@ -65,6 +65,107 @@ async fn execute_terminal_command(command: String, cwd: Option<String>) -> Resul
 }
 
 
+/// Run a project command under the macOS Seatbelt sandbox. This is intentionally
+/// fail-closed: if the OS sandbox is unavailable, autonomous checks do not fall
+/// back to the unrestricted terminal command.
+#[tauri::command]
+async fn execute_sandboxed_command(command: String, cwd: String) -> Result<TerminalExecutionResult, String> {
+    let command = command.trim().to_string();
+    if command.is_empty() {
+        return Err("Sandboxed command cannot be empty.".to_string());
+    }
+    if command.len() > 8192 {
+        return Err("Command exceeds the 8192-character limit.".to_string());
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (command, cwd);
+        return Err("OS-enforced project sandbox is currently supported only on macOS. No command was run.".to_string());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use std::fs;
+        use std::path::Path;
+        let workspace = PathBuf::from(cwd).canonicalize()
+            .map_err(|e| format!("Sandbox workspace is unavailable: {e}"))?;
+        if !workspace.is_dir() {
+            return Err("Sandbox workspace must be a directory.".to_string());
+        }
+        let sandbox_exec = Path::new("/usr/bin/sandbox-exec");
+        if !sandbox_exec.is_file() {
+            return Err("macOS sandbox-exec is unavailable. Refusing to run the command without isolation.".to_string());
+        }
+
+        let work_state = workspace.join(".supru-sandbox");
+        let temp_dir = work_state.join("tmp");
+        let npm_cache = work_state.join("npm-cache");
+        fs::create_dir_all(&temp_dir).map_err(|e| format!("Could not create sandbox temp directory: {e}"))?;
+        fs::create_dir_all(&npm_cache).map_err(|e| format!("Could not create sandbox npm cache: {e}"))?;
+
+        fn profile_path(path: &Path) -> String {
+            path.to_string_lossy().replace('\\', "\\\\").replace('"', "\\\"")
+        }
+        let workspace_path = profile_path(&workspace);
+        let temp_path = profile_path(&temp_dir);
+        let profile = format!(r#"(version 1)
+(deny default)
+(allow process*)
+(allow sysctl-read)
+(allow file-read* (subpath "/System"))
+(allow file-read* (subpath "/usr"))
+(allow file-read* (subpath "/bin"))
+(allow file-read* (subpath "/sbin"))
+(allow file-read* (subpath "/Library"))
+(allow file-read* (subpath "/Applications"))
+(allow file-read* (subpath "/private/var/db"))
+(allow file-read* (subpath "/dev"))
+(allow file-write* (subpath "/dev"))
+(allow file-read* (subpath "{workspace_path}"))
+(allow file-write* (subpath "{workspace_path}"))
+(allow file-read* (subpath "{temp_path}"))
+(allow file-write* (subpath "{temp_path}"))
+(allow file-read* (literal "/private/tmp"))
+(allow file-write* (literal "/private/tmp"))
+"#);
+        let profile_file = std::env::temp_dir().join(format!("supru-seatbelt-{}.sb", uuid::Uuid::new_v4()));
+        fs::write(&profile_file, profile).map_err(|e| format!("Could not create sandbox policy: {e}"))?;
+
+        let started = Instant::now();
+        let mut process = Command::new(sandbox_exec);
+        process
+            .kill_on_drop(true)
+            .arg("-f")
+            .arg(&profile_file)
+            .arg("/bin/zsh")
+            .arg("-lc")
+            .arg(&command)
+            .current_dir(&workspace)
+            .env("TMPDIR", &temp_dir)
+            .env("npm_config_cache", &npm_cache);
+        let execution = timeout(Duration::from_secs(120), process.output()).await;
+        let _ = fs::remove_file(&profile_file);
+        let output = execution
+            .map_err(|_| "Sandboxed command timed out after 120 seconds.".to_string())?
+            .map_err(|e| format!("Failed to start macOS sandbox: {e}"))?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let combined = match (stdout.is_empty(), stderr.is_empty()) {
+            (true, true) => "(Sandboxed command completed with no output)".to_string(),
+            (false, true) => stdout.into_owned(),
+            (true, false) => stderr.into_owned(),
+            (false, false) => format!("{stdout}{stderr}"),
+        };
+        Ok(TerminalExecutionResult {
+            command,
+            output: combined,
+            exit_code: output.status.code().unwrap_or(1),
+            duration_ms: started.elapsed().as_millis(),
+        })
+    }
+}
+
+
 #[tauri::command]
 async fn list_workspace_files(workspace_root: String, relative_dir: Option<String>) -> Result<Vec<String>, String> {
     let root = PathBuf::from(workspace_root).canonicalize()
@@ -464,7 +565,7 @@ async fn test_provider_connection(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![execute_terminal_command, chat_completion, test_provider_connection, generate_image, list_workspace_files, read_workspace_file, write_workspace_file])
+        .invoke_handler(tauri::generate_handler![execute_terminal_command, execute_sandboxed_command, chat_completion, test_provider_connection, generate_image, list_workspace_files, read_workspace_file, write_workspace_file])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
