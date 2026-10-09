@@ -172,25 +172,17 @@ export const StratifiedTopologyView: React.FC<StratifiedTopologyViewProps> = ({
   const [latentCoords, setLatentCoords] = useState<{ x: number; y: number; z: number }>({
     x: 0.8412,
     y: -0.3129,
-    z: 0.9542
+    z: 0
   });
   const [associativeNeighbors, setAssociativeNeighbors] = useState<
     { name: string; distance: number; type: string }[]
-  >([
-    { name: 'Cell: Core (Zig Arena Allocator)', distance: 0.042, type: 'Graph Entity' },
-    { name: 'Omni-Shield Z3 Invariant Axiom #4', distance: 0.089, type: 'Formula Proof' },
-    { name: 'SurrealDB Document Record 0x90F', distance: 0.134, type: 'Vector Document' },
-    { name: 'Bevy ECS 144fps Spatial Pipeline', distance: 0.221, type: 'Interaction Node' }
-  ]);
+  >([]);
 
   // Akhada Ephemeral Isolation Wards state
-  const [wards, setWards] = useState<EphemeralIsolationWard[]>(INITIAL_WARDS);
+  const [wards, setWards] = useState<EphemeralIsolationWard[]>([]);
   const [isDetonatingWard, setIsDetonatingWard] = useState<boolean>(false);
   const [grpcTelemetry, setGrpcTelemetry] = useState<string[]>([
-    '[Sterile Zone] Host OS status: HEALTHY HOSPITAL (100% Invariant)',
-    '[gRPC Filter] Inbound payload scrubbed: 0 unauthorized syscalls',
-    '[Isolation Ward #904] Detonation quarantined in guest microVM',
-    '[SCP Mailbox] Ring buffer latency: 0.003ms across pinned core #0'
+    'No live host, gRPC, microVM, or security telemetry source is connected.'
   ]);
 
   // Omni-Shield Token generator state
@@ -370,101 +362,43 @@ export const StratifiedTopologyView: React.FC<StratifiedTopologyViewProps> = ({
     };
   }, [particleSpeed, particleTheme, particleCount]);
 
-  // Handle Solve Z3 SMT
+  // This view has no real Z3 binary or proof adapter. Never fabricate SAT output.
   const handleSolveZ3 = () => {
     soundFx.playClick();
-    setIsSolvingZ3(true);
-    setZ3Result(null);
-
-    setTimeout(() => {
-      setZ3Result(
-        `sat\n(model\n  (define-fun ValidToken ((x!0 Token)) Bool true)\n  (define-fun InvariantHolds () Bool true)\n  (define-fun CoreMemoryProtected () Bool true)\n)\n;; Verified in 0.038s via Z3 v4.12 SMT Solver.\n;; SMT-LIB2 Invariance Status: SATISFIABLE (Formal Mathematical Security Guaranteed).`
-      );
-      setIsSolvingZ3(false);
-      soundFx.playChime();
-    }, 650);
+    setIsSolvingZ3(false);
+    setZ3Result('BLOCKED: no Z3 executable or SMT proof adapter is connected. No proof was executed and no invariant is marked verified.');
+    setGrpcTelemetry((prev) => ['[Proof Runner] BLOCKED — no solver connected; no SAT/UNSAT result issued.', ...prev.slice(0, 4)]);
   };
 
-  // Handle HNSW Vector Coordinate Query
+  // No vector database is connected; do not manufacture coordinates or neighbors.
   const handleQueryLatentSpace = () => {
     soundFx.playClick();
-    const hash = Array.from(latentQuery).reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const nx = Number(((hash % 1000) / 500 - 1).toFixed(4));
-    const ny = Number((((hash * 7) % 1000) / 500 - 1).toFixed(4));
-    const nz = Number((((hash * 13) % 1000) / 500 - 1).toFixed(4));
-    setLatentCoords({ x: nx, y: ny, z: nz });
-
-    setAssociativeNeighbors([
-      { name: `SurrealDB Record: [${latentQuery.slice(0, 16)}]`, distance: 0.032, type: 'Graph Entity' },
-      { name: 'Z3 Theorem Proof Lemma #99', distance: 0.071, type: 'Formula Proof' },
-      { name: 'Cell: Core (Zig Arena)', distance: 0.118, type: 'Deterministic Cell' },
-      { name: 'HNSW Nearest Cluster Centroid', distance: 0.185, type: 'Vector Anchor' }
+    setAssociativeNeighbors([]);
+    setGrpcTelemetry((prev) => [
+      `[Latent Query] BLOCKED: no SurrealDB/HNSW vector index is connected for "${latentQuery}". No retrieval was performed.`,
+      ...prev.slice(0, 4),
     ]);
-    soundFx.playChime();
   };
 
-  // Handle Issue Zero-Trust Token via Omni-Shield
+  // A token cannot be issued without a real verifier and permission authority.
   const handleIssueShieldToken = () => {
     soundFx.playClick();
-    setShieldTokenStatus('verifying');
+    setShieldTokenStatus('rejected');
     setGeneratedShieldToken(null);
-
-    setTimeout(() => {
-      const token = `z3_shield_0x${Math.random().toString(16).slice(2, 10)}_${tokenSourceCell}_to_${tokenTargetCell}_SAT`;
-      setGeneratedShieldToken(token);
-      setShieldTokenStatus('valid');
-      soundFx.playChime();
-
-      // Dispatch mailbox counter
-      setCells((prev) =>
-        prev.map((c) =>
-          c.id === tokenTargetCell ? { ...c, mailboxMessages: c.mailboxMessages + 1 } : c
-        )
-      );
-
-      setGrpcTelemetry((prev) => [
-        `[Omni-Shield] Micro-perimeter request verified with Z3 token: ${token}`,
-        ...prev.slice(0, 4)
-      ]);
-    }, 550);
+    setGrpcTelemetry((prev) => [
+      `[Omni-Shield] BLOCKED: no Z3 verifier or permission authority is connected for ${tokenSourceCell} → ${tokenTargetCell}. No token was issued.`,
+      ...prev.slice(0, 4),
+    ]);
   };
 
-  // Handle Detonate & Quarantine in Ephemeral Isolation Ward
+  // No disposable VM/microVM backend is connected; a UI animation is not isolation.
   const handleDetonateWard = (wardId: string) => {
     soundFx.playClick();
-    setIsDetonatingWard(true);
-
-    setWards((prev) =>
-      prev.map((w) => (w.id === wardId ? { ...w, sandboxState: 'detonating' } : w))
-    );
-
+    setIsDetonatingWard(false);
     setGrpcTelemetry((prev) => [
-      `[Supru Akhada] Detonating threat payload in ${wardId}...`,
-      ...prev.slice(0, 4)
+      `[Supru Akhada] BLOCKED: no disposable VM backend is connected for ${wardId}. No payload was run or quarantined.`,
+      ...prev.slice(0, 4),
     ]);
-
-    setTimeout(() => {
-      setWards((prev) =>
-        prev.map((w) => (w.id === wardId ? { ...w, sandboxState: 'scrubbing' } : w))
-      );
-      setGrpcTelemetry((prev) => [
-        `[Supru Akhada] Host OS status: HEALTHY HOSPITAL (Sterile Zone preserved)`,
-        `[gRPC Scrub] Scanned 1,480 packets; 0 host egress breaches detected`,
-        ...prev.slice(0, 4)
-      ]);
-
-      setTimeout(() => {
-        setWards((prev) =>
-          prev.map((w) =>
-            w.id === wardId
-              ? { ...w, sandboxState: 'sterile', lastAuditTimestamp: Date.now() }
-              : w
-          )
-        );
-        setIsDetonatingWard(false);
-        soundFx.playChime();
-      }, 700);
-    }, 900);
   };
 
   // Copy helper
@@ -506,9 +440,7 @@ export const StratifiedTopologyView: React.FC<StratifiedTopologyViewProps> = ({
             </div>
 
             <p className="text-xs sm:text-sm text-gray-400 max-w-3xl leading-relaxed">
-              Zero-Friction &quot;Gliding&quot; through an autonomous, deterministic, and sovereign
-              digital environment. Formally verified via Z3 SMT solvers, associative memory in
-              SurrealDB/HNSW, and GPU direct-to-metal ECS rendering.
+              Concept visualization for the planned topology stack. This build has no connected Z3 solver, SurrealDB/HNSW index, or disposable microVM backend; status indicators reflect only actions actually executed.
             </p>
           </div>
 
@@ -517,7 +449,7 @@ export const StratifiedTopologyView: React.FC<StratifiedTopologyViewProps> = ({
             <div className="rounded-xl border border-white/[0.08] bg-black/40 px-3 py-2 text-left backdrop-blur-md">
               <div className="text-[10px] text-gray-400 uppercase font-mono">Proof Invariance</div>
               <div className="text-sm font-bold text-emerald-400 flex items-center gap-1">
-                <ShieldCheck size={14} /> 100.0% SAT
+                <ShieldCheck size={14} /> BLOCKED
               </div>
             </div>
             <div className="rounded-xl border border-white/[0.08] bg-black/40 px-3 py-2 text-left backdrop-blur-md">
@@ -961,7 +893,7 @@ export const StratifiedTopologyView: React.FC<StratifiedTopologyViewProps> = ({
                       </div>
                       <div className="text-right font-mono text-[10px]">
                         <span className="text-purple-300">Δ {nb.distance}</span>
-                        <div className="text-emerald-400">100% Retained</div>
+                        <div className="text-gray-500">Not measured</div>
                       </div>
                     </div>
                   ))}
@@ -1125,13 +1057,13 @@ export const StratifiedTopologyView: React.FC<StratifiedTopologyViewProps> = ({
 
                 <p className="text-xs text-gray-400">
                   <strong className="text-gray-200">Cellular Sovereignty:</strong> Every inter-module
-                  request requires a Z3-verified cryptographic token. Security is enforced strictly at the micro-perimeter.
+                  request cannot be authorized in this build because no Z3 proof runner or native permission authority is connected.
                 </p>
 
                 {/* Token Generator Simulator */}
                 <div className="space-y-2 pt-1">
                   <div className="text-[10px] font-mono uppercase text-gray-400 font-bold">
-                    Issue Verified Inter-Cell Token
+                    Request Token (Unavailable Without Proof Runner)
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-xs">
