@@ -1,8 +1,15 @@
 name: macOS desktop build
 
-# Manual-only after the explicitly requested verification run.
-# Do not build automatically on each code commit.
+# One scoped verification trigger for the explicit Tauri config-path fix.
 on:
+  push:
+    branches:
+      - fix/desktop-app-launch
+    paths:
+      - "build.rs"
+      - "src/lib.rs"
+      - "tauri.conf.json"
+      - ".github/workflows/macos-desktop.yml"
   workflow_dispatch:
 
 permissions:
