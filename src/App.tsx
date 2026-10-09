@@ -613,7 +613,9 @@ export default function App() {
         });
 
         const modelData = await modelRes.json();
-        const reply = modelData.reply || `Response from ${activeCustomModel.name}`;
+        if (!modelRes.ok || modelData.error) throw new Error(modelData.error || `Model request failed (HTTP ${modelRes.status})`);
+        const reply = modelData.reply;
+        if (typeof reply !== 'string' || !reply.trim()) throw new Error('The selected model returned an empty response.');
 
         setThreads((prev) =>
           prev.map((t) =>
@@ -645,7 +647,9 @@ export default function App() {
         });
 
         const localData = await localRes.json();
-        const reply = localData.reply || `Response from local model (${localConfig.modelName})`;
+        if (!localRes.ok || localData.error) throw new Error(localData.error || `Model request failed (HTTP ${localRes.status})`);
+        const reply = localData.reply;
+        if (typeof reply !== 'string' || !reply.trim()) throw new Error('The selected model returned an empty response.');
 
         setThreads((prev) =>
           prev.map((t) =>
