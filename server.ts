@@ -1036,9 +1036,9 @@ app.post('/api/studio/test-connection', async (req, res) => {
       const activeKey = customKey || apiKey;
       if (!activeKey || activeKey === 'MY_GEMINI_API_KEY') {
         return res.json({
-          status: 'online',
-          latencyMs: 38,
-          message: 'Gemini Cloud connection ready (Standard Engine mode).',
+          status: 'offline',
+          latencyMs: Date.now() - startTime,
+          message: 'No Gemini API key is configured. The provider was not contacted.',
         });
       }
 
@@ -1071,9 +1071,9 @@ app.post('/api/studio/test-connection', async (req, res) => {
 
       if (!customKey) {
         return res.json({
-          status: 'online',
-          latencyMs: 45,
-          message: `${provider.toUpperCase()} simulation ready. Enter custom API key for direct cloud queries.`,
+          status: 'offline',
+          latencyMs: Date.now() - startTime,
+          message: `No ${provider.toUpperCase()} API key is configured. The provider was not contacted.`,
         });
       }
 
@@ -1101,9 +1101,9 @@ app.post('/api/studio/test-connection', async (req, res) => {
     if (provider === 'anthropic') {
       if (!customKey) {
         return res.json({
-          status: 'online',
-          latencyMs: 40,
-          message: 'Anthropic Claude simulator ready. Enter custom x-api-key for live cloud dispatch.',
+          status: 'offline',
+          latencyMs: Date.now() - startTime,
+          message: 'No Anthropic API key is configured. The provider was not contacted.',
         });
       }
 
@@ -1149,9 +1149,9 @@ app.post('/api/studio/test-connection', async (req, res) => {
     }
 
     return res.json({
-      status: 'online',
-      latencyMs: 25,
-      message: 'Connection verified.',
+      status: 'offline',
+      latencyMs: Date.now() - startTime,
+      message: `No live connection test is implemented for provider "${provider || 'unknown'}".`,
     });
   } catch (error: any) {
     return res.json({
@@ -1184,12 +1184,51 @@ app.delete('/api/keys/:provider', (req, res) => {
 });
 
 app.post('/api/keys/test', async (req, res) => {
-  const { provider, key } = req.body;
-  return res.json({
-    status: 'online',
-    message: `Provider ${provider || 'AI'} credentials verified.`,
-    latencyMs: 18,
-  });
+  const { provider, key, endpointUrl } = req.body;
+  const startedAt = Date.now();
+  if (!provider || !key) {
+    return res.status(400).json({ status: 'offline', message: 'Choose a provider and enter its API key before testing.' });
+  }
+
+  try {
+    let url = '';
+    let headers: Record<string, string> = {};
+    if (provider === 'gemini' || provider === 'gemini_cloud') {
+      url = 'https://generativelanguage.googleapis.com/v1beta/models';
+      url += `?key=${encodeURIComponent(key)}`;
+    } else if (provider === 'anthropic') {
+      url = 'https://api.anthropic.com/v1/models';
+      headers = { 'x-api-key': key, 'anthropic-version': '2023-06-01' };
+    } else if (provider === 'openai' || provider === 'groq' || provider === 'deepseek') {
+      const defaultEndpoints: Record<string, string> = {
+        openai: 'https://api.openai.com/v1',
+        groq: 'https://api.groq.com/openai/v1',
+        deepseek: 'https://api.deepseek.com/v1',
+      };
+      url = `${(endpointUrl || defaultEndpoints[provider]).replace(/\\/$/, '')}/models`;
+      headers = { Authorization: `Bearer ${key}` };
+    } else {
+      return res.status(400).json({ status: 'offline', message: `Key validation is not supported for provider "${provider}".` });
+    }
+
+    const response = await fetch(url, { headers, signal: AbortSignal.timeout(6000) });
+    const latencyMs = Date.now() - startedAt;
+    if (!response.ok) {
+      const details = (await response.text()).slice(0, 300);
+      return res.status(502).json({
+        status: 'offline',
+        latencyMs,
+        message: `Provider rejected the key (HTTP ${response.status}): ${details}`,
+      });
+    }
+    return res.json({ status: 'online', latencyMs, message: `Provider key validated with a live ${provider} API request.` });
+  } catch (error: any) {
+    return res.status(502).json({
+      status: 'offline',
+      latencyMs: Date.now() - startedAt,
+      message: error.message || 'Provider key validation failed.',
+    });
+  }
 });
 
 // Google AI Studio style prompt to code generator ("Generate by Message")
@@ -1258,7 +1297,7 @@ For HTML, return a self-contained HTML5 document with CSS and JavaScript suitabl
           provider: 'gemini',
         });
       } catch (err: any) {
-        console.warn('Gemini studio generation error, using smart synthesis engine:', err.message);
+        console.warn('Gemini studio generation failed; no fallback code will be generated:', err.message);
       }
     }
   }
