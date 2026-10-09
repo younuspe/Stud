@@ -417,7 +417,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider: isCloud ? 'gemini' : localConfig.provider,
+          provider: isCloud ? 'gemini' : localConfig.provider === 'ollama_local' ? 'ollama' : localConfig.provider === 'lmstudio_local' ? 'lmstudio' : localConfig.provider === 'custom_local' ? 'custom' : localConfig.provider,
           endpointUrl: localConfig.endpointUrl,
           modelId: localConfig.modelName,
           modelName: localConfig.modelName,
