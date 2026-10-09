@@ -412,6 +412,7 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
         {activeTab === 'pipeline' && (
           <div className="max-w-6xl mx-auto">
             <AutonomousPipelineTab
+              workspacePath={workspacePath}
               onOpenInEditor={onOpenInEditor}
               onSendToChat={onSendToChat}
               onTriggerHunter={onTriggerHunter}
