@@ -111,6 +111,7 @@ export interface EditorFile {
   name: string;
   language: SupportedLanguage;
   content: string;
+  path?: string;
   isModified?: boolean;
 }
 
