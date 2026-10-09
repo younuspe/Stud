@@ -1,12 +1,12 @@
 #![cfg_attr(not(debug_assertions), deny(unsafe_code))]
 
 use tauri::Manager;
+use std::{path::PathBuf, sync::Mutex};
 
 #[cfg(not(debug_assertions))]
 use std::{
     net::{SocketAddr, TcpStream},
     process::{Child, Command, Stdio},
-    sync::Mutex,
     thread,
     time::{Duration, Instant},
 };
@@ -79,6 +79,36 @@ struct WorkspaceEntry {
     size: u64,
 }
 
+struct SelectedWorkspace(Mutex<Option<PathBuf>>);
+
+fn selected_workspace_root(workspace: &SelectedWorkspace) -> Result<PathBuf, String> {
+    workspace.0
+        .lock()
+        .map_err(|_| "Workspace state is unavailable.".to_string())?
+        .as_ref()
+        .cloned()
+        .ok_or_else(|| "Open a workspace folder first.".to_string())
+}
+
+#[tauri::command]
+fn restore_workspace(
+    app: tauri::AppHandle,
+    workspace: tauri::State<'_, SelectedWorkspace>,
+) -> Result<Option<String>, String> {
+    let data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    let saved_path = data_dir.join("workspace-root.txt");
+    if !saved_path.is_file() {
+        return Ok(None);
+    }
+    let saved = std::fs::read_to_string(&saved_path).map_err(|error| error.to_string())?;
+    let root = match canonical_workspace_root(saved.trim()) {
+        Ok(root) => root,
+        Err(_) => return Ok(None),
+    };
+    *workspace.0.lock().map_err(|_| "Workspace state is unavailable.".to_string())? = Some(root.clone());
+    Ok(Some(root.to_string_lossy().into_owned()))
+}
+
 fn canonical_workspace_root(root: &str) -> Result<std::path::PathBuf, String> {
     let canonical = std::path::Path::new(root)
         .canonicalize()
@@ -103,19 +133,28 @@ fn safe_relative_path(relative_path: &str) -> Result<std::path::PathBuf, String>
 }
 
 #[tauri::command]
-fn select_workspace(app: tauri::AppHandle) -> Option<String> {
+fn select_workspace(
+    app: tauri::AppHandle,
+    workspace: tauri::State<'_, SelectedWorkspace>,
+) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
-    app.dialog()
-        .file()
-        .blocking_pick_folder()
-        .and_then(|selected| selected.into_path().ok())
-        .map(|path| path.to_string_lossy().into_owned())
+    let Some(selected) = app.dialog().file().blocking_pick_folder() else {
+        return Ok(None);
+    };
+    let selected_path = selected.into_path().map_err(|error| error.to_string())?;
+    let root = canonical_workspace_root(&selected_path.to_string_lossy())?;
+    let data_dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(&data_dir).map_err(|error| error.to_string())?;
+    std::fs::write(data_dir.join("workspace-root.txt"), root.to_string_lossy().as_bytes())
+        .map_err(|error| format!("Could not persist workspace selection: {error}"))?;
+    *workspace.0.lock().map_err(|_| "Workspace state is unavailable.".to_string())? = Some(root.clone());
+    Ok(Some(root.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]
-fn workspace_list(root: String) -> Result<Vec<WorkspaceEntry>, String> {
+fn workspace_list(workspace: tauri::State<'_, SelectedWorkspace>) -> Result<Vec<WorkspaceEntry>, String> {
     use std::path::Path;
-    let root = canonical_workspace_root(&root)?;
+    let root = selected_workspace_root(&workspace)?;
     let ignored = [".git", "node_modules", "target", "dist", ".next", ".venv", "venv"];
     let mut entries = Vec::new();
 
@@ -162,9 +201,9 @@ fn workspace_list(root: String) -> Result<Vec<WorkspaceEntry>, String> {
 }
 
 #[tauri::command]
-fn workspace_read_file(root: String, relative_path: String) -> Result<String, String> {
+fn workspace_read_file(workspace: tauri::State<'_, SelectedWorkspace>, relative_path: String) -> Result<String, String> {
     use std::fs;
-    let root = canonical_workspace_root(&root)?;
+    let root = selected_workspace_root(&workspace)?;
     let relative = safe_relative_path(&relative_path)?;
     let target = root.join(relative);
     let canonical_target = target
@@ -185,14 +224,14 @@ fn workspace_read_file(root: String, relative_path: String) -> Result<String, St
 }
 
 #[tauri::command]
-fn workspace_write_file(root: String, relative_path: String, content: String) -> Result<(), String> {
+fn workspace_write_file(workspace: tauri::State<'_, SelectedWorkspace>, relative_path: String, content: String) -> Result<(), String> {
     use std::fs::{self, OpenOptions};
     use std::io::Write;
     if content.len() > 5 * 1024 * 1024 {
         return Err("Files larger than 5 MB cannot be saved from the editor.".into());
     }
 
-    let root = canonical_workspace_root(&root)?;
+    let root = selected_workspace_root(&workspace)?;
     let relative = safe_relative_path(&relative_path)?;
     if relative.as_os_str().is_empty() || relative.file_name().is_none() {
         return Err("A file name is required.".into());
@@ -238,6 +277,7 @@ fn workspace_write_file(root: String, relative_path: String, content: String) ->
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
+        .manage(SelectedWorkspace(Mutex::new(None)))
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -245,6 +285,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             select_workspace,
+            restore_workspace,
             workspace_list,
             workspace_read_file,
             workspace_write_file
