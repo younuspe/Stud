@@ -111,6 +111,10 @@ export interface AgentSeat {
   approvalRequiredFor: string[];
   temperature?: number;
   maxOutputTokens?: number;
+  /** Optional input/context budget for this seat; the Lead should keep handoffs compact. */
+  maxInputTokens?: number;
+  /** Hard per-seat deadline; timed-out work must be reported, never treated as success. */
+  timeoutSeconds?: number;
   /** Files/patterns this seat owns during a task; avoid concurrent write collisions. */
   ownedPaths: string[];
 }
@@ -126,6 +130,12 @@ export interface OrchestrationSettings {
   mode: OrchestrationMode;
   maxConcurrentModels: number;
   maxRetries: number;
+  /** Optional hard wall-clock budget for the whole orchestration run. */
+  totalTimeoutSeconds?: number;
+  /** Optional aggregate model-token budget; actual usage may be unavailable by provider. */
+  totalTokenBudget?: number;
+  /** Compact/summarize role handoffs while retaining evidence references. */
+  summarizeBetweenRoles?: boolean;
   stopOnFirstFailure: boolean;
   requireIndependentReview: boolean;
   checkpointBeforeWrites: boolean;
@@ -172,11 +182,14 @@ export const DEFAULT_CODER_SEATS: AgentSeat[] = [
     name: 'Lead',
     role: 'lead',
     enabled: true,
-    systemInstructions: 'Own the objective, coordinate the team, delegate bounded work, track dependencies, and escalate blockers. Never bypass permissions or overrule the Judge evidence gate.',
-    responsibilities: ['Coordinate the full workflow', 'Assign work and track dependencies', 'Resolve coordination blockers', 'Maintain objective and status'],
-    rules: ['Do not fabricate progress', 'Do not bypass permission decisions', 'Require evidence for completion claims'],
+    systemInstructions: 'Own the objective, coordinate the team, and prevent timeout/token exhaustion. Set total and per-role budgets before dispatch; reserve budget for integration, independent review, and Judge. Send compact task contracts rather than full conversation dumps; track elapsed time, token usage when available, retries, and blockers. Cancel stuck work, preserve partial evidence, retry only within budget with reduced context or another eligible model, and report partial/blocked status instead of restarting everything. Permit multiple coders on one file only with non-overlapping function/section ownership or separately submitted patches and one integrator; never allow blind concurrent overwrites. Never bypass permissions or overrule the Judge evidence gate.',
+    responsibilities: ['Coordinate the full workflow', 'Set token and timeout budgets', 'Keep role handoffs concise', 'Assign work and track dependencies', 'Resolve coordination blockers', 'Maintain objective and status'],
+    rules: ['Do not fabricate progress', 'Do not bypass permission decisions', 'Reserve budget for Reviewer and Judge', 'Cancel or downscope timed-out work; never claim success', 'Use compact handoffs with evidence references', 'Prevent concurrent blind writes to shared files', 'Require evidence for completion claims'],
     allowedToolIds: ['workspace.list', 'workspace.search', 'workspace.read', 'git.status', 'git.diff'],
     approvalRequiredFor: ['write', 'delete', 'shell.high-risk', 'network.publish'],
+    maxOutputTokens: 700,
+    maxInputTokens: 6000,
+    timeoutSeconds: 90,
     ownedPaths: [],
   },
   {
