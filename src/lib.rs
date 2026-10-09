@@ -91,6 +91,9 @@ async fn execute_sandboxed_command(command: String, cwd: String) -> Result<Termi
         if !workspace.is_dir() {
             return Err("Sandbox workspace must be a directory.".to_string());
         }
+        if workspace.to_string_lossy().contains(['\\n', '\\r']) {
+            return Err("Sandbox workspace path cannot contain newline characters.".to_string());
+        }
         let sandbox_exec = Path::new("/usr/bin/sandbox-exec");
         if !sandbox_exec.is_file() {
             return Err("macOS sandbox-exec is unavailable. Refusing to run the command without isolation.".to_string());
