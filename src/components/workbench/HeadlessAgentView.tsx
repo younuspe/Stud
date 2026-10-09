@@ -466,7 +466,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
         claim: `Actual command ${exitCode === 0 ? 'completed successfully' : 'failed'} with exit code ${exitCode}`,
         command,
         exitCode,
-        filePath: workspaceRoot,
+        filePath: localStorage.getItem('supru_workspace_root') || undefined,
         outputSnippet: output.slice(0, 1200),
         timestamp: Date.now(),
         isVerified: exitCode === 0,
