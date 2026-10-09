@@ -1,14 +1,13 @@
 #![cfg_attr(not(debug_assertions), deny(unsafe_code))]
 
 use tauri::Manager;
-use std::{path::PathBuf, sync::Mutex};
+use std::{path::PathBuf, sync::Mutex, time::{Duration, Instant}};
 
 #[cfg(not(debug_assertions))]
 use std::{
     net::{SocketAddr, TcpStream},
     process::{Child, Command, Stdio},
     thread,
-    time::{Duration, Instant},
 };
 
 #[cfg(not(debug_assertions))]
