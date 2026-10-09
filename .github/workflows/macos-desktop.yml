@@ -1,9 +1,21 @@
 name: macOS desktop build
 
-# Manual-only while the desktop core is under repair.
-# Do not build automatically on each code commit.
+# Manual dispatch remains available. A scoped push trigger is enabled for this authorized verification run
+# on the active repair branch; only relevant source/config/workflow changes trigger a build.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - fix/desktop-app-launch
+    paths:
+      - 'src/**'
+      - 'docs/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'tauri.conf.json'
+      - '.github/workflows/macos-desktop.yml'
 
 permissions:
   contents: read
