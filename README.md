@@ -19,3 +19,4 @@ View your app in AI Studio: https://ai.studio/apps/b2bbaf9e-c70e-4d95-87de-7f0bc
 3. Run the app:
    `npm run dev`
 # supru-vault
+# Stud
