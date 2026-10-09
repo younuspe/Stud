@@ -80,6 +80,19 @@ struct WorkspaceEntry {
 
 struct SelectedWorkspace(Mutex<Option<PathBuf>>);
 
+fn restore_saved_workspace(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let saved_path = app.path().app_data_dir()?.join("workspace-root.txt");
+    if let Ok(saved) = std::fs::read_to_string(saved_path) {
+        if let Ok(root) = canonical_workspace_root(saved.trim()) {
+            let state = app.state::<SelectedWorkspace>();
+            if let Ok(mut selected) = state.0.lock() {
+                *selected = Some(root);
+            }
+        }
+    }
+    Ok(())
+}
+
 fn selected_workspace_root(workspace: &SelectedWorkspace) -> Result<PathBuf, String> {
     workspace.0
         .lock()
@@ -349,8 +362,12 @@ pub fn run() {
             run_workspace_command
         ]);
 
-    #[cfg(not(debug_assertions))]
-    let builder = builder.setup(|app| start_backend(app));
+    let builder = builder.setup(|app| {
+        restore_saved_workspace(app)?;
+        #[cfg(not(debug_assertions))]
+        start_backend(app)?;
+        Ok::<(), Box<dyn std::error::Error>>(())
+    });
 
     let app = builder
         .build(tauri::generate_context!("tauri.conf.json"))
