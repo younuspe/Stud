@@ -42,7 +42,7 @@ interface OrchestratorViewProps {
   localConfig: LocalHostConfig;
   onOpenLocalSettings: () => void;
   onOpenInEditor?: (fileName: string, content: string) => void;
-  onTriggerHunter?: (objective: string) => void;
+  onTriggerHunter?: (objective: string, workspacePath?: string) => void;
   onSendToChat?: (text: string) => void;
   onChangeWorkspaceView?: (view: any) => void;
 }
@@ -291,7 +291,7 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
               <div className="mt-1 break-words text-xs text-white">{pillObjective}</div>
               <div className="mt-1 text-[10px] text-gray-400">Queued in this workspace. No agent execution is claimed until a real run is started.</div>
             </div>
-            <button type="button" onClick={() => { onTriggerHunter?.(pillObjective); }} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-black hover:bg-amber-400">Send objective to Hunter</button>
+            <button type="button" onClick={() => { onTriggerHunter?.(pillObjective, workspacePath.trim()); }} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-black hover:bg-amber-400">Send objective to Hunter</button>
             <button type="button" onClick={() => setPillObjective('')} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-gray-300 hover:bg-white/5">Dismiss</button>
           </div>
         )}
@@ -388,7 +388,7 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
               workspacePath={workspacePath}
               onOpenInEditor={onOpenInEditor}
               onSendToChat={onSendToChat}
-              onTriggerHunter={onTriggerHunter}
+              onTriggerHunter={(objective) => onTriggerHunter?.(objective, workspacePath.trim())}
             />
           </div>
         )}
