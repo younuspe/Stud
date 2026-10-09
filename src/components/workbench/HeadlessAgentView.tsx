@@ -226,6 +226,18 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
           const results: string[] = [];
           let allChecksPassed = commands.length > 0;
           for (const command of commands) {
+            const approved = window.confirm(
+              'Allow Hunter to run this project check inside the macOS sandbox?\\n\\n' +
+              command +
+              '\\n\\nWorkspace: ' + workspacePath.trim() +
+              '\\n\\nNetwork access is denied. File writes are confined to the selected workspace and temporary sandbox files.'
+            );
+            if (!approved) {
+              results.push('$ ' + command + '\\nSkipped: user did not approve command execution. No command was run.');
+              allChecksPassed = false;
+              setTerminalLogs((prev) => [...prev, '[tester sandbox] User declined ' + command + '; no command was run.']);
+              break;
+            }
             const result = await invoke<{ output: string; exitCode: number; durationMs: number }>('execute_sandboxed_command', {
               command,
               cwd: workspacePath.trim(),
