@@ -1151,7 +1151,7 @@ export default function App() {
       />
 
       {/* Universal Floating Chat Pill (Can move across any tab, link Supru Code, open any ecosystem tool) */}
-      {!(workspaceView === 'chat' && activeMessages.length === 0) && (
+      {(
         <FloatingChatPill
           onSendMessage={(text, attachment) => {
             // The floating pill is a persistent, workspace-aware command bar.
