@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { 
   X, 
   Server, 
@@ -83,17 +84,30 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
     soundFx.playClick();
 
     try {
-      const res = await fetch('/api/provider/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: config.provider,
-          endpointUrl: config.endpointUrl,
-          modelName: config.modelName,
-        }),
-      });
-
-      const data = await res.json();
+      let data: { status: string; message?: string; models?: string[] };
+      if (isTauri()) {
+        data = await invoke<{ status: string; message: string; models: string[] }>(
+          'test_provider_connection',
+          {
+            provider: config.provider,
+            endpointUrl: config.endpointUrl,
+            modelName: config.modelName,
+            apiKey: config.apiKey || null,
+          }
+        );
+      } else {
+        const res = await fetch('/api/provider/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: config.provider,
+            endpointUrl: config.endpointUrl,
+            modelName: config.modelName,
+            apiKey: config.apiKey,
+          }),
+        });
+        data = await res.json();
+      }
       if (data.status === 'online') {
         setTestStatus('success');
         setTestMessage(data.message || 'Connected successfully to local host!');
