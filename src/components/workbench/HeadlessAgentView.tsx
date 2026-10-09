@@ -62,6 +62,7 @@ import { HunterWorkbenchLayout } from './hunter/HunterWorkbenchLayout';
 import { soundFx } from '../../utils/audio';
 
 interface HeadlessAgentViewProps {
+  localConfig: import('../../types/workbench').LocalHostConfig;
   onSendToChat: (report: string) => void;
   onOpenInEditor?: (fileName: string, content: string) => void;
   initialObjective?: string;
@@ -75,6 +76,7 @@ const PRESET_PIPELINE_OBJECTIVES = [
 ];
 
 export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
+  localConfig,
   onSendToChat,
   onOpenInEditor,
   initialObjective,
