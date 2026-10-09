@@ -106,7 +106,15 @@ export default function App() {
   const [localConfig, setLocalConfig] = useState<LocalHostConfig>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_LOCAL_CONFIG);
-      if (saved) return { ...DEFAULT_LOCAL_CONFIG, ...JSON.parse(saved) };
+      if (saved) {
+        const parsed = { ...DEFAULT_LOCAL_CONFIG, ...JSON.parse(saved) };
+        // Older prototype installs defaulted to the Ollama model name even
+        // while the selected provider was Gemini Cloud. Migrate that mismatch.
+        if (parsed.provider === 'gemini_cloud' && (!parsed.modelName || parsed.modelName === 'llama3')) {
+          parsed.modelName = 'gemini-3.8-flash';
+        }
+        return parsed;
+      }
     } catch {
       // Use defaults
     }
