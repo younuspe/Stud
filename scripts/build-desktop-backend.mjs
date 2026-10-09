@@ -1,10 +1,14 @@
-import { chmodSync, copyFileSync, mkdirSync, rmSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { chmodSync, copyFileSync, mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { build } from 'esbuild';
 
 // Tauri's production webview cannot execute the TypeScript/Express API server
 // by itself. Bundle the server and ship the same Node runtime used for this build.
 const root = process.cwd();
+const nodeMajor = Number(process.versions.node.split('.')[0]);
+if (nodeMajor < 22) {
+  throw new Error(`Supru desktop packaging requires Node.js 22 or newer; found ${process.versions.node}`);
+}
 const runtimeDir = resolve(root, 'resources');
 const backendDir = resolve(root, 'dist-server');
 mkdirSync(runtimeDir, { recursive: true });
