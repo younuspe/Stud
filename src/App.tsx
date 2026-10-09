@@ -207,13 +207,13 @@ export default function App() {
 
   // UI state
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isConnected, setIsConnected] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Server diagnostics
   const [serverStatus, setServerStatus] = useState<ServerStatus>({
-    status: 'online',
-    hasApiKey: true,
+    status: 'offline',
+    hasApiKey: false,
     model: 'gemini-3.8-flash',
     version: '2.5.0',
   });
@@ -409,18 +409,41 @@ export default function App() {
     }
   }, [codingLayout]);
 
-  useEffect(() => {
-    fetch('/api/status')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.status) {
-          setServerStatus(data);
-          setIsConnected(true);
-        }
-      })
-      .catch(() => {
-        setIsConnected(true);
+  const testActiveProvider = async () => {
+    setIsConnected(false);
+    const isCloud = localConfig.provider === 'gemini_cloud';
+    try {
+      const response = await fetch(isCloud ? '/api/studio/test-connection' : '/api/provider/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: isCloud ? 'gemini' : localConfig.provider,
+          endpointUrl: localConfig.endpointUrl,
+          modelId: localConfig.modelName,
+          modelName: localConfig.modelName,
+          apiKey: localConfig.apiKey,
+        }),
       });
+      const data = await response.json();
+      const connected = response.ok && data.status === 'online';
+      setIsConnected(connected);
+      setServerStatus((previous) => ({
+        ...previous,
+        status: connected ? 'online' : 'offline',
+        hasApiKey: isCloud ? Boolean(localConfig.apiKey?.trim()) : false,
+        model: localConfig.modelName || (isCloud ? 'gemini-3.8-flash' : localConfig.provider),
+        version: previous.version || '0.1.0',
+      }));
+      return connected;
+    } catch {
+      setIsConnected(false);
+      setServerStatus((previous) => ({ ...previous, status: 'offline', hasApiKey: Boolean(localConfig.apiKey?.trim()) }));
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    void testActiveProvider();
   }, []);
 
   const activeThread = threads.find((t) => t.id === activeThreadId) || null;
@@ -1053,7 +1076,7 @@ export default function App() {
         isOpen={isConnectModalOpen}
         onClose={() => setIsConnectModalOpen(false)}
         isConnected={isConnected}
-        onToggleConnect={() => setIsConnected(!isConnected)}
+        onToggleConnect={() => { void testActiveProvider(); }}
         serverInfo={serverStatus}
       />
 
