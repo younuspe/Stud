@@ -162,16 +162,14 @@ export const StratifiedTopologyView: React.FC<StratifiedTopologyViewProps> = ({
   const [z3Formula, setZ3Formula] = useState<string>(
     '(assert (forall ((s State) (t Token))\n  (=> (and (ValidToken t) (WithinPerimeter s))\n      (NoMemoryLeak s))))\n(check-sat)'
   );
-  const [z3Result, setZ3Result] = useState<string | null>(
-    'sat\n(model\n  (define-fun ValidToken ((x!0 Token)) Bool true)\n  (define-fun InvariantHolds () Bool true)\n)\n;; Verified in 0.042s via Z3 v4.12 SMT Solver. Zero boundary leaks.'
-  );
+  const [z3Result, setZ3Result] = useState<string | null>(null);
   const [isSolvingZ3, setIsSolvingZ3] = useState<boolean>(false);
 
   // SurrealDB / HNSW Latent coordinates
   const [latentQuery, setLatentQuery] = useState<string>('Autonomous Micro-Kernel Consensus');
   const [latentCoords, setLatentCoords] = useState<{ x: number; y: number; z: number }>({
-    x: 0.8412,
-    y: -0.3129,
+    x: 0,
+    y: 0,
     z: 0
   });
   const [associativeNeighbors, setAssociativeNeighbors] = useState<
@@ -454,11 +452,11 @@ export const StratifiedTopologyView: React.FC<StratifiedTopologyViewProps> = ({
             </div>
             <div className="rounded-xl border border-white/[0.08] bg-black/40 px-3 py-2 text-left backdrop-blur-md">
               <div className="text-[10px] text-gray-400 uppercase font-mono">Universal State</div>
-              <div className="text-sm font-bold text-amber-400 font-mono">0x7f8a...9e4b</div>
+              <div className="text-sm font-bold text-gray-500 font-mono">Not connected</div>
             </div>
             <div className="rounded-xl border border-white/[0.08] bg-black/40 px-3 py-2 text-left backdrop-blur-md">
               <div className="text-[10px] text-gray-400 uppercase font-mono">Glider Rate</div>
-              <div className="text-sm font-bold text-purple-400 font-mono">144.0 Hz</div>
+              <div className="text-sm font-bold text-gray-500 font-mono">Not measured</div>
             </div>
           </div>
         </div>
@@ -776,7 +774,7 @@ export const StratifiedTopologyView: React.FC<StratifiedTopologyViewProps> = ({
                     ) : (
                       <>
                         <Play size={13} />
-                        <span>Verify Satisfiability (SAT)</span>
+                        <span>Check Proof Runner</span>
                       </>
                     )}
                   </button>
@@ -1103,7 +1101,7 @@ export const StratifiedTopologyView: React.FC<StratifiedTopologyViewProps> = ({
                     disabled={shieldTokenStatus === 'verifying'}
                     className="w-full rounded-xl bg-amber-500 py-1.5 text-xs font-bold text-black hover:bg-amber-400 transition-all shadow-md disabled:opacity-50"
                   >
-                    {shieldTokenStatus === 'verifying' ? 'Verifying with Z3 Theorem Prover...' : 'Generate Z3-Verified Token'}
+                    {shieldTokenStatus === 'verifying' ? 'Verifying with Z3 Theorem Prover...' : 'Token Unavailable — Proof Runner Missing'}
                   </button>
 
                   {generatedShieldToken && (
@@ -1183,9 +1181,9 @@ export const StratifiedTopologyView: React.FC<StratifiedTopologyViewProps> = ({
               <div className="flex items-center justify-between text-xs font-bold text-gray-300">
                 <span className="flex items-center gap-1.5">
                   <Activity size={13} className="text-emerald-400" />
-                  <span>Sterile Zone (Healthy Hospital) &amp; Scrubbed gRPC Audit Stream</span>
+                  <span>Conceptual telemetry (no backend connected)</span>
                 </span>
-                <span className="font-mono text-[10px] text-emerald-400">Zero Host Compromise Guaranteed</span>
+                <span className="font-mono text-[10px] text-emerald-400">No live isolation backend</span>
               </div>
 
               <div className="rounded-xl border border-white/[0.06] bg-[#050508] p-3 font-mono text-xs text-gray-300 space-y-1">
