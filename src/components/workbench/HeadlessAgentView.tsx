@@ -226,7 +226,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
           const results: string[] = [];
           let allChecksPassed = commands.length > 0;
           for (const command of commands) {
-            const result = await invoke<{ output: string; exitCode: number; durationMs: number }>('execute_terminal_command', {
+            const result = await invoke<{ output: string; exitCode: number; durationMs: number }>('execute_sandboxed_command', {
               command,
               cwd: workspacePath.trim(),
             });
