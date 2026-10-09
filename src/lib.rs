@@ -223,6 +223,64 @@ fn workspace_read_file(workspace: tauri::State<'_, SelectedWorkspace>, relative_
         .map_err(|error| format!("File is not readable UTF-8 text: {error}"))
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceCommandResult {
+    stdout: String,
+    stderr: String,
+    exit_code: i32,
+    duration_ms: u64,
+}
+
+#[tauri::command]
+async fn run_workspace_command(
+    workspace: tauri::State<'_, SelectedWorkspace>,
+    command: String,
+) -> Result<WorkspaceCommandResult, String> {
+    use std::process::Stdio;
+    use std::time::Instant;
+
+    if command.trim().is_empty() {
+        return Err("Enter a command before running it.".into());
+    }
+    if command.len() > 4096 {
+        return Err("Commands longer than 4096 characters are not allowed.".into());
+    }
+
+    let root = selected_workspace_root(&workspace)?;
+    let started = Instant::now();
+    let inherited_path = std::env::var("PATH").unwrap_or_default();
+    let search_path = format!("/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:{inherited_path}");
+    let mut process = tokio::process::Command::new("/bin/zsh");
+    process
+        .arg("-c")
+        .arg(&command)
+        .current_dir(&root)
+        .env("PATH", search_path)
+        .stdin(Stdio::null())
+        .kill_on_drop(true);
+
+    let output = tokio::time::timeout(
+        Duration::from_secs(120),
+        process.output(),
+    )
+    .await
+    .map_err(|_| "Command timed out after 120 seconds.".to_string())?
+    .map_err(|error| format!("Could not start command: {error}"))?;
+
+    let mut stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let mut stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    stdout.truncate(64 * 1024);
+    stderr.truncate(64 * 1024);
+
+    Ok(WorkspaceCommandResult {
+        stdout,
+        stderr,
+        exit_code: output.status.code().unwrap_or(128),
+        duration_ms: started.elapsed().as_millis().min(u64::MAX as u128) as u64,
+    })
+}
+
 #[tauri::command]
 fn workspace_write_file(workspace: tauri::State<'_, SelectedWorkspace>, relative_path: String, content: String) -> Result<(), String> {
     use std::fs::{self, OpenOptions};
@@ -288,7 +346,8 @@ pub fn run() {
             restore_workspace,
             workspace_list,
             workspace_read_file,
-            workspace_write_file
+            workspace_write_file,
+            run_workspace_command
         ]);
 
     #[cfg(not(debug_assertions))]
