@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import {
   Bot,
   Play,
@@ -195,20 +196,14 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
       let summary = '';
 
       if (agent.id === 'tester') {
-        const workspaceRoot = localStorage.getItem('supru_workspace_root');
-        if (!workspaceRoot) {
-          throw new Error('Select a workspace folder in Supru Code before running verification commands.');
-        }
         const command = "if [ -f Cargo.toml ]; then cargo check; elif [ -f package.json ]; then npm run lint; else echo 'No supported Cargo.toml or package.json was found.' >&2; exit 2; fi";
-        const response = await fetch('/api/terminal/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command, cwd: workspaceRoot }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || `Verification command failed to start (HTTP ${response.status}).`);
+        const data = await invoke<{ stdout: string; stderr: string; exitCode: number; durationMs: number }>(
+          'run_workspace_command',
+          { command },
+        );
         const exitCode = Number.isInteger(data.exitCode) ? data.exitCode : 1;
-        artifactContent = `Command: ${command}\nExit code: ${exitCode}\n\n${String(data.output || '(No command output)')}`;
+        const commandOutput = [data.stdout, data.stderr].filter(Boolean).join('\n') || '(No command output)';
+        artifactContent = `Command: ${command}\nExit code: ${exitCode}\n\n${commandOutput}`;
         summary = exitCode === 0 ? 'Workspace check completed with exit code 0.' : `Workspace check failed with exit code ${exitCode}.`;
         const evidence: HunterEvidence = {
           id: `ev-${Date.now()}`,
@@ -217,7 +212,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
           command,
           exitCode,
           filePath: workspaceRoot,
-          outputSnippet: String(data.output || '').slice(0, 1200),
+          outputSnippet: commandOutput.slice(0, 1200),
           timestamp: Date.now(),
           isVerified: exitCode === 0,
         };
@@ -225,7 +220,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
         if (exitCode !== 0) {
           setAgentArtifacts((prev) => ({ ...prev, tester: { agentId: 'tester', summary, artifactContent, evidenceRef: evidence.id, timestamp: Date.now() } }));
           setAgents((prev) => prev.map((item) => item.id === 'tester' ? { ...item, status: 'failed' } : item));
-          setTerminalLogs((prev) => [...prev, summary, String(data.output || '')]);
+          setTerminalLogs((prev) => [...prev, summary, commandOutput]);
           setIsPipelineRunning(false);
           return;
         }
@@ -475,16 +470,12 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
     }
 
     try {
-      const response = await fetch('/api/terminal/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command, cwd: workspaceRoot }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || `Command request failed (HTTP ${response.status})`);
-
+      const data = await invoke<{ stdout: string; stderr: string; exitCode: number; durationMs: number }>(
+        'run_workspace_command',
+        { command },
+      );
       const exitCode = Number.isInteger(data.exitCode) ? data.exitCode : 1;
-      const output = String(data.output || '(Command completed with no output)');
+      const output = [data.stdout, data.stderr].filter(Boolean).join('\n') || '(Command completed with no output)';
       setTerminalLogs((prev) => [...prev, `Exit code: ${exitCode}`, output]);
       setEvidenceList((prev) => [{
         id: `ev-${Date.now()}`,
