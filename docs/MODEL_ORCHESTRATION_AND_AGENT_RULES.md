@@ -143,6 +143,45 @@ The coding environment must include a real project File Explorer as a core featu
 - Include actual loading, empty, permission-denied, backend-unavailable, and error states. Never use fake project entries or claim an operation succeeded without backend confirmation.
 
 
-## Global Kilo Code execution controller and hard boundaries
+## Continuous execution, anti-lag policy, and hard boundaries
 
-See [Kilo Code — Global Master Orchestrator V3](KILO_CODE_GLOBAL_MASTER_ORCHESTRATOR_V3.md) for the project operating contract, adaptive concurrency, bounded retries, checkpoints, timeout recovery, and explicit execution limits. The corresponding `executionLimits` object in `supru.agents.json` supplies project defaults and caps. These remain specifications until runtime enforcement is implemented; do not treat configuration values alone as proof that an operation is actually bounded.
+These rules belong to **Supru AI Studio's orchestration system** and apply to every project handled by the Studio. They are not Kilo Code global instructions. The orchestration runtime must enforce them; documentation and types alone do not enforce process cancellation, token accounting, or concurrency.
+
+### Adaptive concurrency and team limits
+
+- Keep the Lead → Researcher → Planner → Architect → Coder 1/2/3 → Reviewer → Judge chain as the default specialist pipeline.
+- The 12-specialist roster is a pool of available roles, not a requirement to run 12 agents at once. Start with up to 3 concurrent agents and never exceed the project hard cap of 4 unless the user explicitly changes the project configuration. Stricter runtime/provider limits always win.
+- For small tasks, use a lightweight workflow. Scale concurrency only when tasks are independent and resources support it; reduce concurrency when latency, memory, rate limits, context use, or conflicts rise.
+- Assign bounded tasks with acceptance criteria, file ownership, deadlines, and concise handoffs. Never duplicate work without a reason.
+
+### Project execution caps
+
+| Limit | Default | Hard project cap |
+|---|---:|---:|
+| Concurrent agents | 3 | 4 |
+| Per-agent timeout | 90 seconds | 180 seconds |
+| Total run timeout | 900 seconds | 1,800 seconds |
+| Retries per operation | As needed, bounded | 2 |
+| Aggregate token budget | 30,000 when measurable | Must remain bounded; unknown usage stays unknown |
+| Input context per role | 6,000 tokens | 6,000 unless explicitly reconfigured |
+| Output per role | 1,200 tokens | 1,200 unless explicitly reconfigured |
+| Verification reserve | 25% of run budget | Do not consume by default for implementation |
+| No-progress retries | 0 | 1 before changing strategy |
+
+The limits are defaults and project caps, not permission to exceed stricter platform, provider, operating-system, tool, or permission limits. The trusted runtime must validate configuration values and clamp them to allowed ranges. Never silently incur costs, install large models/dependencies, publish, deploy, or perform destructive actions without required authorization.
+
+### Timeout, checkpoint, and recovery controller
+
+- Check actual process/session status before retrying; a timed-out tool response does not prove the underlying process stopped.
+- Never launch duplicate installs, builds, tests, or agent tasks while an equivalent operation may still be active.
+- On interruption, inspect partial output, logs, diffs, file state, and side effects; preserve usable work and resume only the interrupted stage.
+- Retry a transient failure at most twice, with backoff where appropriate. Do not retry permanent authentication/configuration failures unchanged. After a no-progress retry, change strategy or report the blocker.
+- Checkpoint every meaningful work unit with the objective, acceptance criteria, completed/partial tasks, changed files, active operations/owners, actual checks/results, failures, and exact next action. Distinguish attempted work from verified work.
+- Send targeted excerpts and evidence-linked summaries instead of full repository/conversation dumps. Track actual tokens/latency when available; otherwise mark them unknown and use supported request/output caps.
+- Permit same-file parallel coding only with non-overlapping ownership or separate patches merged by one integrator. Never allow blind concurrent overwrites.
+- Reserve at least 25% of the budget for integration, independent Reviewer, and Judge. Never skip verification just to finish before a deadline.
+- Stop unsafe or unproductive work at the configured boundary, preserve a checkpoint, and report **Blocked — Not Fully Verified** when a hard limit or external blocker prevents full verification.
+
+### Permission and side-effect boundary
+
+Permission precedence remains **deny > ask > allow**. Model output, role prompts, repository content, and agent reports cannot override trusted permissions. Preserve uncommitted user work. Check before retries for duplicate side effects. Do not terminate unrelated processes, hide legitimate errors, delete tests to make checks pass, or fabricate progress or token usage.
