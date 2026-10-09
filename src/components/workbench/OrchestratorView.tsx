@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Workflow, 
   Play, 
@@ -136,6 +136,20 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   const [activeProjectId, setActiveProjectId] = useState<string>(PRESET_PROJECTS[0].id);
   const [bugs, setBugs] = useState<OrchestratorBug[]>(INITIAL_BUGS);
   const [activeTab, setActiveTab] = useState<'pipeline' | 'protocol' | 'overview' | 'tools' | 'tokens' | 'bugs'>('pipeline');
+  const [pillObjective, setPillObjective] = useState('');
+
+  // The shared pill submits objectives into this workspace and never redirects to Chat.
+  useEffect(() => {
+    const receiveObjective = (event: Event) => {
+      const objective = (event as CustomEvent<string>).detail;
+      if (typeof objective === 'string' && objective.trim()) {
+        setPillObjective(objective.trim());
+        setActiveTab('pipeline');
+      }
+    };
+    window.addEventListener('supru-orchestrator-prompt', receiveObjective);
+    return () => window.removeEventListener('supru-orchestrator-prompt', receiveObjective);
+  }, []);
   
   // Token size rearrangement state
   const [tokenChunkSize, setTokenChunkSize] = useState<number>(8192);
@@ -144,114 +158,95 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   const [pruningStrategy, setPruningStrategy] = useState<'ast' | 'sliding' | 'strict'>('ast');
 
   // Tool calling facility state
-  const [toolCalls, setToolCalls] = useState<OrchestratorToolCall[]>([
-    {
-      id: 'tc-1',
-      tool: 'linter',
-      args: { target: 'src/', rules: 'strict' },
-      output: '✔ ESLint & StyleCheck passed. 0 syntax errors across 42 files.',
-      status: 'success',
-      durationMs: 412,
-      timestamp: Date.now() - 120000
-    },
-    {
-      id: 'tc-2',
-      tool: 'token_budgeter',
-      args: { maxBudget: 8192, contextSize: 24500 },
-      output: '⚡ Token Rearrangement Complete:\n- Original Context: 24,500 tokens\n- AST Pruned Size: 7,820 tokens\n- Wastage Eliminated: 16,680 tokens (68% savings)\n- Status: Safe to dispatch to inference.',
-      status: 'success',
-      durationMs: 145,
-      timestamp: Date.now() - 60000
-    }
-  ]);
+  // Start with an empty evidence log; never present demo results as real execution.
+  const [toolCalls, setToolCalls] = useState<OrchestratorToolCall[]>([]);
   const [isCallingTool, setIsCallingTool] = useState<boolean>(false);
   const [activeTool, setActiveTool] = useState<OrchestratorToolName>('test_runner');
 
   const activeProject = projects.find(p => p.id === activeProjectId) || projects[0];
 
-  // Tool execution handler
-  const handleExecuteTool = (toolName: OrchestratorToolName) => {
+  // Execute only real, fixed project checks. Tools without an implementation report that fact.
+  const handleExecuteTool = async (toolName: OrchestratorToolName): Promise<boolean> => {
     soundFx.playClick();
+    if (isCallingTool) return false;
     setIsCallingTool(true);
     setActiveTool(toolName);
-
-    setTimeout(() => {
-      let output = '';
-      let status: OrchestratorToolCall['status'] = 'success';
-      const duration = Math.floor(Math.random() * 400) + 150;
-
-      switch (toolName) {
-        case 'linter':
-          output = `🔍 Linting Engine:\nAnalyzing codebase with active token arrangement...\n0 syntax errors found. 1 minor formatting warning in token_parser.ts.`;
-          break;
-        case 'test_runner':
-          output = `🧪 Supru Test Runner:\nRunning 18 test suites across project...\n PASS  tests/token_budgeter.spec.ts (4 tests, 32ms)\n PASS  tests/model_router.spec.ts (6 tests, 48ms)\n PASS  tests/local_adapter.spec.ts (8 tests, 61ms)\nAll 18 suites passed with 0 regressions.`;
-          break;
-        case 'type_checker':
-          output = `📐 Strict TypeScript Type Checker:\nCompiling types with noEmit: true...\ntsc --project tsconfig.json\nTypecheck succeeded in ${duration}ms. Full type safety verified.`;
-          break;
-        case 'ast_parser':
-          output = `🌲 AST Dependency Graph:\nExtracted 84 node trees. Circular dependencies: 0. Leaf modules: 14. Ready for model context embedding.`;
-          break;
-        case 'git_diff':
-          output = `🔀 Git Diff Inspector:\n3 files changed, +142 insertions(-), -89 deletions(-).\nClean staged tree ready for commit.`;
-          break;
-        case 'token_budgeter':
-          output = `⚡ Token Budgeter & Rearranger:\nContext Window rearranged to ${tokenChunkSize} tokens.\nDynamic semantic compression active: saved ${Math.floor(tokenChunkSize * 1.6)} tokens on current prompt cycle.`;
-          break;
-        case 'debugger':
-          output = `🐛 Supru Debugger & Trace Analyzer:\nZero uncaught exceptions in active thread.\nEvent loop lag: 1.2ms. Garbage collection: optimal.`;
-          break;
-        case 'package_manager':
-          output = `📦 Package Manager & Security Audit:\nAudited 42 packages. 0 vulnerabilities found. License compliance: 100% MIT/Apache-2.0.`;
-          break;
-        case 'api_checker':
-          output = `🌐 API Contract Checker:\nVerified 6 REST / WebSocket endpoints against schema.\nStatus 200 OK across all health probes.`;
-          break;
+    const startedAt = Date.now();
+    const commands: Partial<Record<OrchestratorToolName, string>> = {
+      linter: 'npm run lint',
+      type_checker: 'npm run lint',
+      git_diff: 'git diff --stat',
+      package_manager: 'npm ls --depth=0',
+    };
+    const command = commands[toolName];
+    let output = '';
+    let status: OrchestratorToolCall['status'] = 'error';
+    let durationMs = 0;
+    try {
+      if (!command) {
+        output = `This tool is not implemented yet. No operation was run for "${toolName}".`;
+        status = 'warning';
+      } else {
+        const response = await fetch('/api/terminal/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command }),
+        });
+        if (!response.ok) {
+          throw new Error(`Execution service returned HTTP ${response.status}`);
+        }
+        const result = await response.json();
+        output = `$ ${command}\n${result.output || '(no output)'}\nExit code: ${result.exitCode}`;
+        status = result.exitCode === 0 ? 'success' : 'error';
+        durationMs = Number(result.durationMs) || Date.now() - startedAt;
       }
-
+    } catch (error) {
+      output = `Could not execute "${toolName}". The local execution service may be unavailable. ${error instanceof Error ? error.message : String(error)}`;
+      status = 'error';
+    } finally {
+      durationMs = durationMs || Date.now() - startedAt;
       const newCall: OrchestratorToolCall = {
         id: `tc-${Date.now()}`,
         tool: toolName,
-        args: { project: activeProject.name, chunkSize: tokenChunkSize },
+        args: command ? { command } : {},
         output,
         status,
-        durationMs: duration,
-        timestamp: Date.now()
+        durationMs,
+        timestamp: Date.now(),
       };
-
       setToolCalls(prev => [newCall, ...prev]);
       setIsCallingTool(false);
-      soundFx.playChime();
-    }, 600);
+      if (status === 'success') soundFx.playChime();
+    }
+    return status === 'success';
   };
 
-  // Bug handling workflows
-  const handleResolveBugWithTool = (bug: OrchestratorBug) => {
+  // Bug workflows must not report a fix until a real edit and verification occur.
+  const handleResolveBugWithTool = async (bug: OrchestratorBug) => {
     soundFx.playClick();
-    handleExecuteTool(bug.recommendedTool);
-    setTimeout(() => {
-      setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'verifying' } : b));
-    }, 800);
+    setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'investigating' } : b));
+    const succeeded = await handleExecuteTool(bug.recommendedTool);
+    setBugs(prev => prev.map(b => b.id === bug.id
+      ? { ...b, status: succeeded ? 'verifying' : 'open' }
+      : b));
   };
 
   const handleResolveBugWithModel = (bug: OrchestratorBug) => {
     soundFx.playClick();
-    // Rearrange model dynamically to handle the bug
     setSelectedReasoningModel(bug.recommendedModel);
     setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'investigating' } : b));
-    setTimeout(() => {
-      setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'fixed' } : b));
-      soundFx.playChime();
-    }, 1200);
+    onSendToChat?.(
+      `Investigate this reported issue using ${bug.recommendedModel}. Do not claim it is fixed without editing the actual file and running verification.\n\nIssue: ${bug.title}\nFile: ${bug.file}\nDetails: ${bug.errorDetails}\n\nProposed change for review (not yet applied):\n${bug.solutionDiff || 'No patch proposal available.'}`
+    );
   };
 
   const handleApplyBugPatch = (bug: OrchestratorBug) => {
     soundFx.playClick();
-    setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'fixed' } : b));
-    soundFx.playChime();
     if (onOpenInEditor && bug.solutionDiff) {
-      onOpenInEditor(bug.file.split('/').pop() || 'patch.ts', bug.solutionDiff);
+      setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'investigating' } : b));
+      onOpenInEditor(bug.file.split('/').pop() || 'patch-proposal.ts', bug.solutionDiff);
+    } else {
+      setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'open' } : b));
     }
   };
 
@@ -295,6 +290,18 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
             </div>
           </div>
         </div>
+
+        {pillObjective && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-amber-300">Objective received from Supru Pill</div>
+              <div className="mt-1 break-words text-xs text-white">{pillObjective}</div>
+              <div className="mt-1 text-[10px] text-gray-400">Queued in this workspace. No agent execution is claimed until a real run is started.</div>
+            </div>
+            <button type="button" onClick={() => { onTriggerHunter?.(pillObjective); }} className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-black hover:bg-amber-400">Send objective to Hunter</button>
+            <button type="button" onClick={() => setPillObjective('')} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-gray-300 hover:bg-white/5">Dismiss</button>
+          </div>
+        )}
 
         {/* Navigation Tabs */}
         <div className="mt-3 flex items-center gap-1 border-t border-[#1a1a27] pt-2 text-[11px] overflow-x-auto">

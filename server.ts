@@ -326,28 +326,13 @@ app.post('/api/generate-image', async (req, res) => {
       }
     }
 
-    // High quality simulated artwork fallback for testing
-    const fallbackImage = generateSimulatedImageSvg(prompt, Boolean(sourceImage), selectedAspectRatio);
-    return res.json({
-      imageUrl: fallbackImage,
-      text: `✨ Supru AI synthesized visual: "${prompt}" using gemini-3.1-flash-image-preview`,
-      isEdit: Boolean(sourceImage),
-      model: 'gemini-3.1-flash-image-preview',
-      simulated: true,
+    return res.status(503).json({
+      error: 'Image generation requires a configured Gemini API key. No placeholder artwork was returned.',
     });
   } catch (error: any) {
     console.error('Image generation error:', error);
-    const fallbackImage = generateSimulatedImageSvg(
-      req.body.prompt || 'Generated Artwork',
-      Boolean(req.body.sourceImage),
-      req.body.aspectRatio || '1:1'
-    );
-    return res.json({
-      imageUrl: fallbackImage,
-      text: `Image generated via fallback due to API status: ${error.message}`,
-      warning: error.message,
-      isEdit: Boolean(req.body.sourceImage),
-      model: 'gemini-3.1-flash-image-preview',
+    return res.status(502).json({
+      error: error.message || 'The image provider request failed.',
     });
   }
 });
@@ -646,7 +631,7 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Messages array is required' });
     }
 
-    const systemInstruction = PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat;
+    const systemInstruction = (PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat) + "\n\nLanguage policy: Understand the user's message in the language they use, including Malayalam or English. Unless they explicitly request another output language, always write the response in English. If the user speaks Malayalam, do not reply in Malayalam; answer in clear English.";
 
     // If Gemini API key is configured, use real Gemini 3.8 Flash
     if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
@@ -680,24 +665,18 @@ app.post('/api/chat', async (req, res) => {
         },
       });
 
-      const reply = response.text || "Meow! I'm purring over your question, but returned an empty thought. Let's try again!";
+      const reply = response.text;
+      if (!reply) return res.status(502).json({ error: 'The configured AI provider returned an empty response.' });
       return res.json({ reply });
     }
 
-    // Graceful fallback for local development or sandbox without key
-    const latestUserMsg = messages[messages.length - 1]?.content || '';
-    const simulatedReply = generateSimulatedSupruResponse(latestUserMsg, persona);
-    return res.json({ reply: simulatedReply, simulated: true });
+    return res.status(503).json({
+      error: 'Gemini is not configured. Connect a cloud provider or select a local model in Settings.',
+    });
   } catch (error: any) {
     console.error('Error generating chat response:', error);
-    // Return friendly fallback rather than crashing
-    const simulatedReply = generateSimulatedSupruResponse(
-      req.body.messages?.[req.body.messages.length - 1]?.content || '',
-      req.body.persona || 'supru_cat'
-    );
-    return res.json({
-      reply: simulatedReply,
-      warning: error.message || 'API request had an issue; served intelligent response.',
+    return res.status(502).json({
+      error: error.message || 'The configured AI provider request failed.',
     });
   }
 });
@@ -720,28 +699,8 @@ app.post('/api/chat/stream', async (req, res) => {
   const validMessages = messages.filter((m) => m && typeof m.content === 'string' && m.content.trim().length > 0);
   const effectiveMessages = validMessages.length > 0 ? validMessages : messages;
   const latestUserMsg = effectiveMessages[effectiveMessages.length - 1]?.content || '';
-  const systemInstruction = PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat;
+  const systemInstruction = (PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat) + "\n\nLanguage policy: Understand the user's message in the language they use, including Malayalam or English. Unless they explicitly request another output language, always write the response in English. If the user speaks Malayalam, do not reply in Malayalam; answer in clear English.";
 
-  // Stream high-speed 2027 futuristic responses smoothly
-  const streamFallbackResponse = async (customText?: string) => {
-    const fullText = customText || generateSimulatedSupruResponse(latestUserMsg, persona);
-    // Split into natural semantic tokens (words and punctuation)
-    const tokens = fullText.match(/\S+|\s+/g) || [fullText];
-
-    for (let i = 0; i < tokens.length; i++) {
-      if (res.writableEnded) break;
-      res.write(`data: ${JSON.stringify({ chunk: tokens[i] })}\n\n`);
-      // 10ms smooth cadence = 100+ tokens/sec modern 2027 speed
-      if (i % 2 === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 8));
-      }
-    }
-
-    if (!res.writableEnded) {
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-      res.end();
-    }
-  };
 
   if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
     try {
@@ -795,18 +754,20 @@ app.post('/api/chat/stream', async (req, res) => {
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         return res.end();
       } else if (!res.writableEnded) {
-        return streamFallbackResponse();
+        res.write(`data: ${JSON.stringify({ error: 'The configured AI provider returned no response.' })}\n\n`);
+        return res.end();
       }
     } catch (apiError: any) {
-      console.warn('Gemini cloud stream fallback triggered:', apiError.message);
+      console.error('Gemini cloud request failed:', apiError.message);
       if (!res.writableEnded) {
-        return streamFallbackResponse();
+        res.write(`data: ${JSON.stringify({ error: apiError.message || 'Gemini request failed.' })}\n\n`);
+        return res.end();
       }
     }
   }
 
-  // Streaming fallback when running offline or testing
-  return streamFallbackResponse();
+  res.write(`data: ${JSON.stringify({ error: 'Gemini is not configured. Connect a cloud provider or select a local model in Settings.' })}\n\n`);
+  return res.end();
 });
 
 // Helper for high quality 2027 generative AI responses tailored to Supru persona
@@ -962,7 +923,7 @@ app.post('/api/local-chat', async (req, res) => {
         body: JSON.stringify({
           model: modelName,
           messages: messages.map((m: any) => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
+            role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
             content: m.content,
           })),
           stream: false,
@@ -1005,7 +966,7 @@ app.post('/api/local-chat', async (req, res) => {
         body: JSON.stringify({
           model: modelName,
           messages: messages.map((m: any) => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
+            role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
             content: m.content,
           })),
           temperature,
@@ -1028,7 +989,8 @@ app.post('/api/local-chat', async (req, res) => {
           body: JSON.stringify({
             model: modelName || 'claude-3-7-sonnet-20250219',
             max_tokens: 2048,
-            messages: messages.map((m: any) => ({
+            system: messages.filter((m: any) => m.role === 'system').map((m: any) => m.content).join('\n\n'),
+            messages: messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
               role: m.role === 'assistant' ? 'assistant' : 'user',
               content: m.content,
             })),
@@ -1043,19 +1005,13 @@ app.post('/api/local-chat', async (req, res) => {
       }
     }
 
-    // Fallback to built-in intelligent simulated response
-    const lastMsg = messages[messages.length - 1]?.content || '';
-    return res.json({
-      reply: generateSimulatedSupruResponse(lastMsg, 'supru_cat'),
-      simulated: true,
-      note: `Connected through Supru engine for ${modelName}.`,
+    return res.status(502).json({
+      error: `No response from the selected model provider (${provider || 'unknown provider'}).`,
     });
   } catch (err: any) {
-    const lastMsg = req.body.messages?.[req.body.messages.length - 1]?.content || '';
-    return res.json({
-      reply: generateSimulatedSupruResponse(lastMsg, 'supru_cat'),
-      simulated: true,
-      warning: `Model request encountered: ${err.message}`,
+    console.error('Local model request failed:', err);
+    return res.status(502).json({
+      error: err.message || 'The selected model provider request failed.',
     });
   }
 });
@@ -1172,18 +1128,20 @@ const handleAgentStep = async (req: express.Request, res: express.Response) => {
           artifact: step.command.includes('git') ? 'Git status verified' : undefined,
         });
       } catch (cmdErr: any) {
-        return res.json({
-          status: 'completed',
-          output: cmdErr.stdout || cmdErr.stderr || cmdErr.message,
-          warning: 'Command finished with warnings or error state',
+        return res.status(200).json({
+          status: 'failed',
+          output: cmdErr.stdout || cmdErr.stderr || cmdErr.message || 'Command execution failed.',
+          exitCode: typeof cmdErr.code === 'number' ? cmdErr.code : 1,
+          warning: 'The command did not complete successfully. No verification is claimed.',
         });
       }
     }
 
-    // Step is an analytical reasoning or code generation task
-    return res.json({
-      status: 'completed',
-      output: `Autonomous Headless Step Completed: "${step?.title || 'Execution Step'}"\nAnalysis validated for objective: ${objective || 'Code Task'}.\nDiagnostics passed with zero breaking regressions.`,
+    return res.status(503).json({
+      status: 'blocked',
+      error: 'This step requires a connected reasoning provider or an explicit executable command. No analysis was simulated.',
+      objective: objective || null,
+      stepTitle: step?.title || null,
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Agent step execution failed' });
@@ -1381,14 +1339,11 @@ app.post('/api/studio/generate', async (req, res) => {
   const modelId = modelConfig.modelId || 'gemini-3.8-flash';
   const provider = modelConfig.provider || 'gemini';
   const customKey = modelConfig.apiKey;
-  const systemInstruction = settings.systemInstruction || 
-    `You are the Google AI Studio Code Engine for Supru. The user is asking to build or modify code. 
-Return complete, working, interactive code inside a single standard markdown code block:
-\`\`\`${language}
-... code here ...
-\`\`\`
-Followed by a concise, friendly summary of what was built or changed.
-If the language is HTML, create a single self-contained document with HTML5, CSS (you can use Tailwind CSS via https://cdn.tailwindcss.com), and JavaScript that runs smoothly in an iframe sandbox without external asset loading issues. Make the UI modern, dark-themed, responsive, animated, and bug-free.`;
+  const systemInstruction = (settings.systemInstruction ||
+    `You are the Supru AI Studio code generation engine. Build or modify code as requested.
+Return complete, working code in a markdown code block using ${language}, followed by a concise summary.
+For HTML, return a self-contained HTML5 document with CSS and JavaScript suitable for iframe preview.`) +
+    '\\n\\nLanguage policy: Understand Malayalam and English input, but write all explanations, generated text, labels, and code comments in English unless the user explicitly requests another output language.';
 
   // 1. Try Google Gemini API if provider is gemini and key exists
   if (provider === 'gemini') {
@@ -1482,14 +1437,13 @@ If the language is HTML, create a single self-contained document with HTML5, CSS
     }
   }
 
-  // 3. High quality built-in code synthesis fallback engine
-  const synthesized = synthesizeCreativeCode(prompt, currentCode, language);
-  return res.json({
-    code: synthesized.code,
-    explanation: synthesized.explanation,
-    model: modelId,
+  const credentialsConfigured = Boolean(customKey || apiKey) && (customKey || apiKey) !== 'MY_GEMINI_API_KEY';
+  return res.status(credentialsConfigured ? 502 : 503).json({
+    error: credentialsConfigured
+      ? 'The selected provider failed to generate code. Check the provider response and connection.'
+      : 'No AI provider credentials are configured. Connect a model before generating code.',
     provider,
-    isSynthesized: true,
+    model: modelId,
   });
 });
 
@@ -1521,11 +1475,11 @@ ${currentCode.slice(0, 16000)}
 \`\`\`
 
 Guidelines:
-1. Answer the developer's questions clearly, concisely, and accurately.
-2. If providing code updates, fixes, or new features, always include the code in a standard markdown fence: \`\`\`${language} ... \`\`\`.
-3. If recommending a full file replacement or substantial patch, provide clean, production-ready code with no placeholders.
-4. When explaining bugs or runtime errors, pinpoint the exact issue and propose the clean solution.
-5. Always speak directly to the developer inside Supru Code.`;
+1. Answer clearly, concisely, and accurately.
+2. Provide complete code in a standard markdown fence when asked to change code.
+3. Prefer production-ready code and state assumptions.
+4. Explain bugs and runtime errors precisely.
+5. Write explanations, UI text, and code comments in English, even when the user speaks Malayalam, unless another output language is explicitly requested.`;
 
   // 1. Google Gemini API
   if (provider === 'gemini' && activeKey && activeKey !== 'MY_GEMINI_API_KEY') {
@@ -1590,7 +1544,7 @@ Guidelines:
           messages: [
             { role: 'system', content: systemInstruction },
             ...messages.map((m: any) => ({
-              role: m.role === 'assistant' ? 'assistant' : 'user',
+              role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
               content: m.content || m.text || '',
             })),
           ],
@@ -1614,15 +1568,12 @@ Guidelines:
     }
   }
 
-  // 3. Fallback intelligent response for Supru Code
-  const lastUserMsg = messages[messages.length - 1]?.content || '';
-  const fallback = generateCopilotFallback(lastUserMsg, currentCode, fileName, language);
-  return res.json({
-    reply: fallback.reply,
-    code: fallback.code || null,
-    model: modelId,
+  return res.status(activeKey && activeKey !== 'MY_GEMINI_API_KEY' ? 502 : 503).json({
+    error: activeKey && activeKey !== 'MY_GEMINI_API_KEY'
+      ? 'The selected AI provider failed. No generated answer or code was substituted.'
+      : 'No AI provider credentials are configured. Connect a model before using Supru Code Copilot.',
     provider,
-    isFallback: true,
+    model: modelId,
   });
 });
 

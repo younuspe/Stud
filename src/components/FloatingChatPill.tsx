@@ -54,6 +54,7 @@ export const FloatingChatPill: React.FC<FloatingChatPillProps> = ({
   activeModelName = 'Gemini 3.8 Flash',
 }) => {
   const [input, setInput] = useState('');
+  const [voiceLanguage, setVoiceLanguage] = useState<'en-US' | 'ml-IN'>('en-US');
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
@@ -71,7 +72,7 @@ export const FloatingChatPill: React.FC<FloatingChatPillProps> = ({
     stopListening,
     applyQuickPrompt,
     quickPrompts,
-  } = useSpeechListener();
+  } = useSpeechListener({ language: voiceLanguage });
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -531,6 +532,20 @@ export const FloatingChatPill: React.FC<FloatingChatPillProps> = ({
             <span className="hidden md:inline text-[10px]">Clear</span>
           </button>
         )}
+
+        {/* Speech locale selector: browser recognition supports one locale per listener. */}
+        <button
+          type="button"
+          onClick={() => {
+            if (isRecording) stopListening();
+            setVoiceLanguage((current) => current === 'en-US' ? 'ml-IN' : 'en-US');
+          }}
+          className="rounded-lg border border-white/10 px-2 py-1 text-[10px] font-semibold text-gray-300 hover:bg-white/[0.08]"
+          title="Switch speech recognition language. AI responses remain in English."
+          aria-label={voiceLanguage === 'en-US' ? 'Speech language English. Switch to Malayalam' : 'Speech language Malayalam. Switch to English'}
+        >
+          {voiceLanguage === 'en-US' ? 'EN' : 'മലയാളം'}
+        </button>
 
         {/* 5. CRYSTAL-CLEAR VOICE INPUT BUTTON */}
         <button

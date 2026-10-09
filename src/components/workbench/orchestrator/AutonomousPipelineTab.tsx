@@ -32,7 +32,6 @@ import {
 import {
   PRESET_AUTONOMOUS_PIPELINES,
   AVAILABLE_ORCHESTRATOR_MODELS,
-  executeOrchestratorTool
 } from '../../../utils/orchestratorPipelines';
 import { soundFx } from '../../../utils/audio';
 
@@ -47,7 +46,27 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
   onSendToChat,
   onTriggerHunter
 }) => {
-  const [pipelines, setPipelines] = useState<AutonomousWorkflowPipeline[]>(PRESET_AUTONOMOUS_PIPELINES);
+  const [pipelines, setPipelines] = useState<AutonomousWorkflowPipeline[]>(() =>
+    PRESET_AUTONOMOUS_PIPELINES.map((pipeline) => ({
+      ...pipeline,
+      executionStatus: 'idle',
+      totalDurationMs: 0,
+      totalTokensUsed: 0,
+      totalTokensSaved: 0,
+      toolCallsExecuted: 0,
+      selfHealingTriggered: 0,
+      invarianceScore: 0,
+      nodes: pipeline.nodes.map((node) => ({
+        ...node,
+        status: 'idle',
+        toolResult: undefined,
+        durationMs: 0,
+        tokensUsed: 0,
+        outputData: undefined,
+        invarianceProof: 'Not run',
+      })),
+    }))
+  );
   const [activePipelineId, setActivePipelineId] = useState<string>(PRESET_AUTONOMOUS_PIPELINES[0].id);
   const [isAutonomousRunning, setIsAutonomousRunning] = useState<boolean>(false);
   const [runningNodeId, setRunningNodeId] = useState<string | null>(null);
@@ -87,138 +106,121 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
     );
   };
 
-  // Run single node tool calling
-  const handleRunSingleNode = (node: WorkflowPipelineNode) => {
+  // Run only real, explicitly supported local checks. Never synthesize tool output.
+  const executeRealTool = async (tool: OrchestratorToolName) => {
+    const commands: Partial<Record<OrchestratorToolName, string>> = {
+      linter: 'npm run lint',
+      type_checker: 'npm run lint',
+      git_diff: 'git diff --stat',
+      package_manager: 'npm ls --depth=0',
+    };
+    const command = commands[tool];
+    if (!command) {
+      return {
+        output: `Tool "${tool}" is not implemented yet. No command was run.`,
+        status: 'warning' as const,
+        durationMs: 0,
+        invarianceProof: 'Not verified',
+      };
+    }
+    const started = Date.now();
+    try {
+      const response = await fetch('/api/terminal/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `Execution service returned HTTP ${response.status}`);
+      const exitCode = Number(result.exitCode);
+      return {
+        output: `$ ${command}\n${result.output || '(no output)'}\nExit code: ${exitCode}`,
+        status: exitCode === 0 ? 'success' as const : 'error' as const,
+        durationMs: Number(result.durationMs) || Date.now() - started,
+        invarianceProof: exitCode === 0 ? 'Command exit code 0; no formal proof performed' : 'Not verified',
+      };
+    } catch (error) {
+      return {
+        output: `Could not execute "${tool}": ${error instanceof Error ? error.message : String(error)}`,
+        status: 'error' as const,
+        durationMs: Date.now() - started,
+        invarianceProof: 'Not verified',
+      };
+    }
+  };
+
+  const handleRunSingleNode = async (node: WorkflowPipelineNode) => {
+    if (runningNodeId || isAutonomousRunning) return;
     soundFx.playClick();
     setRunningNodeId(node.id);
-
-    setTimeout(() => {
-      const toolToUse = node.toolToCall || 'ast_parser';
-      const result = executeOrchestratorTool(toolToUse, node.toolArgs);
-
-      setPipelines((prev) =>
-        prev.map((pipe) => {
-          if (pipe.id !== activePipeline.id) return pipe;
-          return {
-            ...pipe,
-            nodes: pipe.nodes.map((n) => {
-              if (n.id !== node.id) return n;
-              return {
-                ...n,
-                status: 'completed',
-                toolResult: result.output,
-                durationMs: result.durationMs,
-                invarianceProof: result.invarianceProof,
-                outputData: `Generated verified artifact: [${node.name}] successfully validated.`
-              };
-            })
-          };
-        })
-      );
-
-      setRunningNodeId(null);
-      soundFx.playChime();
-    }, 700);
+    setPipelines((prev) => prev.map((pipe) => pipe.id !== activePipeline.id ? pipe : ({
+      ...pipe,
+      nodes: pipe.nodes.map((item) => item.id === node.id ? { ...item, status: 'running' } : item),
+    })));
+    const result = await executeRealTool(node.toolToCall || 'ast_parser');
+    setPipelines((prev) => prev.map((pipe) => pipe.id !== activePipeline.id ? pipe : ({
+      ...pipe,
+      executionStatus: result.status === 'success' ? pipe.executionStatus : 'failed',
+      nodes: pipe.nodes.map((item) => item.id !== node.id ? item : {
+        ...item,
+        status: result.status === 'success' ? 'completed' : 'failed',
+        toolResult: result.output,
+        durationMs: result.durationMs,
+        invarianceProof: result.invarianceProof,
+        outputData: undefined,
+      }),
+    })));
+    setRunningNodeId(null);
+    if (result.status === 'success') soundFx.playChime();
   };
 
-  // Master Run Entire Autonomous Pipeline
-  const handleRunAutonomousPipeline = () => {
+  // Sequential execution stops at the first unavailable tool or failed command.
+  const handleRunAutonomousPipeline = async () => {
+    if (isAutonomousRunning || runningNodeId) return;
     soundFx.playClick();
     setIsAutonomousRunning(true);
-
-    const nodesToExecute = activePipeline.nodes;
-    let currentIndex = 0;
-
-    const executeNext = () => {
-      if (currentIndex >= nodesToExecute.length) {
-        setIsAutonomousRunning(false);
-        setRunningNodeId(null);
-        soundFx.playChime();
-        return;
+    const started = Date.now();
+    let allSucceeded = true;
+    for (const node of activePipeline.nodes) {
+      setRunningNodeId(node.id);
+      setPipelines((prev) => prev.map((pipe) => pipe.id !== activePipeline.id ? pipe : ({
+        ...pipe,
+        executionStatus: 'running',
+        nodes: pipe.nodes.map((item) => item.id === node.id ? { ...item, status: 'running' } : item),
+      })));
+      const result = await executeRealTool(node.toolToCall || 'ast_parser');
+      setPipelines((prev) => prev.map((pipe) => pipe.id !== activePipeline.id ? pipe : ({
+        ...pipe,
+        nodes: pipe.nodes.map((item) => item.id !== node.id ? item : {
+          ...item,
+          status: result.status === 'success' ? 'completed' : 'failed',
+          toolResult: result.output,
+          durationMs: result.durationMs,
+          invarianceProof: result.invarianceProof,
+          outputData: undefined,
+        }),
+        toolCallsExecuted: pipe.toolCallsExecuted + 1,
+        totalDurationMs: Date.now() - started,
+      })));
+      if (result.status !== 'success') {
+        allSucceeded = false;
+        break;
       }
-
-      const currentNode = nodesToExecute[currentIndex];
-      setRunningNodeId(currentNode.id);
-
-      setTimeout(() => {
-        const toolToUse = currentNode.toolToCall || 'ast_parser';
-        const result = executeOrchestratorTool(toolToUse, currentNode.toolArgs);
-
-        setPipelines((prev) =>
-          prev.map((pipe) => {
-            if (pipe.id !== activePipeline.id) return pipe;
-            return {
-              ...pipe,
-              executionStatus: 'running',
-              nodes: pipe.nodes.map((n) => {
-                if (n.id !== currentNode.id) return n;
-                return {
-                  ...n,
-                  status: 'completed',
-                  toolResult: result.output,
-                  durationMs: result.durationMs,
-                  invarianceProof: result.invarianceProof
-                };
-              })
-            };
-          })
-        );
-
-        currentIndex++;
-        executeNext();
-      }, 850);
-    };
-
-    executeNext();
+    }
+    setPipelines((prev) => prev.map((pipe) => pipe.id !== activePipeline.id ? pipe : ({
+      ...pipe,
+      executionStatus: allSucceeded ? 'completed' : 'failed',
+      totalDurationMs: Date.now() - started,
+    })));
+    setRunningNodeId(null);
+    setIsAutonomousRunning(false);
+    if (allSucceeded) soundFx.playChime();
   };
 
-  // Self-Healing Simulation Trigger
+  // Self-healing requires a real failure detector and recovery executor; do not simulate one.
   const handleTriggerSelfHealing = () => {
     soundFx.playClick();
-    if (activePipeline.nodes.length < 2) return;
-
-    // Fail node 1, then heal it with higher reasoning Oracle model + Z3 SMT prover
-    const targetNode = activePipeline.nodes[1];
-    setRunningNodeId(targetNode.id);
-
-    setPipelines((prev) =>
-      prev.map((pipe) => {
-        if (pipe.id !== activePipeline.id) return pipe;
-        return {
-          ...pipe,
-          nodes: pipe.nodes.map((n) => (n.id === targetNode.id ? { ...n, status: 'failed' } : n))
-        };
-      })
-    );
-
-    setTimeout(() => {
-      soundFx.playChime();
-      const z3Proof = executeOrchestratorTool('smt_prover', {
-        formula: 'forall e in ErrorState: AutoRemediate(e) == true'
-      });
-
-      setPipelines((prev) =>
-        prev.map((pipe) => {
-          if (pipe.id !== activePipeline.id) return pipe;
-          return {
-            ...pipe,
-            selfHealingTriggered: pipe.selfHealingTriggered + 1,
-            nodes: pipe.nodes.map((n) => {
-              if (n.id !== targetNode.id) return n;
-              return {
-                ...n,
-                status: 'healed',
-                modelId: 'Gemini 2.5 Pro (The Oracle - Auto Healed)',
-                modelRole: 'oracle',
-                toolResult: `⚡ Self-Healing Event Triggered:\n1. Detected anomaly in static sound boundary.\n2. Rerouted from local SLM to Gemini 2.5 Pro.\n3. Verified with Z3 SMT Theorem Prover:\n${z3Proof.output}`,
-                invarianceProof: 'Self-Healed Invariance: 100% RESTORED via SMT solver'
-              };
-            })
-          };
-        })
-      );
-      setRunningNodeId(null);
-    }, 1200);
+    setQuickToolOutput('Self-healing is not connected to a real failure detector and recovery executor yet. No pipeline state was changed.');
   };
 
   // Reset current pipeline
@@ -234,10 +236,21 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
         p.id === original.id
           ? {
               ...original,
+              executionStatus: 'idle',
+              totalDurationMs: 0,
+              totalTokensUsed: 0,
+              totalTokensSaved: 0,
+              toolCallsExecuted: 0,
+              selfHealingTriggered: 0,
+              invarianceScore: 0,
               nodes: original.nodes.map((n) => ({
                 ...n,
                 status: 'idle',
-                toolResult: undefined
+                toolResult: undefined,
+                durationMs: 0,
+                tokensUsed: 0,
+                outputData: undefined,
+                invarianceProof: 'Not run',
               }))
             }
           : p
@@ -245,18 +258,15 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
     );
   };
 
-  // Direct tool execution in quick facility
-  const handleQuickExecuteTool = (tool: OrchestratorToolName) => {
+  // Direct tool execution uses the same real executor as pipeline nodes.
+  const handleQuickExecuteTool = async (tool: OrchestratorToolName) => {
     soundFx.playClick();
     setSelectedToolForQuickCall(tool);
     setQuickToolLoading(true);
-
-    setTimeout(() => {
-      const res = executeOrchestratorTool(tool);
-      setQuickToolOutput(`${res.output}\n\nInvariance Check: ${res.invarianceProof}`);
-      setQuickToolLoading(false);
-      soundFx.playChime();
-    }, 450);
+    const result = await executeRealTool(tool);
+    setQuickToolOutput(`${result.output}\n\nVerification: ${result.invarianceProof}`);
+    setQuickToolLoading(false);
+    if (result.status === 'success') soundFx.playChime();
   };
 
   return (
@@ -378,8 +388,8 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
           <div className="flex items-center gap-2 rounded-lg bg-[#141420] px-2.5 py-1.5 border border-white/[0.04]">
             <Cpu size={14} className="text-sky-400" />
             <div>
-              <div className="text-[10px] text-gray-400">Coordinated Models</div>
-              <div className="font-bold text-white font-mono">{activePipeline.activeModelCount} Sovereign Models</div>
+              <div className="text-[10px] text-gray-400">Configured Agent Slots</div>
+              <div className="font-bold text-white font-mono">{activePipeline.activeModelCount} planned roles</div>
             </div>
           </div>
 

@@ -28,7 +28,8 @@ import {
   ChevronRight,
   Eye,
   Camera,
-  Cpu
+  Cpu,
+  Monitor
 } from 'lucide-react';
 import { soundFx } from '../../utils/audio';
 import { useSpeechListener } from '../../utils/useSpeechListener';
@@ -41,11 +42,11 @@ interface SupruGenerativeStudioViewProps {
   onOpenVeoStudio?: (imageUrl?: string) => void;
 }
 
-export type GenerativeMode = 'visual' | 'motion' | 'world3d' | 'atomic' | 'audio';
+export type GenerativeMode = 'visual' | 'motion' | 'world3d' | 'atomic' | 'app' | 'audio';
 
 interface ManifestedArtifact {
   id: string;
-  type: 'image' | 'video' | 'world-state' | 'component' | 'audio';
+  type: 'image' | 'video' | 'world-state' | 'component' | 'app' | 'audio';
   title: string;
   prompt: string;
   dataUrl?: string;
@@ -93,12 +94,15 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   const [selectedStyle, setSelectedStyle] = useState('sovereign-dark');
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('16:9');
   const [isSynthesizing, setIsSynthesizing] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const [guidanceScale, setGuidanceScale] = useState(7.5);
   const [refractiveIndex, setRefractiveIndex] = useState(1.42);
   const [emotionalFrequency, setEmotionalFrequency] = useState(432); // Hz
   const [seed, setSeed] = useState(42069);
   const [currentResultImage, setCurrentResultImage] = useState<string | null>(null);
   const [currentResultVideo, setCurrentResultVideo] = useState<string | null>(null);
+  const [currentResultApp, setCurrentResultApp] = useState<string | null>(null);
+  const [appGenerationSummary, setAppGenerationSummary] = useState<string | null>(null);
   const [manifestedArtifacts, setManifestedArtifacts] = useState<ManifestedArtifact[]>([
     {
       id: 'art-1',
@@ -130,6 +134,16 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     voiceNotice,
     setVoiceNotice,
   } = useSpeechListener();
+
+  // Keep the floating pill connected to this studio without navigating away.
+  useEffect(() => {
+    const handleWorkspacePrompt = (event: Event) => {
+      const detail = (event as CustomEvent<{ text?: string }>).detail;
+      if (detail?.text) setPrompt(detail.text);
+    };
+    window.addEventListener('supru-generative-prompt', handleWorkspacePrompt);
+    return () => window.removeEventListener('supru-generative-prompt', handleWorkspacePrompt);
+  }, []);
 
   // Handle Speech dictation
   const toggleSpeech = () => {
@@ -338,6 +352,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     if (!prompt.trim() || isSynthesizing) return;
     soundFx.playChime();
     setIsSynthesizing(true);
+    setGenerationError(null);
 
     try {
       if (activeMode === 'visual') {
@@ -368,8 +383,8 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
             soundFx.playChime();
           }
         } else {
-          // Synthetic high-res fallback
-          setCurrentResultImage('/cat_icon.png');
+          const message = await res.text().catch(() => '');
+          setGenerationError(`Image generation failed (${res.status}). ${message.slice(0, 240)}`.trim());
         }
       } else if (activeMode === 'motion') {
         // Trigger Veo Video API
@@ -385,10 +400,72 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           const data = await res.json();
           if (data.videoUrl) {
             setCurrentResultVideo(data.videoUrl);
+          } else {
+            setGenerationError(data.error || 'Video service returned no video URL.');
           }
+        } else {
+          const message = await res.text().catch(() => '');
+          setGenerationError(`Video generation failed (${res.status}). ${message.slice(0, 240)}`.trim());
         }
+      } else if (activeMode === 'app') {
+        const appPrompt = [
+          'Create a complete, usable web application from the following user specification.',
+          'Return a complete self-contained HTML5 document with embedded CSS and JavaScript.',
+          'Implement the real interactions described; do not use placeholder buttons or fake success states.',
+          'Use accessible semantic markup, responsive layout, input validation, and visible error/empty states.',
+          'Do not require external dependencies unless explicitly requested.',
+          'The generated source will be shown in a sandboxed iframe and opened in an editor only on user action.',
+          '',
+          'Application specification:',
+          prompt,
+        ].join('\n');
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 90000);
+        try {
+          const res = await fetch('/api/studio/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
+            body: JSON.stringify({
+              prompt: appPrompt,
+              currentCode: currentResultApp || '',
+              language: 'html',
+              settings: {
+                systemInstruction: 'You are Supru Generative Studio App Builder. Generate complete, functional, self-contained HTML/CSS/JavaScript applications. Output source code only, preferably a full HTML document. Never claim execution or tests occurred. Do not include secret credentials. Implement actual UI behavior rather than placeholders.',
+                temperature: 0.3,
+                maxOutputTokens: 4096,
+              },
+            }),
+          });
+          if (!res.ok) {
+            const message = await res.text().catch(() => '');
+            throw new Error(`App generation failed (${res.status}). ${message.slice(0, 240)}`.trim());
+          }
+          const data = await res.json();
+          const generatedCode = typeof data.code === 'string' ? data.code.trim() : '';
+          if (!generatedCode || generatedCode === currentResultApp) {
+            throw new Error(data.error || 'The generation service did not return new application source code.');
+          }
+          setCurrentResultApp(generatedCode);
+          setAppGenerationSummary(typeof data.explanation === 'string' ? data.explanation : 'Application source generated. Run checks before treating it as verified.');
+          setManifestedArtifacts((prev) => [{
+            id: `app-${Date.now()}`,
+            type: 'app',
+            title: prompt.slice(0, 36) || 'Generated App',
+            prompt,
+            codeSnippet: generatedCode,
+            timestamp: Date.now(),
+            metadata: { language: 'html', provider: data.provider || 'configured-studio-provider', model: data.model || 'unknown' },
+          }, ...prev]);
+        } finally {
+          window.clearTimeout(timeout);
+        }
+      } else {
+        setGenerationError(`The ${activeMode} mode currently provides a local interactive preview; it does not call a generation model yet.`);
       }
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setGenerationError(`Generation failed: ${message}`);
       console.error('Genesis Manifestation error:', err);
     } finally {
       setIsSynthesizing(false);
@@ -414,6 +491,14 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[#050508] text-gray-200 select-none">
+      {generationError && (
+        <div role="alert" className="mx-4 mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+          <div className="flex items-start justify-between gap-3">
+            <span>{generationError}</span>
+            <button type="button" onClick={() => setGenerationError(null)} className="shrink-0 text-rose-300 hover:text-white" aria-label="Dismiss generation error">×</button>
+          </div>
+        </div>
+      )}
       {/* =========================================================================
           TOP BAR: SUPRU GENERATIVE STUDIO IDENTITY & MODE SELECTOR
           ========================================================================= */}
@@ -502,6 +587,21 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           >
             <Code2 size={13} />
             <span>Atomic UI</span>
+          </button>
+
+          <button
+            onClick={() => {
+              soundFx.playClick();
+              setActiveMode('app');
+            }}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+              activeMode === 'app'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md'
+                : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
+            }`}
+          >
+            <Monitor size={13} />
+            <span>App Builder</span>
           </button>
 
           <button
@@ -824,6 +924,63 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
               </div>
             )}
 
+            {/* APPLICATION BUILDER: GENERATED SOURCE + SANDBOXED PREVIEW */}
+            {activeMode === 'app' && (
+              <div className="w-full h-full min-h-[420px] flex flex-col gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2">
+                  <div className="flex items-center gap-2 text-xs">
+                    <Monitor size={14} className="text-emerald-300" />
+                    <span className="font-bold text-white">Application Preview</span>
+                    <span className="text-gray-400">HTML / CSS / JavaScript</span>
+                  </div>
+                  <div className="flex gap-2">
+                    {currentResultApp && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundFx.playClick();
+                          navigator.clipboard.writeText(currentResultApp);
+                          setCopiedCode(true);
+                          window.setTimeout(() => setCopiedCode(false), 2000);
+                        }}
+                        className="rounded-lg border border-white/10 px-2.5 py-1 text-[11px] text-gray-300 hover:text-white"
+                      >
+                        {copiedCode ? 'Copied' : 'Copy source'}
+                      </button>
+                    )}
+                    {currentResultApp && onOpenInEditor && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenInEditor('generated-app.html', currentResultApp)}
+                        className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20"
+                      >
+                        Open source in editor
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {appGenerationSummary && (
+                  <p className="text-xs text-gray-400">{appGenerationSummary} Generated code has not been tested automatically.</p>
+                )}
+                {currentResultApp ? (
+                  <iframe
+                    title="Generated application sandbox preview"
+                    srcDoc={currentResultApp}
+                    sandbox="allow-scripts"
+                    referrerPolicy="no-referrer"
+                    className="min-h-[360px] flex-1 w-full rounded-xl border border-white/10 bg-white"
+                  />
+                ) : (
+                  <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-emerald-500/25 bg-black/20 p-8 text-center">
+                    <Monitor size={30} className="mb-3 text-emerald-300" />
+                    <h3 className="mb-2 text-lg font-bold text-white">Build an Application</h3>
+                    <p className="mb-4 max-w-md text-xs leading-relaxed text-gray-400">Describe the app you want in the prompt panel, then generate a real editable HTML/CSS/JavaScript artifact with a sandboxed preview.</p>
+                    <button type="button" onClick={handleManifest} disabled={isSynthesizing || !prompt.trim()} className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-xs font-bold text-emerald-200 disabled:opacity-50">Generate application</button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* 2. 4D MOTION MODE (Veo 3.1) */}
             {activeMode === 'motion' && (
               <div className="w-full h-full flex flex-col items-center justify-center max-w-4xl">
@@ -963,9 +1120,13 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                     key={art.id}
                     onClick={() => {
                       soundFx.playClick();
-                      if (art.dataUrl) {
+                      if (art.dataUrl && art.type === 'image') {
                         setCurrentResultImage(art.dataUrl);
                         setActiveMode('visual');
+                      }
+                      if (art.codeSnippet && art.type === 'app') {
+                        setCurrentResultApp(art.codeSnippet);
+                        setActiveMode('app');
                       }
                       setPrompt(art.prompt);
                     }}

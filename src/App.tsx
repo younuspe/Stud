@@ -603,7 +603,7 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           signal: abortControllerRef.current.signal,
           body: JSON.stringify({
-            messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
+            messages: [{ role: 'system', content: "Always write responses in English, even when the user speaks Malayalam. Understand the user's language, but do not answer in Malayalam unless the user explicitly asks for Malayalam output." }, ...updatedMessages.map((m) => ({ role: m.role, content: m.content }))],
             provider: isLocal ? (activeCustomModel.provider === 'ollama' ? 'ollama_local' : 'lmstudio_local') : activeCustomModel.provider,
             endpointUrl: activeCustomModel.endpointUrl || (activeCustomModel.provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234/v1'),
             modelName: activeCustomModel.modelId,
@@ -613,7 +613,9 @@ export default function App() {
         });
 
         const modelData = await modelRes.json();
-        const reply = modelData.reply || `Response from ${activeCustomModel.name}`;
+        if (!modelRes.ok || modelData.error) throw new Error(modelData.error || `Model request failed (HTTP ${modelRes.status})`);
+        const reply = modelData.reply;
+        if (typeof reply !== 'string' || !reply.trim()) throw new Error('The selected model returned an empty response.');
 
         setThreads((prev) =>
           prev.map((t) =>
@@ -645,7 +647,9 @@ export default function App() {
         });
 
         const localData = await localRes.json();
-        const reply = localData.reply || `Response from local model (${localConfig.modelName})`;
+        if (!localRes.ok || localData.error) throw new Error(localData.error || `Model request failed (HTTP ${localRes.status})`);
+        const reply = localData.reply;
+        if (typeof reply !== 'string' || !reply.trim()) throw new Error('The selected model returned an empty response.');
 
         setThreads((prev) =>
           prev.map((t) =>
@@ -701,6 +705,7 @@ export default function App() {
           if (trimmed.startsWith('data: ')) {
             try {
               const data = JSON.parse(trimmed.replace(/^data:\s*/, ''));
+              if (data.error) data.chunk = `AI request failed: ${data.error}`;
               if (data.chunk) {
                 accumulated += data.chunk;
                 setThreads((prev) =>
@@ -758,9 +763,7 @@ export default function App() {
                     m.id === assistantMsgId
                       ? {
                           ...m,
-                          content:
-                            m.content ||
-                            `*Purrs gently* 🐾 I encountered a brief neural flicker, but I'm ready to continue our journey! Try submitting your prompt once more.`,
+                          content: `${m.content ? m.content + '\n\n' : ''}Request failed: ${err.message || 'Unknown error'}`,
                           isStreaming: false,
                         }
                       : m
@@ -1151,17 +1154,43 @@ export default function App() {
       />
 
       {/* Universal Floating Chat Pill (Can move across any tab, link Supru Code, open any ecosystem tool) */}
-      {!(workspaceView === 'chat' && activeMessages.length === 0) && (
+      {(
         <FloatingChatPill
           onSendMessage={(text, attachment) => {
-            if (workspaceView === 'editor') {
-              // User is chatting in Supru Code -> Send directly to Supru Code Copilot! Never redirect to chat!
-              setExternalEditorPrompt({ id: `prompt-${Date.now()}`, text });
-              return;
-            }
-            handleSendMessage(text, attachment);
-            if (workspaceView !== 'chat') {
-              setWorkspaceView('chat');
+            // The floating pill is a persistent, workspace-aware command bar.
+            // Sending from a tool must never change the selected workspace.
+            switch (workspaceView) {
+              case 'editor':
+                setExternalEditorPrompt({ id: `prompt-${Date.now()}`, text });
+                return;
+              case 'generative':
+                window.dispatchEvent(new CustomEvent('supru-generative-prompt', {
+                  detail: { text, attachment },
+                }));
+                return;
+              case 'agent':
+                handleTriggerAgent(text);
+                return;
+              case 'terminal':
+                window.dispatchEvent(new CustomEvent('supru-run-terminal-command', {
+                  detail: text,
+                }));
+                return;
+              case 'orchestrator':
+                window.dispatchEvent(new CustomEvent('supru-orchestrator-prompt', {
+                  detail: text,
+                }));
+                return;
+              case 'chat':
+                void handleSendMessage(text, attachment);
+                return;
+              default:
+                // Unsupported workspace: keep the user's context rather than silently
+                // throwing them back into Chat. The user can explicitly switch tabs.
+                window.dispatchEvent(new CustomEvent('supru-workspace-prompt', {
+                  detail: { workspace: workspaceView, text, attachment },
+                }));
+                return;
             }
           }}
           isGenerating={isGenerating}

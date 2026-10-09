@@ -7,7 +7,7 @@
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:3000",
-    "frontendDist": "../dist"
+    "frontendDist": "dist"
   },
   "app": {
     "windows": [
@@ -19,9 +19,9 @@
         "minHeight": 768,
         "resizable": true,
         "fullscreen": false,
-        "decorations": false,
-        "transparent": true,
-        "visible": false,
+        "decorations": true,
+        "transparent": false,
+        "visible": true,
         "label": "main"
       }
     ],
@@ -33,40 +33,30 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "../public/favicon.ico",
-      "../public/favicon.png",
-      "../public/apple-touch-icon.png"
+      "public/AppIcon.icns"
     ],
     "resources": [
-      "../server.ts"
+      "server.ts"
     ],
     "externalBin": [],
     "macOS": {
-      "minimumSystemVersion": "10.15",
-      "entitlements": "../entitlements.plist",
-      "signingIdentity": "Developer ID Application: Your Name (TEAM_ID)",
-      "providerShortName": "YourProviderShortName",
-      "certificate": "Developer ID Application: Your Name (TEAM_ID)",
+      "minimumSystemVersion": "11.0",
+      "entitlements": "entitlements.plist",
       "exceptionDomain": "",
-      "frameworks": [],
-      "provider": "short-name"
+      "frameworks": []
     },
     "windows": {
-      "certificateThumbprint": "YOUR_CERTIFICATE_THUMBPRINT",
       "digestAlgorithm": "sha256",
       "timestampUrl": "http://timestamp.digicert.com",
-      "webviewInstallMode": "downloadBootstrapper",
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
       "allowDowngrades": true,
       "nsis": {
-        "installerIcon": "../public/favicon.ico",
-        "installerHeaderIcon": "../public/favicon.ico",
-        "script": "installer.nsh"
+        "installerIcon": "public/favicon.ico"
       }
     },
     "linux": {
-      "appImage": {
-        "bundleMediaFramework": true
-      },
       "deb": {
         "depends": [
           "libgtk-3-0",
@@ -74,47 +64,15 @@
           "libayatana-appindicator3-1",
           "librsvg2-common"
         ]
-      },
-      "snap": {
-        "confinement": "strict",
-        "plugs": [
-          "network",
-          "network-bind",
-          "home",
-          "removable-media",
-          "gsettings",
-          "cups-control",
-          "audio-playback",
-          "audio-record"
-        ]
       }
     }
   },
   "plugins": {
     "fs": {
-      "scope": {
-        "allow": [
-          "$APPDATA/supru/**",
-          "$HOME/.supru/**",
-          "$RESOURCE/**"
-        ]
-      }
-    },
-    "shell": {
-      "scope": {
-        "allow": [
-          "cargo *",
-          "npm *",
-          "node *",
-          "git *",
-          "python *",
-          "rustc *",
-          "tauri *"
-        ]
-      }
+      "requireLiteralLeadingDot": false
     },
     "updater": {
-      "active": true,
+      "active": false,
       "endpoints": [
         "https://releases.supru.ai/{{target}}/{{current_version}}"
       ],
