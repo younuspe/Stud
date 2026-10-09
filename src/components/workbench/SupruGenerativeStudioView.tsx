@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { 
   Sparkles, 
   Wand2, 
@@ -35,6 +36,7 @@ import { soundFx } from '../../utils/audio';
 import { useSpeechListener } from '../../utils/useSpeechListener';
 
 interface SupruGenerativeStudioViewProps {
+  localConfig: import('../../types/workbench').LocalHostConfig;
   onSendToChat?: (content: string, imageUrl?: string) => void;
   onOpenInEditor?: (fileName: string, content: string) => void;
   onRunInTerminal?: (cmd: string) => void;
@@ -83,6 +85,7 @@ const PROMPT_SUGGESTIONS = [
 ];
 
 export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps> = ({
+  localConfig,
   onSendToChat,
   onOpenInEditor,
   onRunInTerminal,
@@ -103,16 +106,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   const [currentResultVideo, setCurrentResultVideo] = useState<string | null>(null);
   const [currentResultApp, setCurrentResultApp] = useState<string | null>(null);
   const [appGenerationSummary, setAppGenerationSummary] = useState<string | null>(null);
-  const [manifestedArtifacts, setManifestedArtifacts] = useState<ManifestedArtifact[]>([
-    {
-      id: 'art-1',
-      type: 'image',
-      title: 'Sovereign Cyber Cat',
-      prompt: 'A sovereign tuxedo cat with cybernetic amber whiskers perched on a skyscraper overlooking Neo-Shinjuku in volumetric rain',
-      dataUrl: '/cat_icon.png',
-      timestamp: Date.now() - 3600000,
-    },
-  ]);
+  const [manifestedArtifacts, setManifestedArtifacts] = useState<ManifestedArtifact[]>([]);
   const [copiedCode, setCopiedCode] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -419,47 +413,92 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           'Application specification:',
           prompt,
         ].join('\n');
-        const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), 90000);
-        try {
-          const res = await fetch('/api/studio/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              prompt: appPrompt,
-              currentCode: currentResultApp || '',
-              language: 'html',
-              settings: {
-                systemInstruction: 'You are Supru Generative Studio App Builder. Generate complete, functional, self-contained HTML/CSS/JavaScript applications. Output source code only, preferably a full HTML document. Never claim execution or tests occurred. Do not include secret credentials. Implement actual UI behavior rather than placeholders.',
-                temperature: 0.3,
-                maxOutputTokens: 4096,
+        let generatedCode = '';
+        let providerUsed = localConfig.provider;
+        let modelUsed = localConfig.modelName;
+        let explanation = 'Application source generated. It has not been tested automatically.';
+        if (isTauri()) {
+          if (localConfig.provider === 'offline_core') {
+            throw new Error('Offline Core has no generation model yet. Select Ollama, LM Studio, or a configured cloud provider in Provider Settings.');
+          }
+          if (!localConfig.modelName.trim()) {
+            throw new Error('Select a model in Provider Settings before generating an application.');
+          }
+          const provider = localConfig.provider === 'gemini_cloud'
+            ? 'gemini_cloud'
+            : localConfig.provider === 'ollama_local'
+              ? 'ollama'
+              : localConfig.provider === 'lmstudio_local'
+                ? 'lmstudio'
+                : 'custom';
+          const response = await invoke<string>('chat_completion', {
+            provider,
+            endpointUrl: localConfig.endpointUrl,
+            modelName: localConfig.modelName,
+            apiKey: localConfig.apiKey || null,
+            temperature: 0.3,
+            messages: [
+              {
+                role: 'system',
+                content: 'You are Supru Generative Studio App Builder. Return only a complete self-contained HTML5 document with embedded CSS and JavaScript. Implement real interactions from the user specification, accessible responsive layout, validation, and useful empty/error states. No placeholder buttons, fake success states, external dependencies, or secret credentials. Do not claim the app was executed or tested. If revising existing source, return the complete updated document, not a diff.'
               },
-            }),
+              {
+                role: 'user',
+                content: appPrompt + (currentResultApp ? '\n\nExisting source to improve:\n' + currentResultApp : '')
+              }
+            ]
           });
-          if (!res.ok) {
-            const message = await res.text().catch(() => '');
-            throw new Error(`App generation failed (${res.status}). ${message.slice(0, 240)}`.trim());
+          generatedCode = response.trim();
+        } else {
+          const controller = new AbortController();
+          const timeout = window.setTimeout(() => controller.abort(), 90000);
+          try {
+            const res = await fetch('/api/studio/generate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: controller.signal,
+              body: JSON.stringify({
+                prompt: appPrompt,
+                currentCode: currentResultApp || '',
+                language: 'html',
+                settings: {
+                  systemInstruction: 'You are Supru Generative Studio App Builder. Generate complete, functional, self-contained HTML/CSS/JavaScript applications. Output source code only, preferably a full HTML document. Never claim execution or tests occurred. Do not include secret credentials. Implement actual UI behavior rather than placeholders.',
+                  temperature: 0.3,
+                  maxOutputTokens: 4096,
+                },
+              }),
+            });
+            if (!res.ok) {
+              const message = await res.text().catch(() => '');
+              throw new Error(`App generation failed (${res.status}). ${message.slice(0, 240)}`.trim());
+            }
+            const data = await res.json();
+            generatedCode = typeof data.code === 'string' ? data.code.trim() : '';
+            providerUsed = data.provider || providerUsed;
+            modelUsed = data.model || modelUsed;
+            explanation = typeof data.explanation === 'string' ? data.explanation : explanation;
+          } finally {
+            window.clearTimeout(timeout);
           }
-          const data = await res.json();
-          const generatedCode = typeof data.code === 'string' ? data.code.trim() : '';
-          if (!generatedCode || generatedCode === currentResultApp) {
-            throw new Error(data.error || 'The generation service did not return new application source code.');
-          }
-          setCurrentResultApp(generatedCode);
-          setAppGenerationSummary(typeof data.explanation === 'string' ? data.explanation : 'Application source generated. Run checks before treating it as verified.');
-          setManifestedArtifacts((prev) => [{
-            id: `app-${Date.now()}`,
-            type: 'app',
-            title: prompt.slice(0, 36) || 'Generated App',
-            prompt,
-            codeSnippet: generatedCode,
-            timestamp: Date.now(),
-            metadata: { language: 'html', provider: data.provider || 'configured-studio-provider', model: data.model || 'unknown' },
-          }, ...prev]);
-        } finally {
-          window.clearTimeout(timeout);
         }
+        generatedCode = generatedCode.replace(/^\uFEFF/, '').replace(/^\`\`\`(?:html)?\s*/i, '').replace(/\s*\`\`\`$/, '').trim();
+        if (!generatedCode || generatedCode === currentResultApp) {
+          throw new Error('The configured model did not return new application source code. Try a more specific request or a different model.');
+        }
+        if (!/<!doctype\s+html|<html[\s>]/i.test(generatedCode)) {
+          throw new Error('The model response was not a complete HTML document. Nothing was added to the artifacts gallery.');
+        }
+        setCurrentResultApp(generatedCode);
+        setAppGenerationSummary(explanation);
+        setManifestedArtifacts((prev) => [{
+          id: `app-${Date.now()}`,
+          type: 'app',
+          title: prompt.slice(0, 36) || 'Generated App',
+          prompt,
+          codeSnippet: generatedCode,
+          timestamp: Date.now(),
+          metadata: { language: 'html', provider: providerUsed, model: modelUsed || 'unknown' },
+        }, ...prev]);
       } else {
         setGenerationError(`The ${activeMode} mode currently provides a local interactive preview; it does not call a generation model yet.`);
       }
