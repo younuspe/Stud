@@ -70,9 +70,9 @@ export const ConnectExternalModelModal: React.FC<ConnectExternalModelModalProps>
 
     try {
       let data: { status: string; message?: string; latencyMs?: number };
-      if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+      if (isTauri()) {
         const started = performance.now();
-        data = await (await import('@tauri-apps/api/core')).invoke<{ status: string; message: string; models: string[] }>(
+        data = await invoke<{ status: string; message: string; models: string[] }>(
           'test_provider_connection',
           {
             provider: currentSelected.provider,
