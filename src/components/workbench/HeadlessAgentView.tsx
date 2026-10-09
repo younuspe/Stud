@@ -83,8 +83,9 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
   // Pipeline Objective
   const [pipelineObjective, setPipelineObjective] = useState<string>(
-    initialObjective || PRESET_PIPELINE_OBJECTIVES[0]
+    initialObjective || ''
   );
+  const [workspacePath, setWorkspacePath] = useState<string>('');
 
   // Supru Hunter Master State
   const [agents, setAgents] = useState<HunterAgentDefinition[]>(INITIAL_HUNTER_AGENTS);
@@ -312,17 +313,18 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   const handleRunTerminalCommand = async (command: string) => {
     setTerminalLogs((prev) => [...prev, `$ ${command}`]);
     try {
+      if (!workspacePath.trim()) throw new Error('Set the project folder path before running commands.');
       let result: { output: string; exitCode: number; durationMs: number };
       if (isTauri()) {
         result = await invoke<{ output: string; exitCode: number; durationMs: number }>(
           'execute_terminal_command',
-          { command, cwd: null }
+          { command, cwd: workspacePath.trim() || null }
         );
       } else {
         const response = await fetch('/api/terminal/execute', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command }),
+          body: JSON.stringify({ command, cwd: workspacePath.trim() }),
         });
         const data = await response.json();
         if (!response.ok || data.error) {
@@ -416,6 +418,16 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
               <p className="text-[10.5px] text-gray-400">
                 Installable desktop engineering platform • <span className="text-gray-300 font-semibold">Rust is the authority</span> • Evidence-driven verification
               </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <label htmlFor="hunter-workspace-path" className="text-[10px] text-gray-400">Project folder</label>
+                <input
+                  id="hunter-workspace-path"
+                  value={workspacePath}
+                  onChange={(event) => setWorkspacePath(event.target.value)}
+                  placeholder="/Users/yourname/path/to/project"
+                  className="min-w-[260px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-[11px] text-white outline-none focus:border-amber-500/60"
+                />
+              </div>
             </div>
           </div>
 
