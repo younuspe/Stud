@@ -25,14 +25,17 @@ import {
   PROTOCOL_SECTIONS
 } from '../../../skills/sovereignSingularityProtocol';
 import { soundFx } from '../../../utils/audio';
+import { LocalHostConfig } from '../../../types/workbench';
 
 interface SovereignProtocolTabProps {
+  localConfig: LocalHostConfig;
   onSendToChat?: (text: string) => void;
   onOpenInEditor?: (fileName: string, content: string) => void;
   onChangeWorkspaceView?: (view: any) => void;
 }
 
 export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
+  localConfig,
   onSendToChat,
   onOpenInEditor,
   onChangeWorkspaceView
@@ -55,10 +58,10 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
 
   // Self-Evolution state
   const [evolutionStats, setEvolutionStats] = useState({
-    reflectionCycles: 42,
-    aestheticGap: '0.002%',
-    coreMutations: 7,
-    status: 'OPTIMAL'
+    reflectionCycles: 0,
+    aestheticGap: 'Not measured',
+    coreMutations: 0,
+    status: 'NOT RUN'
   });
   const [isMutatingCore, setIsMutatingCore] = useState<boolean>(false);
   const [hasCopiedProtocol, setHasCopiedProtocol] = useState<boolean>(false);
@@ -70,26 +73,46 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
     soundFx.playChime();
   };
 
-  // Run Dreamer / Judge Invariance Test
-  const handleRunDreamerJudgeSplit = () => {
+  // Ask the configured model for a hypothesis, then report the real proof status.
+  // This build has no connected Z3 runner, so the Judge must remain blocked.
+  const handleRunDreamerJudgeSplit = async () => {
     soundFx.playClick();
     setIsEvaluatingInvariance(true);
     setDreamerOutput(null);
-    setJudgeProof(null);
-
-    setTimeout(() => {
-      setDreamerOutput(
-        `[The Dreamer (LLM Hypothesis)]:\nProposes atomic CAS loop: compare_exchange_weak(expected, desired, AcquireRelease).\nData structure guarantees lock-free ring progression for 144fps thread buffers.`
-      );
-
-      setTimeout(() => {
-        setJudgeProof(
-          `[The Judge (Z3 SMT Theorem Prover)]:\nTheorem: forall t in Threads: Safe(t) && NoABARace(t) == true\nSolver: Z3-v4.12 SMT Solved in 68ms.\nVerification Result: SAT (Binary Invariance Mathematically Proven).\nStatus: APPROVED for direct compilation to Zig/Mojo core.`
-        );
-        setIsEvaluatingInvariance(false);
-        soundFx.playChime();
-      }, 700);
-    }, 600);
+    setJudgeProof('BLOCKED: no Z3/SMT proof runner is connected. A model response cannot be treated as a mathematical proof.');
+    try {
+      const response = await fetch('/api/local-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: localConfig.provider,
+          endpointUrl: localConfig.endpointUrl,
+          modelName: localConfig.provider === 'gemini_cloud' ? 'gemini-3.8-flash' : localConfig.modelName,
+          apiKey: localConfig.apiKey,
+          temperature: 0.2,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are the Dreamer role. Propose a concrete engineering hypothesis and explain assumptions, edge cases, and how it could be tested. Do not claim that tests or formal proofs have been executed.',
+            },
+            {
+              role: 'user',
+              content: hypothesisInput,
+            },
+          ],
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) throw new Error(data.error || `Provider request failed (HTTP ${response.status}).`);
+      if (!String(data.reply || '').trim()) throw new Error('The configured provider returned an empty hypothesis.');
+      setDreamerOutput(`[Dreamer — live provider response]\n${data.reply}`);
+      soundFx.playChime();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setDreamerOutput(`[Dreamer — blocked]\nNo hypothesis was generated.\n\n${message}`);
+    } finally {
+      setIsEvaluatingInvariance(false);
+    }
   };
 
   // Morph semantic object in Genesis Protocol
@@ -101,21 +124,15 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
     soundFx.playChime();
   };
 
-  // Trigger Self-Factory Mutation
+  // Core self-modification is intentionally unavailable until a real,
+  // reviewable code-generation and build pipeline is connected.
   const handleMutateCore = () => {
     soundFx.playClick();
-    setIsMutatingCore(true);
-
-    setTimeout(() => {
-      setEvolutionStats((prev) => ({
-        reflectionCycles: prev.reflectionCycles + 1,
-        aestheticGap: '0.001%',
-        coreMutations: prev.coreMutations + 1,
-        status: 'MUTATED (ZIG/MOJO COMPILED)'
-      }));
-      setIsMutatingCore(false);
-      soundFx.playChime();
-    }, 900);
+    setIsMutatingCore(false);
+    setEvolutionStats((previous) => ({
+      ...previous,
+      status: 'BLOCKED — no self-modification executor is connected',
+    }));
   };
 
   // Copy full skill.md
@@ -256,7 +273,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
                 )}
               </div>
               <div className="text-[10px] text-gray-400 mt-1 font-mono">
-                Pure Symbolic Logic • Z3 Theorem Prover + Zig Logic Gates
+                Target architecture • Z3 proof runner not connected
               </div>
               <p className="text-[10.5px] text-gray-300 mt-1.5">
                 Zero LLM dependency. Absolute mathematical proof, system recovery, and deterministic invariance.
@@ -333,7 +350,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
               {judgeProof && (
                 <div className="rounded-lg bg-[#11111a] p-2.5 border border-purple-500/40">
                   <div className="text-[10px] font-bold text-purple-400 uppercase font-mono mb-1 flex items-center justify-between">
-                    <span>The Judge (Z3 SMT Solver)</span>
+                    <span>The Judge (proof runner unavailable)</span>
                     <span className="text-emerald-400">PROVEN SOUND</span>
                   </div>
                   <pre className="font-mono text-[10.5px] text-gray-200 whitespace-pre-wrap">
@@ -437,7 +454,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
                 <span className="text-[9px] font-mono text-amber-400">Zero-Trust Tokens</span>
               </div>
               <p className="mt-1 text-gray-400 text-[10.5px]">
-                Zero-Trust: Every inter-module request requires a Z3-verified cryptographic proof token. Micro-perimeters enforced at cell boundaries.
+                Target design only: this build does not issue Z3 proof tokens or enforce inter-module micro-perimeters.
               </p>
             </div>
 
