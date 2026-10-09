@@ -174,6 +174,12 @@ fn workspace_list(workspace: tauri::State<'_, SelectedWorkspace>) -> Result<Vec<
         .max_depth(8)
         .follow_links(false)
         .into_iter()
+        .filter_entry(|entry| {
+            entry.depth() == 0
+                || !ignored.iter().any(|ignored_part| {
+                    entry.file_name().to_string_lossy() == *ignored_part
+                })
+        })
         .filter_map(Result::ok)
     {
         if entry.depth() == 0 {
