@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import {
   Bot,
   Play,
@@ -431,40 +432,57 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
     setIsPipelineRunning(false);
   };
 
-  // Run terminal command via Rust authority bridge
-  const handleRunTerminalCommand = (command: string) => {
+  // Execute a real command and record the actual result. Never synthesize success output.
+  const handleRunTerminalCommand = async (command: string) => {
     setTerminalLogs((prev) => [...prev, `$ ${command}`]);
-
-    setTimeout(() => {
-      let output = '';
-      let isVerified = true;
-      let exitCode = 0;
-
-      if (command.includes('cargo check') || command.includes('typecheck')) {
-        output = 'Finished `dev` profile [unoptimized + debuginfo] in 0.38s. 0 errors, 0 warnings.';
-      } else if (command.includes('cargo test') || command.includes('test')) {
-        output = 'running 18 tests ... ok. test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured.';
-      } else if (command.includes('lint')) {
-        output = 'ESLint & Rust Clippy checked 38 files. 0 violations found.';
+    try {
+      let result: { output: string; exitCode: number; durationMs: number };
+      if (isTauri()) {
+        result = await invoke<{ output: string; exitCode: number; durationMs: number }>(
+          'execute_terminal_command',
+          { command, cwd: null }
+        );
       } else {
-        output = `Command executed successfully under Rust execution sandbox. Exit status: 0.`;
+        const response = await fetch('/api/terminal/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command }),
+        });
+        const data = await response.json();
+        if (!response.ok || data.error) {
+          throw new Error(data.error || `Command failed (HTTP ${response.status})`);
+        }
+        result = { output: data.output ?? '', exitCode: data.exitCode ?? 1, durationMs: data.durationMs ?? 0 };
       }
 
-      setTerminalLogs((prev) => [...prev, output]);
-
+      setTerminalLogs((prev) => [...prev, result.output, `[exit ${result.exitCode} · ${result.durationMs} ms]`]);
       const newEvidence: HunterEvidence = {
         id: `ev-${Date.now()}`,
         type: 'command',
-        claim: `Execution of \`${command}\` completed with exit code ${exitCode}`,
+        claim: `Command ${result.exitCode === 0 ? 'completed' : 'failed'} with exit code ${result.exitCode}`,
         command,
-        exitCode,
-        outputSnippet: output,
+        exitCode: result.exitCode,
+        outputSnippet: result.output.slice(0, 4000),
         timestamp: Date.now(),
-        isVerified
+        isVerified: result.exitCode === 0,
       };
       setEvidenceList((prev) => [newEvidence, ...prev]);
-      soundFx.playChime();
-    }, 400);
+      if (result.exitCode === 0) soundFx.playChime();
+      else soundFx.playClick();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setTerminalLogs((prev) => [...prev, `[command failed] ${message}`]);
+      setEvidenceList((prev) => [{
+        id: `ev-${Date.now()}`,
+        type: 'command',
+        claim: `Command execution failed: ${message}`,
+        command,
+        exitCode: 1,
+        outputSnippet: message,
+        timestamp: Date.now(),
+        isVerified: false,
+      }, ...prev]);
+    }
   };
 
   // Update file content in Editor
