@@ -180,3 +180,12 @@ The desktop app must include a real, persistent **File Explorer**. It is a core 
 3. New file/folder, edit/save, rename, and delete perform real operations with correct confirmations and error handling.
 4. The Pill can act on the selected file or selection without navigating away from the current workspace.
 5. The explorer remains usable when no AI provider is configured; file browsing/editing must not depend on an LLM.
+
+
+## Generative Studio app-building acceptance criteria
+
+- A user can choose App Builder, describe an application, and request code generation through the configured Studio generation endpoint/provider.
+- A successful response produces a real source artifact and sandboxed preview, not a static mock card.
+- The user can revise the app, open the generated source in the code editor, and retain the artifact for subsequent work.
+- Provider/backend failures are visible and do not produce fabricated successful artifacts.
+- Generated code is not automatically executed in the host environment or written to disk without the relevant user action and permission checks.
