@@ -260,8 +260,10 @@ export interface OrchestratorProject {
     id: string;
     title: string;
     stage: 'plan' | 'code' | 'test' | 'bugfix' | 'deploy';
-    status: 'pending' | 'in_progress' | 'completed';
+    status: 'pending' | 'in_progress' | 'completed' | 'failed';
     assignedModel: string;
+    result?: string;
+    error?: string;
   }[];
 }
 
