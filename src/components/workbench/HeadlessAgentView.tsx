@@ -759,7 +759,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                     <span>The Absolute Judge</span>
                   </div>
                   <span className="rounded bg-emerald-500/20 px-1.5 py-0.2 text-[9px] font-mono text-emerald-300">
-                    SMT Verified
+                    {judgeVerdict.status === 'verified' ? 'Verified' : 'Blocked'}
                   </span>
                 </button>
 
@@ -816,17 +816,17 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                     <span>8-Agent Multi-Agent Orchestration Chain</span>
                   </h2>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    Defined in <code className="text-[#c49a6c]">supru.agents.json</code> • Boundaries enforced by Rust execution layer • Context minimized per agent
+                    Role definitions from <code className="text-[#c49a6c]">supru.agents.json</code> • Provider outputs are recorded • Proposed writes require human review
                   </p>
                 </div>
 
                 {/* Master Action Controls: Clean Primary + Actions Dropdown */}
                 <div className="flex flex-wrap items-center gap-2">
                   <button
-                    onClick={() => handleRunFullPipeline(true)}
+                    onClick={() => handleRunFullPipeline(false)}
                     disabled={isPipelineRunning}
                     className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 px-3.5 py-1.5 text-xs font-black text-neutral-950 hover:brightness-110 active:scale-95 transition-all shadow-[0_0_20px_rgba(245,158,11,0.35)] disabled:opacity-50"
-                    title="Execute full 8-agent pipeline from Lead to Judge with zero human interaction needed in between"
+                    title="Run provider-backed agent steps; proposed code pauses for human review"
                   >
                     {isPipelineRunning ? (
                       <>
@@ -836,7 +836,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                     ) : (
                       <>
                         <Zap size={13} className="fill-neutral-950" />
-                        <span>▶ Run End-to-End Workflow (Zero-Interaction)</span>
+                        <span>▶ Run Provider-backed Workflow</span>
                       </>
                     )}
                   </button>
@@ -876,7 +876,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                         </button>
 
                         <button
-                          onClick={() => handleRunFullPipeline(true)}
+                          onClick={() => handleRunFullPipeline(false)}
                           className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-white/[0.08] text-amber-300 font-semibold"
                         >
                           <Zap size={12} className="text-amber-400" />
@@ -1001,7 +1001,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                         </span>
                       </div>
                       <div className="text-[11px] text-gray-300 mt-0.5">
-                        Autonomous handoff from Lead to Absolute Judge • No human interaction required in between
+                        Provider response or command output is being captured. Proposed code pauses for review.
                       </div>
                     </div>
                   </div>
@@ -1024,11 +1024,11 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                         <div className="text-sm font-black text-white flex items-center gap-2">
                           <span>8-Agent Multi-Agent Chain Complete</span>
                           <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-mono font-bold text-emerald-300 border border-emerald-500/40">
-                            Zero-Interaction Verified • 8/8 Passed
+                            Steps complete · formal proof not run
                           </span>
                         </div>
                         <div className="text-xs text-emerald-200/80 mt-0.5">
-                          Full end-to-end execution completed without human intervention. Invariance theorem proved SAT by Z3 SMT solver.
+                          Configured steps returned outputs. No formal SMT proof is claimed by this workflow.
                         </div>
                       </div>
                     </div>
@@ -1037,7 +1037,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                         onClick={() => {
                           soundFx.playClick();
                           if (onOpenInEditor) {
-                            onOpenInEditor('src/main.rs', '// Supru Hunter 8-Agent Verified Implementation\n// Invariance Proof: SATISFIABLE\n// Rust Authority Gate: ALLOW\n\nfn main() {\n    println!("Supru Sovereign Multi-Agent Chain: Verified");\n}\n');
+                            onOpenInEditor('hunter-report.md', Object.values(agentOutputsRef.current).map((artifact) => `## ${artifact.agentId}\n\n${artifact.artifactContent}`).join('\n\n---\n\n'));
                           }
                         }}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-neutral-950 text-xs font-bold transition-all shadow-md active:scale-95"
@@ -1250,7 +1250,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
             onRunFullPipeline={() => handleRunFullPipeline(true)}
             isPipelineRunning={isPipelineRunning}
             onSendChatMessage={(msg) => {
-              handleRunTerminalCommand(`supru chat --prompt "${msg}"`);
+              onSendToChat(msg);
               soundFx.playChime();
             }}
           />
@@ -1272,21 +1272,21 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
               <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 text-center text-xs font-mono">
                 {[
-                  { step: 'Syntax', status: 'verified', tool: 'AST parser' },
-                  { step: 'Type Check', status: 'verified', tool: 'cargo check' },
-                  { step: 'Lint', status: 'verified', tool: 'clippy/eslint' },
-                  { step: 'Unit Tests', status: 'verified', tool: 'cargo test' },
-                  { step: 'Integration', status: 'verified', tool: 'runtime test' },
-                  { step: 'Build', status: 'verified', tool: 'tauri build' },
-                  { step: 'Validation', status: 'verified', tool: 'acceptance' }
+                  { step: 'Syntax', tool: 'Compiler output', verified: evidenceList.some((item) => item.exitCode === 0 && /cargo check|npm run lint/.test(item.command || '')) },
+                  { step: 'Type Check', tool: 'cargo check / TypeScript', verified: evidenceList.some((item) => item.exitCode === 0 && /cargo check|npm run lint/.test(item.command || '')) },
+                  { step: 'Lint', tool: 'Lint command', verified: evidenceList.some((item) => item.exitCode === 0 && /lint|clippy/.test(item.command || '')) },
+                  { step: 'Unit Tests', tool: 'Test command', verified: evidenceList.some((item) => item.exitCode === 0 && /cargo test|npm test|npm run test/.test(item.command || '')) },
+                  { step: 'Integration', tool: 'Integration suite', verified: evidenceList.some((item) => item.exitCode === 0 && /integration|playwright|cypress/.test(item.command || '')) },
+                  { step: 'Build', tool: 'Build command', verified: evidenceList.some((item) => item.exitCode === 0 && /tauri build|npm run build/.test(item.command || '')) },
+                  { step: 'Validation', tool: 'Acceptance criteria', verified: false }
                 ].map((item, idx) => (
                   <div
                     key={item.step}
-                    className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-2.5 space-y-1"
+                    className={`rounded-xl border p-2.5 space-y-1 ${item.verified ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-white/10 bg-black/20'}`}
                   >
                     <div className="text-[10px] text-gray-400">Layer {idx + 1}</div>
                     <div className="font-bold text-white text-xs">{item.step}</div>
-                    <div className="text-[9.5px] text-emerald-400 font-semibold">✔ {item.status}</div>
+                    <div className={`text-[9.5px] font-semibold ${item.verified ? 'text-emerald-400' : 'text-gray-500'}`}>{item.verified ? '✔ verified from command evidence' : 'Not run'}</div>
                     <div className="text-[9px] text-gray-500 truncate">{item.tool}</div>
                   </div>
                 ))}
@@ -1419,27 +1419,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                   <ShieldAlert size={16} className="text-[#ff6b6b]" />
                   <h2 className="text-sm font-bold text-white">Human Approval Gate Registry</h2>
                 </div>
-                <button
-                  onClick={() => {
-                    const simApproval: HunterApprovalRequest = {
-                      id: `appr-${Date.now()}`,
-                      action: 'fs.write',
-                      agentId: 'coder',
-                      risk: 'critical',
-                      whatWillHappen: 'Overwrite critical configuration file and commit change to Git',
-                      why: 'Test the human approval gate policy: deny > ask > allow',
-                      affectedFiles: ['src-tauri/tauri.conf.json'],
-                      command: 'fs.write --path src-tauri/tauri.conf.json',
-                      status: 'pending',
-                      timestamp: Date.now()
-                    };
-                    setApprovals((prev) => [simApproval, ...prev]);
-                    setActiveApprovalModal(simApproval);
-                  }}
-                  className="rounded-xl border border-white/[0.1] bg-white/[0.05] px-3 py-1 text-xs text-gray-200 hover:text-white"
-                >
-                  + Simulate Sensitive Action Request
-                </button>
+                <span className="text-[10px] text-gray-400">{approvals.length} approval request(s)</span>
               </div>
 
               <div className="mt-3.5 space-y-2.5">
