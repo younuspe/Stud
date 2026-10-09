@@ -33,7 +33,7 @@ jobs:
           targets: aarch64-apple-darwin
 
       - name: Install frontend dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: Build unsigned macOS DMG
         run: npm run tauri:build -- --bundles dmg
