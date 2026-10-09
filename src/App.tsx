@@ -205,7 +205,7 @@ export default function App() {
 
   // UI state
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isConnected, setIsConnected] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Server diagnostics
@@ -408,19 +408,47 @@ export default function App() {
   }, [codingLayout]);
 
   useEffect(() => {
-    fetch('/api/status')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.status) {
-          setServerStatus(data);
-          setIsConnected(true);
+    let cancelled = false;
+
+    const refreshProviderStatus = async () => {
+      try {
+        if (isTauri()) {
+          const data = await invoke<{ status: string; message: string; models: string[] }>(
+            'test_provider_connection',
+            {
+              provider: localConfig.provider,
+              endpointUrl: localConfig.endpointUrl,
+              modelName: localConfig.modelName,
+              apiKey: localConfig.apiKey || null,
+            }
+          );
+          if (cancelled) return;
+          setServerStatus((previous) => ({
+            ...previous,
+            status: data.status,
+            hasApiKey: Boolean(localConfig.apiKey),
+            model: localConfig.modelName,
+          }));
+          setIsConnected(data.status === 'online');
+          return;
         }
-      })
-      .catch(() => {
+
+        const res = await fetch('/api/status');
+        if (!res.ok) throw new Error(`Status request failed (HTTP ${res.status})`);
+        const data = await res.json();
+        if (cancelled) return;
+        setServerStatus(data);
+        setIsConnected(data.status === 'online' && Boolean(data.hasApiKey));
+      } catch {
+        if (cancelled) return;
         setIsConnected(false);
         setServerStatus((previous) => ({ ...previous, status: 'offline', hasApiKey: false }));
-      });
-  }, []);
+      }
+    };
+
+    void refreshProviderStatus();
+    return () => { cancelled = true; };
+  }, [localConfig.provider, localConfig.endpointUrl, localConfig.modelName, localConfig.apiKey]);
 
   const activeThread = threads.find((t) => t.id === activeThreadId) || null;
   const activeMessages = activeThread?.messages || [];
