@@ -1339,14 +1339,11 @@ app.post('/api/studio/generate', async (req, res) => {
   const modelId = modelConfig.modelId || 'gemini-3.8-flash';
   const provider = modelConfig.provider || 'gemini';
   const customKey = modelConfig.apiKey;
-  const systemInstruction = settings.systemInstruction || 
-    `You are the Google AI Studio Code Engine for Supru. The user is asking to build or modify code. 
-Return complete, working, interactive code inside a single standard markdown code block:
-\`\`\`${language}
-... code here ...
-\`\`\`
-Followed by a concise, friendly summary of what was built or changed.
-If the language is HTML, create a single self-contained document with HTML5, CSS (you can use Tailwind CSS via https://cdn.tailwindcss.com), and JavaScript that runs smoothly in an iframe sandbox without external asset loading issues. Make the UI modern, dark-themed, responsive, animated, and bug-free.`;
+  const systemInstruction = (settings.systemInstruction ||
+    `You are the Supru AI Studio code generation engine. Build or modify code as requested.
+Return complete, working code in a markdown code block using ${language}, followed by a concise summary.
+For HTML, return a self-contained HTML5 document with CSS and JavaScript suitable for iframe preview.`) +
+    '\\n\\nLanguage policy: Understand Malayalam and English input, but write all explanations, generated text, labels, and code comments in English unless the user explicitly requests another output language.';
 
   // 1. Try Google Gemini API if provider is gemini and key exists
   if (provider === 'gemini') {
@@ -1440,14 +1437,13 @@ If the language is HTML, create a single self-contained document with HTML5, CSS
     }
   }
 
-  // 3. High quality built-in code synthesis fallback engine
-  const synthesized = synthesizeCreativeCode(prompt, currentCode, language);
-  return res.json({
-    code: synthesized.code,
-    explanation: synthesized.explanation,
-    model: modelId,
+  const credentialsConfigured = Boolean(customKey || apiKey) && (customKey || apiKey) !== 'MY_GEMINI_API_KEY';
+  return res.status(credentialsConfigured ? 502 : 503).json({
+    error: credentialsConfigured
+      ? 'The selected provider failed to generate code. Check the provider response and connection.'
+      : 'No AI provider credentials are configured. Connect a model before generating code.',
     provider,
-    isSynthesized: true,
+    model: modelId,
   });
 });
 
@@ -1479,11 +1475,11 @@ ${currentCode.slice(0, 16000)}
 \`\`\`
 
 Guidelines:
-1. Answer the developer's questions clearly, concisely, and accurately.
-2. If providing code updates, fixes, or new features, always include the code in a standard markdown fence: \`\`\`${language} ... \`\`\`.
-3. If recommending a full file replacement or substantial patch, provide clean, production-ready code with no placeholders.
-4. When explaining bugs or runtime errors, pinpoint the exact issue and propose the clean solution.
-5. Always speak directly to the developer inside Supru Code.`;
+1. Answer clearly, concisely, and accurately.
+2. Provide complete code in a standard markdown fence when asked to change code.
+3. Prefer production-ready code and state assumptions.
+4. Explain bugs and runtime errors precisely.
+5. Write explanations, UI text, and code comments in English, even when the user speaks Malayalam, unless another output language is explicitly requested.`;
 
   // 1. Google Gemini API
   if (provider === 'gemini' && activeKey && activeKey !== 'MY_GEMINI_API_KEY') {
@@ -1572,15 +1568,12 @@ Guidelines:
     }
   }
 
-  // 3. Fallback intelligent response for Supru Code
-  const lastUserMsg = messages[messages.length - 1]?.content || '';
-  const fallback = generateCopilotFallback(lastUserMsg, currentCode, fileName, language);
-  return res.json({
-    reply: fallback.reply,
-    code: fallback.code || null,
-    model: modelId,
+  return res.status(activeKey && activeKey !== 'MY_GEMINI_API_KEY' ? 502 : 503).json({
+    error: activeKey && activeKey !== 'MY_GEMINI_API_KEY'
+      ? 'The selected AI provider failed. No generated answer or code was substituted.'
+      : 'No AI provider credentials are configured. Connect a model before using Supru Code Copilot.',
     provider,
-    isFallback: true,
+    model: modelId,
   });
 });
 
