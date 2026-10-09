@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { Sidebar } from './components/Sidebar';
 import { StudioHeader } from './components/StudioHeader';
 import { HeroLanding } from './components/HeroLanding';
@@ -66,8 +67,8 @@ const DEFAULT_SETTINGS: UserSettings = {
 
 const DEFAULT_LOCAL_CONFIG: LocalHostConfig = {
   provider: 'gemini_cloud',
-  endpointUrl: 'http://localhost:11434',
-  modelName: 'llama3',
+  endpointUrl: 'https://generativelanguage.googleapis.com',
+  modelName: 'gemini-3.8-flash',
   isCustomUrl: false,
 };
 
@@ -543,6 +544,58 @@ export default function App() {
     abortControllerRef.current = new AbortController();
 
     try {
+      if (isTauri()) {
+        const providerMap: Record<string, string> = {
+          gemini: 'gemini',
+          openai: 'openai',
+          anthropic: 'anthropic',
+          deepseek: 'deepseek',
+          groq: 'groq',
+          ollama: 'ollama_local',
+          lmstudio: 'lmstudio_local',
+          custom: 'custom_local',
+        };
+        const selectedProvider = activeCustomModel
+          ? providerMap[activeCustomModel.provider] || activeCustomModel.provider
+          : localConfig.provider;
+        const selectedEndpoint = activeCustomModel?.endpointUrl || localConfig.endpointUrl;
+        const selectedModel = activeCustomModel?.modelId || localConfig.modelName;
+        const selectedKey = activeCustomModel?.apiKey || localConfig.apiKey;
+        const chatMessages = [
+          { role: 'system', content: "You are Supru AI. Be accurate, useful, and direct. Always answer in English unless the user explicitly requests another language." },
+          ...updatedMessages.map((m) => ({ role: m.role, content: m.content })),
+        ];
+
+        if (attachment) {
+          throw new Error('Image attachments are not yet supported by the native desktop provider bridge. Text chat remains available.');
+        }
+
+        const reply = await invoke<string>('chat_completion', {
+          provider: selectedProvider,
+          endpointUrl: selectedEndpoint,
+          modelName: selectedModel,
+          apiKey: selectedKey || null,
+          messages: chatMessages,
+          temperature: settings.temperature,
+        });
+        if (typeof reply !== 'string' || !reply.trim()) {
+          throw new Error('The selected provider returned an empty response.');
+        }
+        setThreads((prev) =>
+          prev.map((t) =>
+            t.id === targetThreadId
+              ? {
+                  ...t,
+                  messages: t.messages.map((m) =>
+                    m.id === assistantMsgId ? { ...m, content: reply, isStreaming: false } : m
+                  ),
+                }
+              : t
+          )
+        );
+        return;
+      }
+
       if (activeCustomModel) {
         const isLocal = activeCustomModel.provider === 'ollama' || activeCustomModel.provider === 'lmstudio' || activeCustomModel.provider === 'custom';
         const modelRes = await fetch('/api/local-chat', {
