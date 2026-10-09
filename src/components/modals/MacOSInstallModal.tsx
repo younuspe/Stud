@@ -44,7 +44,7 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
   const openBuildPage = async () => {
     try {
       if (isTauriDesktop) {
-        await invoke('plugin:opener|open_url', { url: buildPageUrl });
+        await invoke('open_build_page');
       } else {
         window.open(buildPageUrl, '_blank', 'noopener,noreferrer');
       }
