@@ -558,7 +558,19 @@ export default function App() {
         const selectedProvider = activeCustomModel
           ? providerMap[activeCustomModel.provider] || activeCustomModel.provider
           : localConfig.provider;
-        const selectedEndpoint = activeCustomModel?.endpointUrl || localConfig.endpointUrl;
+        const customEndpointDefaults: Record<string, string> = {
+          gemini: 'https://generativelanguage.googleapis.com',
+          openai: 'https://api.openai.com/v1',
+          anthropic: 'https://api.anthropic.com',
+          deepseek: 'https://api.deepseek.com/v1',
+          groq: 'https://api.groq.com/openai/v1',
+          ollama: 'http://127.0.0.1:11434',
+          lmstudio: 'http://127.0.0.1:1234/v1',
+          custom: 'http://127.0.0.1:1234/v1',
+        };
+        const selectedEndpoint = activeCustomModel
+          ? activeCustomModel.endpointUrl || customEndpointDefaults[activeCustomModel.provider] || localConfig.endpointUrl
+          : localConfig.endpointUrl;
         const selectedModel = activeCustomModel?.modelId || localConfig.modelName;
         const selectedKey = activeCustomModel?.apiKey || localConfig.apiKey;
         const chatMessages = [
