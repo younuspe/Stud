@@ -35,16 +35,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
   onTriggerAgent,
 }) => {
   const [inputCommand, setInputCommand] = useState('');
-  const [history, setHistory] = useState<TerminalCommandResult[]>([
-    {
-      id: 'init-1',
-      command: 'supru-cli --version',
-      output: `🐾 Supru CLI v2.5.0 [Developer Shell Engine]\nActive Provider: ${localConfig.provider.toUpperCase()} (${localConfig.endpointUrl || 'Cloud'})\nType 'help' to view commands, or run any standard bash/shell command.`,
-      exitCode: 0,
-      timestamp: Date.now() - 5000,
-      durationMs: 14,
-    },
-  ]);
+  const [history, setHistory] = useState<TerminalCommandResult[]>([]);
   const [commandHistoryList, setCommandHistoryList] = useState<string[]>(['help']);
   const [historyIndex, setHistoryIndex] = useState<number>(-1);
   const [isExecuting, setIsExecuting] = useState(false);
