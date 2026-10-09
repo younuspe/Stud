@@ -202,6 +202,7 @@ export default function App() {
 
   // Agent target objective buffer
   const [agentInitialObjective, setAgentInitialObjective] = useState<string>('');
+  const [agentInitialWorkspacePath, setAgentInitialWorkspacePath] = useState<string>('');
 
   // UI state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -857,8 +858,9 @@ export default function App() {
     handleSendMessage(latestUserMsg.content, latestUserMsg.attachment);
   };
 
-  const handleTriggerAgent = (objective: string) => {
+  const handleTriggerAgent = (objective: string, workspacePath?: string) => {
     setAgentInitialObjective(objective);
+    setAgentInitialWorkspacePath(workspacePath?.trim() || '');
     setWorkspaceView('agent');
   };
 
@@ -1016,6 +1018,7 @@ export default function App() {
             {/* 2. SUPRU GENERATIVE STUDIO (GENESIS PROTOCOL) */}
             {workspaceView === 'generative' && (
               <SupruGenerativeStudioView
+                localConfig={localConfig}
                 onSendToChat={(text, img) => {
                   handleSendMessage(text, img ? { name: 'manifestation.png', mimeType: 'image/png', data: img } : undefined);
                   setWorkspaceView('chat');
@@ -1074,6 +1077,7 @@ export default function App() {
               <HeadlessAgentView
                 localConfig={localConfig}
                 initialObjective={agentInitialObjective}
+                initialWorkspacePath={agentInitialWorkspacePath}
                 onSendToChat={(report) => {
                   handleSendMessage(report);
                   setWorkspaceView('chat');
