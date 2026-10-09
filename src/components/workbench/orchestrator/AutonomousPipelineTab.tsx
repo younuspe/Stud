@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import {
   Play,
   Pause,
@@ -36,12 +37,14 @@ import {
 import { soundFx } from '../../../utils/audio';
 
 interface AutonomousPipelineTabProps {
+  workspacePath: string;
   onOpenInEditor?: (fileName: string, content: string) => void;
   onSendToChat?: (text: string) => void;
   onTriggerHunter?: (objective: string) => void;
 }
 
 export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
+  workspacePath,
   onOpenInEditor,
   onSendToChat,
   onTriggerHunter
@@ -141,13 +144,22 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
     }
     const started = Date.now();
     try {
-      const response = await fetch('/api/terminal/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || `Execution service returned HTTP ${response.status}`);
+      if (!workspacePath.trim()) throw new Error('Set the project folder path in the Orchestrator header before running tools.');
+      let result: { output: string; exitCode: number; durationMs: number };
+      if (isTauri()) {
+        result = await invoke<{ output: string; exitCode: number; durationMs: number }>(
+          'execute_terminal_command', { command, cwd: workspacePath.trim() }
+        );
+      } else {
+        const response = await fetch('/api/terminal/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command, cwd: workspacePath.trim() }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `Execution service returned HTTP ${response.status}`);
+        result = data;
+      }
       const exitCode = Number(result.exitCode);
       return {
         output: `$ ${command}\n${result.output || '(no output)'}\nExit code: ${exitCode}`,
