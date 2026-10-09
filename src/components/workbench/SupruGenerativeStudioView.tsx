@@ -351,35 +351,36 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     try {
       if (activeMode === 'visual') {
         const enhancedPrompt = `${prompt}, ${selectedStyle} style, 8k resolution, volumetric atmospheric cinematic lighting, highly detailed masterpiece`;
-        const res = await fetch('/api/generate-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        let imageUrl = '';
+        if (isTauri()) {
+          imageUrl = await invoke<string>('generate_image', {
             prompt: enhancedPrompt,
             aspectRatio: selectedAspectRatio,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data.imageUrl) {
-            setCurrentResultImage(data.imageUrl);
-            const newArtifact: ManifestedArtifact = {
-              id: `art-${Date.now()}`,
-              type: 'image',
-              title: prompt.slice(0, 36) + '...',
-              prompt: prompt,
-              dataUrl: data.imageUrl,
-              timestamp: Date.now(),
-              metadata: { style: selectedStyle, aspectRatio: selectedAspectRatio, seed },
-            };
-            setManifestedArtifacts((prev) => [newArtifact, ...prev]);
-            soundFx.playChime();
-          }
+            apiKey: localConfig.apiKey || null,
+          });
         } else {
-          const message = await res.text().catch(() => '');
-          setGenerationError(`Image generation failed (${res.status}). ${message.slice(0, 240)}`.trim());
+          const res = await fetch('/api/generate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: enhancedPrompt, aspectRatio: selectedAspectRatio }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || `Image generation failed (HTTP ${res.status}).`);
+          imageUrl = typeof data.imageUrl === 'string' ? data.imageUrl : '';
         }
+        if (!imageUrl) throw new Error('Image provider returned no image. No placeholder artwork was substituted.');
+        setCurrentResultImage(imageUrl);
+        const newArtifact: ManifestedArtifact = {
+          id: `art-${Date.now()}`,
+          type: 'image',
+          title: prompt.slice(0, 36) + '...',
+          prompt,
+          dataUrl: imageUrl,
+          timestamp: Date.now(),
+          metadata: { style: selectedStyle, aspectRatio: selectedAspectRatio, seed, provider: 'Gemini image generation' },
+        };
+        setManifestedArtifacts((prev) => [newArtifact, ...prev]);
+        soundFx.playChime();
       } else if (activeMode === 'motion') {
         // Trigger Veo Video API
         const res = await fetch('/api/generate-video', {
