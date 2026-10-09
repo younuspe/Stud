@@ -454,16 +454,16 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
             <Scale size={14} className="text-emerald-400" />
             <div>
               <div className="text-[10px] text-gray-400">Invariance Score</div>
-              <div className="font-bold text-emerald-300 font-mono">{activePipeline.invarianceScore}% Proven</div>
+              <div className="font-bold text-emerald-300 font-mono">Not measured</div>
             </div>
           </div>
 
           <div className="flex items-center gap-2 rounded-lg bg-[#141420] px-2.5 py-1.5 border border-white/[0.04]">
             <Coins size={14} className="text-amber-400" />
             <div>
-              <div className="text-[10px] text-gray-400">AST Tokens Saved</div>
+              <div className="text-[10px] text-gray-400">Token Savings</div>
               <div className="font-bold text-amber-300 font-mono">
-                {activePipeline.totalTokensSaved.toLocaleString()} (~68%)
+                Not measured
               </div>
             </div>
           </div>
@@ -495,7 +495,7 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
               <span>Multi-Model Autonomous Workflow Nodes</span>
             </span>
             <span className="text-[10px] text-gray-400">
-              Supru Orchestrator actively controls and routes to each assigned model
+              Tool checks run in the selected workspace; model dropdowns are planning metadata only
             </span>
           </div>
 
@@ -564,7 +564,7 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
                       {/* Model Selector (Orchestrator controls model on each step) */}
                       <div className="flex items-center gap-1.5 bg-[#0a0a10] px-2 py-1 rounded-lg border border-white/[0.08]">
                         <Cpu size={12} className="text-amber-400" />
-                        <span className="text-[10px] text-gray-400 font-mono">Assigned Model:</span>
+                        <span className="text-[10px] text-gray-400 font-mono">Planning Model:</span>
                         <select
                           value={
                             AVAILABLE_ORCHESTRATOR_MODELS.find((m) => m.name === node.modelId)?.id ||
@@ -572,7 +572,7 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
                           }
                           onChange={(e) => handleChangeNodeModel(node.id, e.target.value)}
                           className="bg-transparent text-xs font-semibold text-white outline-none cursor-pointer max-w-[190px] truncate"
-                          title="Supru Orchestrator can control each and every model in this workflow"
+                          title="Planning metadata only; this tool check does not call the selected model"
                         >
                           {AVAILABLE_ORCHESTRATOR_MODELS.map((m) => (
                             <option key={m.id} value={m.id} className="bg-[#12121c] text-gray-200">
@@ -631,7 +631,7 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
                       <div className="mt-1.5 flex items-center justify-between text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded border border-emerald-500/20">
                         <div className="flex items-center gap-1">
                           <Scale size={11} />
-                          <span>Formal Invariance Proof: <strong>{node.invarianceProof}</strong></span>
+                          <span>Execution evidence: <strong>{node.invarianceProof}</strong></span>
                         </div>
                         {onOpenInEditor && node.outputData && (
                           <button
