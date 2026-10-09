@@ -118,3 +118,16 @@ Store non-secret settings in a versioned configuration file such as `.supru/ai-t
 - Kilo Code-like external agents and Supru's own agent are selectable only when their adapters are available and authorized.
 - Every role prompt, routing preference, and tool policy is editable; permission enforcement itself cannot be weakened by a role prompt.
 - No build or workflow is automatically started by these configuration changes.
+
+
+## Required coding workspace integration: File Explorer
+
+The coding environment must include a real project File Explorer as a core feature. It must not be replaced by a prompt-only interface or sample tree.
+
+- Browse the actual project root and expand/collapse folders.
+- Search/filter files; create files and folders; open, edit, save, rename, duplicate where safe, delete with confirmation, copy paths, refresh, and reveal files in Finder on macOS.
+- Keep explorer, editor tabs, selected artifact, Git status/diffs, and Pill context synchronized.
+- File and folder operations must use registered, permission-checked tools through the trusted desktop backend. The renderer and models must not receive unrestricted filesystem access.
+- Models can request file operations through typed tool calls. Supru validates arguments, scopes paths to the approved workspace, checks permissions, records evidence, and reports the real result.
+- The explorer works even without an AI provider. Editing and basic project navigation must not require a model connection.
+- Include actual loading, empty, permission-denied, backend-unavailable, and error states. Never use fake project entries or claim an operation succeeded without backend confirmation.
