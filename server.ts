@@ -454,7 +454,7 @@ app.post('/api/video-download', async (req, res) => {
 // Chat Completion endpoint (Non-streaming)
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages, persona = 'supru_cat', temperature = 0.7, attachment } = req.body;
+    const { messages, persona = 'supru_cat', temperature = 0.7, attachment, apiKey: customKey, modelName = 'gemini-3.8-flash' } = req.body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'Messages array is required' });
@@ -462,8 +462,10 @@ app.post('/api/chat', async (req, res) => {
 
     const systemInstruction = (PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat) + "\n\nLanguage policy: Understand the user's message in the language they use, including Malayalam or English. Unless they explicitly request another output language, always write the response in English. If the user speaks Malayalam, do not reply in Malayalam; answer in clear English.";
 
-    // If Gemini API key is configured, use real Gemini 3.8 Flash
-    if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
+    // Use the user's configured key from settings when supplied; never synthesize a fallback reply.
+    const activeKey = customKey || apiKey;
+    if (activeKey && activeKey !== 'MY_GEMINI_API_KEY') {
+      const client = new GoogleGenAI({ apiKey: activeKey, httpOptions: { headers: { 'User-Agent': 'supru-desktop' } } });
       const contentsPayload: any[] = [];
 
       for (let i = 0; i < messages.length; i++) {
@@ -485,8 +487,8 @@ app.post('/api/chat', async (req, res) => {
         contentsPayload.push({ role, parts });
       }
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+      const response = await client.models.generateContent({
+        model: modelName || 'gemini-3.8-flash',
         contents: contentsPayload,
         config: {
           systemInstruction,
@@ -517,7 +519,7 @@ app.post('/api/chat/stream', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders?.();
 
-  const { messages, persona = 'supru_cat', temperature = 0.7, attachment } = req.body;
+  const { messages, persona = 'supru_cat', temperature = 0.7, attachment, apiKey: customKey, modelName = 'gemini-3.8-flash' } = req.body;
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     res.write(`data: ${JSON.stringify({ error: 'Messages required' })}\n\n`);
@@ -531,8 +533,10 @@ app.post('/api/chat/stream', async (req, res) => {
   const systemInstruction = (PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat) + "\n\nLanguage policy: Understand the user's message in the language they use, including Malayalam or English. Unless they explicitly request another output language, always write the response in English. If the user speaks Malayalam, do not reply in Malayalam; answer in clear English.";
 
 
-  if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
+  const activeKey = customKey || apiKey;
+  if (activeKey && activeKey !== 'MY_GEMINI_API_KEY') {
     try {
+      const client = new GoogleGenAI({ apiKey: activeKey, httpOptions: { headers: { 'User-Agent': 'supru-desktop' } } });
       const contentsPayload: any[] = [];
 
       for (let i = 0; i < effectiveMessages.length; i++) {
@@ -558,8 +562,8 @@ app.post('/api/chat/stream', async (req, res) => {
         setTimeout(() => reject(new Error('Stream init timeout (2.5s)')), 2500)
       );
 
-      const streamPromise = ai.models.generateContentStream({
-        model: 'gemini-3.8-flash',
+      const streamPromise = client.models.generateContentStream({
+        model: modelName || 'gemini-3.8-flash',
         contents: contentsPayload,
         config: {
           systemInstruction,
