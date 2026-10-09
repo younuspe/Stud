@@ -938,7 +938,7 @@ app.post('/api/local-chat', async (req, res) => {
         body: JSON.stringify({
           model: modelName,
           messages: messages.map((m: any) => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
+            role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
             content: m.content,
           })),
           stream: false,
@@ -981,7 +981,7 @@ app.post('/api/local-chat', async (req, res) => {
         body: JSON.stringify({
           model: modelName,
           messages: messages.map((m: any) => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
+            role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
             content: m.content,
           })),
           temperature,
@@ -1004,7 +1004,8 @@ app.post('/api/local-chat', async (req, res) => {
           body: JSON.stringify({
             model: modelName || 'claude-3-7-sonnet-20250219',
             max_tokens: 2048,
-            messages: messages.map((m: any) => ({
+            system: messages.filter((m: any) => m.role === 'system').map((m: any) => m.content).join('\n\n'),
+            messages: messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
               role: m.role === 'assistant' ? 'assistant' : 'user',
               content: m.content,
             })),
@@ -1019,19 +1020,13 @@ app.post('/api/local-chat', async (req, res) => {
       }
     }
 
-    // Fallback to built-in intelligent simulated response
-    const lastMsg = messages[messages.length - 1]?.content || '';
-    return res.json({
-      reply: generateSimulatedSupruResponse(lastMsg, 'supru_cat'),
-      simulated: true,
-      note: `Connected through Supru engine for ${modelName}.`,
+    return res.status(502).json({
+      error: `No response from the selected model provider (${provider || 'unknown provider'}).`,
     });
   } catch (err: any) {
-    const lastMsg = req.body.messages?.[req.body.messages.length - 1]?.content || '';
-    return res.json({
-      reply: generateSimulatedSupruResponse(lastMsg, 'supru_cat'),
-      simulated: true,
-      warning: `Model request encountered: ${err.message}`,
+    console.error('Local model request failed:', err);
+    return res.status(502).json({
+      error: err.message || 'The selected model provider request failed.',
     });
   }
 });
@@ -1566,7 +1561,7 @@ Guidelines:
           messages: [
             { role: 'system', content: systemInstruction },
             ...messages.map((m: any) => ({
-              role: m.role === 'assistant' ? 'assistant' : 'user',
+              role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
               content: m.content || m.text || '',
             })),
           ],
