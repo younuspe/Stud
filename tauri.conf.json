@@ -7,7 +7,7 @@
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:3000",
-    "frontendDist": "../dist"
+    "frontendDist": "dist"
   },
   "app": {
     "windows": [
@@ -19,9 +19,9 @@
         "minHeight": 768,
         "resizable": true,
         "fullscreen": false,
-        "decorations": false,
-        "transparent": true,
-        "visible": false,
+        "decorations": true,
+        "transparent": false,
+        "visible": true,
         "label": "main"
       }
     ],
@@ -33,26 +33,21 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "../public/favicon.ico",
-      "../public/favicon.png",
-      "../public/apple-touch-icon.png"
+      "public/favicon.ico",
+      "public/favicon.png",
+      "public/apple-touch-icon.png"
     ],
     "resources": [
-      "../server.ts"
+      "server.ts"
     ],
     "externalBin": [],
     "macOS": {
       "minimumSystemVersion": "10.15",
       "entitlements": "../entitlements.plist",
-      "signingIdentity": "Developer ID Application: Your Name (TEAM_ID)",
-      "providerShortName": "YourProviderShortName",
-      "certificate": "Developer ID Application: Your Name (TEAM_ID)",
       "exceptionDomain": "",
-      "frameworks": [],
-      "provider": "short-name"
+      "frameworks": []
     },
     "windows": {
-      "certificateThumbprint": "YOUR_CERTIFICATE_THUMBPRINT",
       "digestAlgorithm": "sha256",
       "timestampUrl": "http://timestamp.digicert.com",
       "webviewInstallMode": "downloadBootstrapper",
@@ -114,7 +109,7 @@
       }
     },
     "updater": {
-      "active": true,
+      "active": false,
       "endpoints": [
         "https://releases.supru.ai/{{target}}/{{current_version}}"
       ],
