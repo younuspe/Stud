@@ -6,6 +6,7 @@
 ///
 /// The React/Vite UI is loaded by Tauri. Native capabilities are deliberately
 /// registered here rather than relying on a browser page to access the OS.
+/// The macOS workflow validates this configuration and smoke-tests the packaged executable.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
