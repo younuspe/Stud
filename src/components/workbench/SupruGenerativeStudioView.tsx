@@ -418,7 +418,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           '',
           'Application specification:',
           prompt,
-        ].join('\\n');
+        ].join('\n');
         const controller = new AbortController();
         const timeout = window.setTimeout(() => controller.abort(), 90000);
         try {
