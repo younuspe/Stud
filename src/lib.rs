@@ -38,11 +38,15 @@ async fn execute_terminal_command(command: String, cwd: Option<String>) -> Resul
     let started = Instant::now();
     let output = timeout(
         Duration::from_secs(30),
-        Command::new("/bin/zsh")
-            .arg("-lc")
-            .arg(&command)
-            .current_dir(&working_dir)
-            .output()
+        {
+            let mut process = Command::new("/bin/zsh");
+            process
+                .kill_on_drop(true)
+                .arg("-lc")
+                .arg(&command)
+                .current_dir(&working_dir);
+            process.output()
+        }
     ).await.map_err(|_| "Command timed out after 30 seconds.".to_string())?
       .map_err(|e| format!("Failed to start command: {e}"))?;
 
