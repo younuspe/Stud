@@ -278,15 +278,15 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
     }
   };
   // Run Entire Pipeline from Start (End-to-End Workflow with Zero Interaction)
-  const handleRunFullPipeline = (autoApprove: boolean = true) => {
+  const handleRunFullPipeline = (_autoApprove: boolean = false) => {
     soundFx.playClick();
     if (!pipelineObjective.trim()) {
       setTerminalLogs((prev) => [...prev, 'Enter a task objective before starting Hunter.']);
       setIsPipelineRunning(false);
       return;
     }
-    setAutoApproveGates(autoApprove);
-    setIsZeroInteraction(autoApprove);
+    setAutoApproveGates(false);
+    setIsZeroInteraction(false);
     setIsPipelinePaused(false);
     setIsPipelineRunning(true);
     setIsPipelineComplete(false);
@@ -294,7 +294,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
     // Reset agents to idle first
     setAgents((prev) => prev.map((ag) => ({ ...ag, status: 'idle' })));
-    setTerminalLogs((prev) => [...prev, '--- Starting model-analysis chain for: "' + pipelineObjective + '" ---', '[Execution policy] This run does not auto-approve file writes or claim tools were executed.']);
+    setTerminalLogs((prev) => [...prev, '--- Starting model-analysis chain for: "' + pipelineObjective + '" ---', '[Execution policy] Every proposed file write pauses for explicit human approval. Model responses do not count as test or verification evidence.']);
 
     void executeAgentStep(0);
   };
@@ -304,11 +304,11 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
     soundFx.playClick();
     setOpenDropdown(null);
 
-    // If currently waiting for approval at coder, approve it and continue to tester
+    // Never let a step/run control silently approve a file write.
     const waitingIndex = agents.findIndex((ag) => ag.status === 'waiting_approval');
     if (waitingIndex !== -1) {
-      const pendingReq = approvals.find((a) => a.status === 'pending');
-      handleApproveAction(pendingReq ? pendingReq.id : `appr-${Date.now()}`);
+      setTerminalLogs((prev) => [...prev, 'A file write is awaiting your explicit decision in the Approval tab.']);
+      setActiveTab('approval');
       return;
     }
 
@@ -349,32 +349,67 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
     setTerminalLogs((prev) => [...prev, 'Pipeline reset to idle state.']);
   };
 
-  // Human Approval Handlers
-  const handleApproveAction = (id: string) => {
-    soundFx.playChime();
-    setApprovals((prev) =>
-      prev.map((appr) => (appr.id === id ? { ...appr, status: 'approved' } : appr))
-    );
-    setActiveApprovalModal(null);
-
-    // Record in changes log & terminal
-    setTerminalLogs((prev) => [
-      ...prev,
-      `[Rust Permission Gate] Action ${id} APPROVED by human operator.`,
-      `[coder] Executing atomic write to src/main.rs... OK.`,
-      `[coder] Status: DONE -> Handing off to TESTER.`
-    ]);
-
-    // Mark coder as done
-    setAgents((prev) =>
-      prev.map((ag) => (ag.id === 'coder' ? { ...ag, status: 'done' } : ag))
-    );
-
-    // Seamlessly resume pipeline to tester (index 5)
-    setIsPipelineRunning(true);
-    setTimeout(() => {
-      executeAgentStep(5);
-    }, 400);
+  // Approval is the only path that can write a proposed file.
+  const handleApproveAction = async (id: string) => {
+    const request = approvals.find((item) => item.id === id);
+    const proposal = pendingFileEdit;
+    if (!request || request.status !== 'pending' || !proposal || request.affectedFiles[0] !== proposal.relativePath) {
+      setTerminalLogs((prev) => [...prev, '[Permission Gate] Approval refused: the pending request or proposal no longer matches.']);
+      setActiveApprovalModal(null);
+      return;
+    }
+    try {
+      if (!isTauri()) throw new Error('Approved workspace writes currently require the packaged Tauri desktop app.');
+      const result = await invoke<string>('write_workspace_file', {
+        workspaceRoot: workspacePath.trim(),
+        relativePath: proposal.relativePath,
+        content: proposal.content,
+      });
+      setApprovals((prev) => prev.map((item) => item.id === id ? { ...item, status: 'approved' } : item));
+      setActiveApprovalModal(null);
+      setPendingFileEdit(null);
+      const evidenceId = 'ev-write-' + Date.now();
+      setEvidenceList((prev) => [{
+        id: evidenceId,
+        type: 'file',
+        claim: 'Human-approved write completed for ' + proposal.relativePath,
+        filePath: proposal.relativePath,
+        outputSnippet: result,
+        timestamp: Date.now(),
+        isVerified: true,
+      }, ...prev]);
+      setTerminalLogs((prev) => [
+        ...prev,
+        '[Permission Gate] Human approval recorded for ' + proposal.relativePath + '.',
+        '[Rust file writer] ' + result,
+        '[coder] Write operation completed. Handing off to Tester; task is not yet verified.'
+      ]);
+      setAgents((prev) => prev.map((ag) => ag.id === 'coder' ? { ...ag, status: 'done' } : ag));
+      const writeArtifact: HunterAgentArtifact = {
+        agentId: 'approved_write',
+        summary: 'Rust confirmed the approved write operation completed.',
+        artifactContent: result,
+        evidenceRef: evidenceId,
+        timestamp: Date.now(),
+      };
+      setAgentArtifacts((prev) => ({ ...prev, approved_write: writeArtifact }));
+      setIsPipelineRunning(true);
+      setIsPipelineComplete(false);
+      void executeAgentStep(5, { ...proposal.resumeArtifacts, approved_write: writeArtifact });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setTerminalLogs((prev) => [...prev, '[Rust file writer] WRITE FAILED: ' + message, 'Workflow stopped. No successful write is claimed.']);
+      setEvidenceList((prev) => [{
+        id: 'ev-write-fail-' + Date.now(),
+        type: 'file',
+        claim: 'Approved write failed for ' + proposal.relativePath,
+        filePath: proposal.relativePath,
+        outputSnippet: message,
+        timestamp: Date.now(),
+        isVerified: false,
+      }, ...prev]);
+      setIsPipelineRunning(false);
+    }
   };
 
   const handleRejectAction = (id: string, reason: string) => {
