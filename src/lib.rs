@@ -1,7 +1,8 @@
 #![cfg_attr(not(debug_assertions), deny(unsafe_code))]
 
 /// Starts the native Supru desktop shell.
-/// Build verification is run through the repository's macOS workflow (RGBA icon and plugin-config checks).
+/// The filesystem plugin's only global config option is requireLiteralLeadingDot;
+/// path scopes and shell command scopes belong in Tauri v2 capability permissions.
 ///
 /// The React/Vite UI is loaded by Tauri. Native capabilities are deliberately
 /// registered here rather than relying on a browser page to access the OS.
