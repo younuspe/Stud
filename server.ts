@@ -377,27 +377,15 @@ app.post('/api/generate-video', async (req, res) => {
           aspectRatio: targetAspectRatio,
         });
       } catch (apiError: any) {
-        console.warn('Veo API call encountered quota or error, falling back to simulation:', apiError.message);
-        // Fall through to simulated job below
+        console.error('Veo provider request failed:', apiError.message);
+        return res.status(502).json({
+          error: apiError.message || 'The video provider request failed. No sample video was substituted.',
+        });
       }
     }
 
-    // Simulated job registration for testing
-    const simulatedOpName = `models/veo-3.1-fast-generate-preview/operations/sim-${Date.now()}`;
-    simulatedJobs.set(simulatedOpName, {
-      operationName: simulatedOpName,
-      createdAt: Date.now(),
-      prompt: prompt || 'Cinematic feline motion',
-      aspectRatio: targetAspectRatio,
-      thumbnailUrl: image.startsWith('data:') ? image : `data:${mimeType};base64,${cleanBase64}`,
-    });
-
-    return res.json({
-      operationName: simulatedOpName,
-      model: 'veo-3.1-fast-generate-preview',
-      aspectRatio: targetAspectRatio,
-      simulated: true,
-      notice: 'Live Veo requires active paid quota. Served video preview.',
+    return res.status(503).json({
+      error: 'Video generation requires a configured Gemini API key. No simulated video was returned.',
     });
   } catch (error: any) {
     console.error('Video generation start error:', error);
