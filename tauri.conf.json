@@ -43,7 +43,7 @@
     "externalBin": [],
     "macOS": {
       "minimumSystemVersion": "10.15",
-      "entitlements": "../entitlements.plist",
+      "entitlements": "entitlements.plist",
       "exceptionDomain": "",
       "frameworks": []
     },
@@ -53,8 +53,8 @@
       "webviewInstallMode": "downloadBootstrapper",
       "allowDowngrades": true,
       "nsis": {
-        "installerIcon": "../public/favicon.ico",
-        "installerHeaderIcon": "../public/favicon.ico",
+        "installerIcon": "public/favicon.ico",
+        "installerHeaderIcon": "public/favicon.ico",
         "script": "installer.nsh"
       }
     },
