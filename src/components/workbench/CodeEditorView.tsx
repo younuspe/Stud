@@ -453,7 +453,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
       name: 'untitled.html',
       language: 'html',
       content: '',
-      isModified: true,
+      isModified: false,
     }
   ]);
   const [activeFileId, setActiveFileId] = useState<string>(files[0].id);
