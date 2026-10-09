@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { 
   Terminal as TerminalIcon, 
   Trash2, 
@@ -159,7 +160,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
 Provider: ${localConfig.provider}
 Endpoint: ${localConfig.endpointUrl || 'Default Generative Cloud'}
 Model:    ${localConfig.modelName || 'gemini-3.8-flash'}
-API Key:  ${localConfig.provider === 'gemini_cloud' ? 'Configured or fallback' : 'Not required (Localhost)'}`;
+API Key:  ${localConfig.provider === 'gemini_cloud' ? (localConfig.apiKey ? 'Configured' : 'Missing') : 'Not required for local endpoint'}`;
 
       setHistory((prev) => [
         ...prev,
@@ -177,29 +178,22 @@ API Key:  ${localConfig.provider === 'gemini_cloud' ? 'Configured or fallback' :
     }
 
     try {
-      const res = await fetch('/api/terminal/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: rawCmd }),
-      });
-
-      const data = await res.json();
-
-      if (data.clearScreen) {
-        setHistory([]);
-      } else {
-        setHistory((prev) => [
-          ...prev,
-          {
-            id: cmdId,
-            command: rawCmd,
-            output: data.output || '(No output)',
-            exitCode: data.exitCode || 0,
-            timestamp: Date.now(),
-            durationMs: data.durationMs || Date.now() - startTime,
-          },
-        ]);
-      }
+      const data = await invoke<{ stdout: string; stderr: string; exitCode: number; durationMs: number }>(
+        'run_workspace_command',
+        { command: rawCmd },
+      );
+      const output = [data.stdout, data.stderr].filter(Boolean).join('\n') || '(No output)';
+      setHistory((prev) => [
+        ...prev,
+        {
+          id: cmdId,
+          command: rawCmd,
+          output,
+          exitCode: data.exitCode,
+          timestamp: Date.now(),
+          durationMs: data.durationMs || Date.now() - startTime,
+        },
+      ]);
     } catch (err: any) {
       setHistory((prev) => [
         ...prev,
