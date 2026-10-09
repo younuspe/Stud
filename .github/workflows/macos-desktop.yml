@@ -4,6 +4,11 @@ name: macOS desktop build
 # Do not build automatically on each code commit.
 on:
   workflow_dispatch:
+  push:
+    branches: [fix/desktop-app-launch]
+    paths:
+      - '.github/workflows/macos-desktop.yml'
+      - 'Cargo.toml'
 
 permissions:
   contents: read
