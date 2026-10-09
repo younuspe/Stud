@@ -145,7 +145,7 @@ fn workspace_list(root: String) -> Result<Vec<WorkspaceEntry>, String> {
         }
         let metadata = entry.metadata().map_err(|error| error.to_string())?;
         entries.push(WorkspaceEntry {
-            path: relative.to_string_lossy().replace('\\\\', "/"),
+            path: relative.to_string_lossy().replace('\\', "/"),
             name: Path::new(path).file_name().unwrap_or_default().to_string_lossy().into_owned(),
             is_dir,
             size: metadata.len(),
@@ -188,8 +188,6 @@ fn workspace_read_file(root: String, relative_path: String) -> Result<String, St
 fn workspace_write_file(root: String, relative_path: String, content: String) -> Result<(), String> {
     use std::fs::{self, OpenOptions};
     use std::io::Write;
-    use std::path::Path;
-
     if content.len() > 5 * 1024 * 1024 {
         return Err("Files larger than 5 MB cannot be saved from the editor.".into());
     }
