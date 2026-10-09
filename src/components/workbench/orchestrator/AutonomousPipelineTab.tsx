@@ -73,6 +73,22 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
   const [selectedToolForQuickCall, setSelectedToolForQuickCall] = useState<OrchestratorToolName>('smt_prover');
   const [quickToolOutput, setQuickToolOutput] = useState<string | null>(null);
   const [quickToolLoading, setQuickToolLoading] = useState<boolean>(false);
+  const [taskObjective, setTaskObjective] = useState<string>('');
+  const [taskDispatchError, setTaskDispatchError] = useState<string | null>(null);
+
+  const handleDispatchTask = () => {
+    const objective = taskObjective.trim();
+    if (!objective) {
+      setTaskDispatchError('Describe the work you want Supru to perform first.');
+      return;
+    }
+    if (!onTriggerHunter) {
+      setTaskDispatchError('Task execution is not connected in this app build.');
+      return;
+    }
+    setTaskDispatchError(null);
+    onTriggerHunter(objective);
+  };
 
   const activePipeline = pipelines.find((p) => p.id === activePipelineId) || pipelines[0];
 
@@ -271,6 +287,35 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
 
   return (
     <div className="space-y-4">
+      <section className="rounded-xl border border-amber-500/30 bg-[#0c0c14] p-4">
+        <div className="mb-2 flex items-center gap-2">
+          <Send size={14} className="text-amber-400" />
+          <h3 className="text-xs font-bold uppercase tracking-wider text-white">Give the Orchestrator a real task</h3>
+        </div>
+        <p className="mb-3 text-[11px] text-gray-400">
+          Describe the change or investigation you need. This sends the objective to Supru Hunter; it does not claim the task is complete.
+        </p>
+        <textarea
+          value={taskObjective}
+          onChange={(event) => { setTaskObjective(event.target.value); setTaskDispatchError(null); }}
+          placeholder="Example: inspect this project, find why chat requests fail, fix the root cause, and run the relevant checks."
+          rows={3}
+          className="w-full resize-y rounded-lg border border-white/10 bg-[#08080d] p-3 text-xs text-white outline-none focus:border-amber-500/60"
+        />
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[10px] text-gray-500">Execution result and evidence will appear in Hunter.</span>
+          <button
+            type="button"
+            onClick={handleDispatchTask}
+            disabled={!taskObjective.trim()}
+            className="flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-black hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Send size={12} /> Send task to Hunter
+          </button>
+        </div>
+        {taskDispatchError && <p role="alert" className="mt-2 text-[11px] text-rose-300">{taskDispatchError}</p>}
+      </section>
+
       {/* Top Banner: Project Archetypes Selector */}
       <div className="rounded-xl border border-white/[0.08] bg-[#0c0c14] p-3 shadow-lg">
         <div className="mb-2 flex items-center justify-between">
