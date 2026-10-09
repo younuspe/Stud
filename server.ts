@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
@@ -17,6 +18,23 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
+const allowedOrigins = new Set([
+  'tauri://localhost',
+  'http://tauri.localhost',
+  'http://127.0.0.1:3000',
+]);
+
+// Packaged Tauri windows are a separate origin from the loopback API. Allow
+// only the app's known origins so JSON POST requests can pass CORS preflight
+// without exposing the command-capable API to arbitrary websites.
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+    return callback(new Error('Origin is not allowed to access the Supru local API.'));
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
