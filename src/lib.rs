@@ -163,6 +163,60 @@ async fn write_workspace_file(workspace_root: String, relative_path: String, con
     Ok(format!("Wrote {} bytes to {}", content.len(), target.strip_prefix(&root).unwrap_or(&target).display()))
 }
 
+
+#[tauri::command]
+async fn generate_image(prompt: String, aspect_ratio: String, api_key: Option<String>) -> Result<String, String> {
+    let prompt = prompt.trim();
+    let key = api_key.as_deref().unwrap_or("").trim();
+    if prompt.is_empty() { return Err("Image prompt cannot be empty.".into()); }
+    if key.is_empty() { return Err("Image generation requires a Gemini API key in Provider Settings.".into()); }
+    if prompt.len() > 12000 { return Err("Image prompt exceeds the 12000-character limit.".into()); }
+    let ratio = match aspect_ratio.as_str() {
+        "1:1" | "16:9" | "9:16" | "4:3" | "3:4" => aspect_ratio.as_str(),
+        "21:9" => "16:9",
+        _ => "1:1",
+    };
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("Could not initialize image provider client: {e}"))?;
+    let response = client
+        .post("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent")
+        .query(&[("key", key)])
+        .json(&serde_json::json!({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "responseModalities": ["TEXT", "IMAGE"],
+                "imageConfig": {"aspectRatio": ratio}
+            }
+        }))
+        .send().await.map_err(|e| format!("Image provider request failed: {e}"))?;
+    let status = response.status();
+    let body = response.text().await.map_err(|e| format!("Could not read image provider response: {e}"))?;
+    if !status.is_success() {
+        let detail = serde_json::from_str::<serde_json::Value>(&body).ok()
+            .and_then(|v| v.pointer("/error/message").and_then(|v| v.as_str()).map(str::to_string))
+            .unwrap_or_else(|| body.chars().take(600).collect());
+        return Err(format!("Image provider returned HTTP {status}: {detail}"));
+    }
+    let value: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| format!("Image provider returned invalid JSON: {e}"))?;
+    let parts = value.pointer("/candidates/0/content/parts").and_then(|v| v.as_array())
+        .ok_or_else(|| "Image provider returned no candidate content.".to_string())?;
+    for part in parts {
+        if let Some(data) = part.pointer("/inlineData/data").and_then(|v| v.as_str()) {
+            let mime = part.pointer("/inlineData/mimeType").and_then(|v| v.as_str()).unwrap_or("image/png");
+            return Ok(format!("data:{mime};base64,{data}"));
+        }
+    }
+    let explanation = parts.iter().filter_map(|p| p.get("text").and_then(|v| v.as_str())).collect::<Vec<_>>().join(" ");
+    Err(if explanation.is_empty() {
+        "Image provider returned no image data. No placeholder image was substituted.".into()
+    } else {
+        format!("Image provider did not return image data: {}", explanation.chars().take(500).collect::<String>())
+    })
+}
+
 #[derive(serde::Deserialize)]
 struct ChatMessageInput {
     role: String,
@@ -413,7 +467,7 @@ async fn test_provider_connection(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![execute_terminal_command, chat_completion, test_provider_connection, list_workspace_files, read_workspace_file, write_workspace_file])
+        .invoke_handler(tauri::generate_handler![execute_terminal_command, chat_completion, test_provider_connection, generate_image, list_workspace_files, read_workspace_file, write_workspace_file])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
