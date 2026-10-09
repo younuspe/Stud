@@ -236,10 +236,21 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
         p.id === original.id
           ? {
               ...original,
+              executionStatus: 'idle',
+              totalDurationMs: 0,
+              totalTokensUsed: 0,
+              totalTokensSaved: 0,
+              toolCallsExecuted: 0,
+              selfHealingTriggered: 0,
+              invarianceScore: 0,
               nodes: original.nodes.map((n) => ({
                 ...n,
                 status: 'idle',
-                toolResult: undefined
+                toolResult: undefined,
+                durationMs: 0,
+                tokensUsed: 0,
+                outputData: undefined,
+                invarianceProof: 'Not run',
               }))
             }
           : p
@@ -377,8 +388,8 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
           <div className="flex items-center gap-2 rounded-lg bg-[#141420] px-2.5 py-1.5 border border-white/[0.04]">
             <Cpu size={14} className="text-sky-400" />
             <div>
-              <div className="text-[10px] text-gray-400">Coordinated Models</div>
-              <div className="font-bold text-white font-mono">{activePipeline.activeModelCount} Sovereign Models</div>
+              <div className="text-[10px] text-gray-400">Configured Agent Slots</div>
+              <div className="font-bold text-white font-mono">{activePipeline.activeModelCount} planned roles</div>
             </div>
           </div>
 
