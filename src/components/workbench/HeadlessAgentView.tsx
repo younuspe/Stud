@@ -50,9 +50,6 @@ import {
 } from '../../types/workbench';
 import {
   INITIAL_HUNTER_AGENTS,
-  INITIAL_HUNTER_EVIDENCE,
-  INITIAL_HUNTER_APPROVALS,
-  INITIAL_HUNTER_JUDGE_VERDICT,
   INITIAL_WORKBENCH_FILES,
   HunterAgentArtifact
 } from '../../utils/hunterMasterData';
@@ -374,25 +371,22 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
     }
   };
 
-  // Evaluate Absolute Judge
+  // The judge must not certify criteria without a real proof executor and matching evidence.
   const handleEvaluateJudge = () => {
     soundFx.playClick();
-    setTimeout(() => {
-      setJudgeVerdict({
-        status: 'verified',
-        milestone: `Milestone ${activeMilestone}: Fully Verified`,
-        criteria: [
-          { id: 'c-1', title: 'Rust is the authoritative execution layer', isMet: true, evidenceRef: 'ev-1' },
-          { id: 'c-2', title: 'Permission priority (deny > ask > allow) verified', isMet: true, evidenceRef: 'ev-2' },
-          { id: 'c-3', title: 'No claim accepted without verifiable exit code evidence', isMet: true, evidenceRef: 'ev-1' },
-          { id: 'c-4', title: 'Multi-agent handoff pipeline executed with zero context contamination', isMet: true, evidenceRef: 'ev-2' }
-        ],
-        evidence: evidenceList,
-        remainingRisks: ['Formal Z3 invariant holds across all state boundaries.'],
-        timestamp: Date.now()
-      });
-      soundFx.playChime();
-    }, 600);
+    const verifiedEvidence = evidenceList.filter((item) => item.isVerified && item.exitCode === 0);
+    setJudgeVerdict({
+      status: 'blocked',
+      milestone: 'Verification blocked: formal proof engine is not connected',
+      criteria: [
+        { id: 'c-1', title: 'Real execution evidence exists', isMet: verifiedEvidence.length > 0, evidenceRef: verifiedEvidence[0]?.id },
+        { id: 'c-2', title: 'Formal invariance proof executed by a connected prover', isMet: false },
+        { id: 'c-3', title: 'Requested code changes verified against acceptance criteria', isMet: false },
+      ],
+      evidence: evidenceList,
+      remainingRisks: ['The app does not yet connect the Absolute Judge to a real formal proof executor; no verified verdict can be issued.'],
+      timestamp: Date.now()
+    });
   };
 
   return (
