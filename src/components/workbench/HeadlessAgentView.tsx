@@ -51,11 +51,7 @@ import {
 } from '../../types/workbench';
 import {
   INITIAL_HUNTER_AGENTS,
-  INITIAL_HUNTER_EVIDENCE,
-  INITIAL_HUNTER_APPROVALS,
   INITIAL_HUNTER_JUDGE_VERDICT,
-  INITIAL_WORKBENCH_FILES,
-  generateHunterAgentArtifact,
   HunterAgentArtifact
 } from '../../utils/hunterMasterData';
 import { HunterFloatingPill } from './hunter/HunterFloatingPill';
@@ -151,6 +147,16 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
   const isPausedRef = useRef<boolean>(false);
   isPausedRef.current = isPipelinePaused;
+
+  const selectedModelLabel = activeCustomModel?.name || (
+    localConfig.provider === 'gemini_cloud'
+      ? 'Gemini 3.8 Flash'
+      : localConfig.modelName || localConfig.provider
+  );
+
+  useEffect(() => {
+    setAgents((previous) => previous.map((agent) => ({ ...agent, model: selectedModelLabel })));
+  }, [selectedModelLabel]);
 
   useEffect(() => {
     if (initialObjective) {
@@ -575,8 +581,8 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                 <span className="rounded-full bg-[#c49a6c]/20 px-2 py-0.2 text-[9.5px] font-mono font-bold text-[#c49a6c] border border-[#c49a6c]/30">
                   Tauri / Rust Native Platform
                 </span>
-                <span className="text-[10px] text-[#4af626] font-mono hidden sm:inline">
-                  ● Rust Authority Gate: ACTIVE
+                <span className="text-[10px] text-amber-300 font-mono hidden sm:inline">
+                  ● Provider-backed execution · review before writes
                 </span>
               </div>
               <p className="text-[10.5px] text-gray-400">
