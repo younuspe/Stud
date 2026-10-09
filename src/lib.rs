@@ -251,6 +251,32 @@ struct WorkspaceCommandResult {
 }
 
 #[tauri::command]
+fn open_build_page() -> Result<(), String> {
+    const BUILD_PAGE: &str = "https://github.com/younuspe/Stud/actions";
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("/usr/bin/open")
+            .arg(BUILD_PAGE)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("Could not open GitHub Actions: {error}"))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", BUILD_PAGE])
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("Could not open GitHub Actions: {error}"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = BUILD_PAGE;
+        Err("Opening the build page is supported on macOS and Windows only.".into())
+    }
+}
+
+#[tauri::command]
 async fn run_workspace_command(
     workspace: tauri::State<'_, SelectedWorkspace>,
     command: String,
@@ -365,7 +391,8 @@ pub fn run() {
             workspace_list,
             workspace_read_file,
             workspace_write_file,
-            run_workspace_command
+            run_workspace_command,
+            open_build_page
         ]);
 
     let builder = builder.setup(|app| {
