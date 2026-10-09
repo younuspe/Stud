@@ -136,6 +136,20 @@ export interface OrchestrationSettings {
   totalTokenBudget?: number;
   /** Compact/summarize role handoffs while retaining evidence references. */
   summarizeBetweenRoles?: boolean;
+  /** Adaptive scheduling target; the runtime must also obey project/platform hard limits. */
+  maxConcurrentAgents?: number;
+  /** Hard ceiling for a single agent task, in seconds. */
+  maxAgentTimeoutSeconds?: number;
+  /** Hard ceiling for the whole orchestration run, in seconds. */
+  maxTotalTimeoutSeconds?: number;
+  /** Per-role input cap when the provider/runtime supports enforcing it. */
+  maxInputTokensPerRole?: number;
+  /** Per-role output cap when the provider/runtime supports enforcing it. */
+  maxOutputTokensPerRole?: number;
+  /** Fraction of the run budget reserved for integration, review, and Judge (0–1). */
+  verificationReserveFraction?: number;
+  /** Persist a recoverable checkpoint after each meaningful work unit. */
+  checkpointAfterEachWorkUnit?: boolean;
   stopOnFirstFailure: boolean;
   requireIndependentReview: boolean;
   checkpointBeforeWrites: boolean;
