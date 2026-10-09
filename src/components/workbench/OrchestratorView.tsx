@@ -355,6 +355,7 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
         {activeTab === 'protocol' && (
           <div className="max-w-6xl mx-auto">
             <SovereignProtocolTab
+              localConfig={localConfig}
               onSendToChat={onSendToChat}
               onOpenInEditor={onOpenInEditor}
               onChangeWorkspaceView={onChangeWorkspaceView}
