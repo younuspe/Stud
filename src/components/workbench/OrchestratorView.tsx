@@ -538,7 +538,7 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                 {[
                   { name: 'linter' as OrchestratorToolName, label: 'Linter', desc: 'Static code analysis', icon: Search },
-                  { name: 'test_runner' as OrchestratorToolName, label: 'Test Runner', desc: 'Unit & mock suites', icon: ShieldCheck },
+                  { name: 'test_runner' as OrchestratorToolName, label: 'Test Runner', desc: 'Configured workspace checks', icon: ShieldCheck },
                   { name: 'type_checker' as OrchestratorToolName, label: 'Type Checker', desc: 'Strict tsc compiler', icon: Code2 },
                   { name: 'ast_parser' as OrchestratorToolName, label: 'AST Parser', desc: 'Dependency hierarchy', icon: FileCode },
                   { name: 'token_budgeter' as OrchestratorToolName, label: 'Token Budgeter', desc: 'Rearrange token size', icon: Zap },
