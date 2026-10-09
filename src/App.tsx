@@ -1154,14 +1154,40 @@ export default function App() {
       {!(workspaceView === 'chat' && activeMessages.length === 0) && (
         <FloatingChatPill
           onSendMessage={(text, attachment) => {
-            if (workspaceView === 'editor') {
-              // User is chatting in Supru Code -> Send directly to Supru Code Copilot! Never redirect to chat!
-              setExternalEditorPrompt({ id: `prompt-${Date.now()}`, text });
-              return;
-            }
-            handleSendMessage(text, attachment);
-            if (workspaceView !== 'chat') {
-              setWorkspaceView('chat');
+            // The floating pill is a persistent, workspace-aware command bar.
+            // Sending from a tool must never change the selected workspace.
+            switch (workspaceView) {
+              case 'editor':
+                setExternalEditorPrompt({ id: `prompt-${Date.now()}`, text });
+                return;
+              case 'generative':
+                window.dispatchEvent(new CustomEvent('supru-generative-prompt', {
+                  detail: { text, attachment },
+                }));
+                return;
+              case 'agent':
+                handleTriggerAgent(text);
+                return;
+              case 'terminal':
+                window.dispatchEvent(new CustomEvent('supru-run-terminal-command', {
+                  detail: text,
+                }));
+                return;
+              case 'orchestrator':
+                window.dispatchEvent(new CustomEvent('supru-orchestrator-prompt', {
+                  detail: text,
+                }));
+                return;
+              case 'chat':
+                void handleSendMessage(text, attachment);
+                return;
+              default:
+                // Unsupported workspace: keep the user's context rather than silently
+                // throwing them back into Chat. The user can explicitly switch tabs.
+                window.dispatchEvent(new CustomEvent('supru-workspace-prompt', {
+                  detail: { workspace: workspaceView, text, attachment },
+                }));
+                return;
             }
           }}
           isGenerating={isGenerating}
