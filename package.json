@@ -12,7 +12,8 @@
     "lint": "tsc --noEmit",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "tauri:init": "tauri init"
+    "tauri:init": "tauri init",
+    "build:desktop": "npm run build && node scripts/build-desktop-backend.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
