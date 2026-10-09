@@ -51,6 +51,19 @@ The default orchestration team is exactly this ordered chain. These are separate
 - Every seat has its own editable role instructions, model/provider assignment, tool allowlist, budget, and approval policy. Do not silently present the same model as three distinct models. If a seat/model is unavailable, show it as unavailable and explain any reduced-team mode.
 - The Lead coordinates but cannot override permission policy. All seats remain subject to the trusted permission boundary and the rule **deny > ask > allow**.
 - Each role's status and outputs must be evidence-backed. Distinguish proposed, running, changed, tested, verified, failed, and blocked states.
+
+### Lead-owned timeout and token-efficiency policy
+
+The Lead is responsible for keeping orchestration within time, context, and token budgets. This applies even when all three coders can safely contribute to the same file.
+
+- **Budget before dispatch:** set a total run deadline, per-role timeout, per-model output cap, and total token/request budget before starting. Reserve time and budget for integration, Reviewer, and Judge; do not spend the entire budget on coding.
+- **Short handoffs:** pass each role a concise task contract: goal, relevant findings, assigned scope, constraints, acceptance checks, and only the necessary excerpts/file paths. Do not resend the entire conversation, repository, or prior model outputs at every stage.
+- **Shared-file collaboration:** multiple coders may work on one file only when the Architect partitions it into non-overlapping functions/sections or assigns independent patch proposals. If they need to touch the same lines, have them submit patches separately and let one designated integrator reconcile them. Never allow concurrent blind overwrites.
+- **Bounded parallelism:** the Lead decides whether parallel work will save wall-clock time after accounting for model latency, rate limits, context limits, and integration cost. Parallelize only when useful; otherwise sequence the tasks.
+- **Incremental context:** use targeted search and small file excerpts, summarize findings between roles, retain source paths/line ranges and evidence IDs, and fetch full files only when necessary. Do not discard evidence during summarization.
+- **Timeout recovery:** set cancellable per-call and per-role timeouts; track progress/heartbeats where supported. On timeout, stop or cancel the stuck call, preserve its partial output and evidence, retry at most the configured limit with a smaller context or alternate eligible model, and then continue with an explicit blocked/partial status. Never restart the whole workflow by default.
+- **Budget-aware stopping:** if remaining time/tokens cannot support safe implementation plus review, stop at a checkpoint and report exactly what remains. Do not skip Reviewer/Judge or claim PASS to finish before a deadline.
+- **Measure actual usage:** track prompt/output tokens, elapsed time, retries, and provider errors when available. If usage is unavailable, label it unknown rather than estimating it as fact.
 - All role definitions are editable by the user; ship these as defaults, not immutable role prompts. Security enforcement remains outside role prompts.
 
 ## Orchestration modes
