@@ -49,15 +49,9 @@ const ai = new GoogleGenAI({
   },
 });
 
-// In-memory tracker for simulated fallback video jobs if testing without key
-interface SimulatedJob {
-  operationName: string;
-  createdAt: number;
-  prompt: string;
-  aspectRatio: '16:9' | '9:16';
-  thumbnailUrl: string;
-}
-const simulatedJobs = new Map<string, SimulatedJob>();
+// Keep operation credentials in memory so status/download requests can use the key
+// supplied by the user without placing it in a URL or persisting it to disk.
+const videoOperationKeys = new Map<string, string>();
 
 const PERSONA_PROMPTS: Record<string, string> = {
   supru_cat: `You are "Supru AI", a legendary feline intelligence powerhouse ("Not only a cat...").
@@ -281,76 +275,61 @@ open -a "$APP_DIR" 2>/dev/null || open "${appUrl}"
 // ==========================================
 app.post('/api/generate-image', async (req, res) => {
   try {
-    const { prompt, sourceImage, mimeType = 'image/png', aspectRatio = '1:1' } = req.body;
-
+    const { prompt, sourceImage, mimeType = 'image/png', aspectRatio = '1:1', apiKey: customKey } = req.body;
     if (!prompt || typeof prompt !== 'string') {
       return res.status(400).json({ error: 'Text prompt is required for image creation/editing.' });
     }
 
     const validAspectRatios = ['1:1', '16:9', '9:16', '4:3', '3:4'];
     const selectedAspectRatio = validAspectRatios.includes(aspectRatio) ? aspectRatio : '1:1';
-
-    // If API key is available, call gemini-3.1-flash-image-preview
-    if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
-      const contentsParts: any[] = [];
-
-      // If sourceImage is provided, this is an image editing request
-      if (sourceImage) {
-        const cleanBase64 = sourceImage.replace(/^data:[^;]+;base64,/, '');
-        contentsParts.push({
-          inlineData: {
-            data: cleanBase64,
-            mimeType: mimeType || 'image/png',
-          },
-        });
-      }
-
-      contentsParts.push({ text: prompt });
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-image-preview',
-        contents: {
-          parts: contentsParts,
-        },
-        config: {
-          imageConfig: {
-            aspectRatio: selectedAspectRatio,
-          },
-        },
-      });
-
-      let generatedImageUrl = '';
-      let textContent = '';
-
-      const parts = response.candidates?.[0]?.content?.parts || [];
-      for (const part of parts) {
-        if (part.inlineData && part.inlineData.data) {
-          const type = part.inlineData.mimeType || 'image/png';
-          generatedImageUrl = `data:${type};base64,${part.inlineData.data}`;
-          break;
-        } else if (part.text) {
-          textContent += part.text;
-        }
-      }
-
-      if (generatedImageUrl) {
-        return res.json({
-          imageUrl: generatedImageUrl,
-          text: textContent,
-          isEdit: Boolean(sourceImage),
-          model: 'gemini-3.1-flash-image-preview',
-        });
-      }
+    const activeKey = customKey || apiKey;
+    if (!activeKey || activeKey === 'MY_GEMINI_API_KEY') {
+      return res.status(503).json({ error: 'Image generation requires a configured Gemini API key. No placeholder artwork was returned.' });
     }
 
-    return res.status(503).json({
-      error: 'Image generation requires a configured Gemini API key. No placeholder artwork was returned.',
+    const client = new GoogleGenAI({
+      apiKey: activeKey,
+      httpOptions: { headers: { 'User-Agent': 'supru-desktop' } },
+    });
+    const contentsParts: any[] = [];
+    if (sourceImage) {
+      contentsParts.push({
+        inlineData: {
+          data: sourceImage.replace(/^data:[^;]+;base64,/, ''),
+          mimeType: mimeType || 'image/png',
+        },
+      });
+    }
+    contentsParts.push({ text: prompt });
+
+    const response = await client.models.generateContent({
+      model: 'gemini-3.1-flash-image-preview',
+      contents: { parts: contentsParts },
+      config: { imageConfig: { aspectRatio: selectedAspectRatio } },
+    });
+
+    let generatedImageUrl = '';
+    let textContent = '';
+    const parts = response.candidates?.[0]?.content?.parts || [];
+    for (const part of parts) {
+      if (part.inlineData?.data) {
+        generatedImageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+        break;
+      }
+      if (part.text) textContent += part.text;
+    }
+    if (!generatedImageUrl) {
+      return res.status(502).json({ error: 'The configured image provider returned no image. No placeholder artwork was substituted.' });
+    }
+    return res.json({
+      imageUrl: generatedImageUrl,
+      text: textContent,
+      isEdit: Boolean(sourceImage),
+      model: 'gemini-3.1-flash-image-preview',
     });
   } catch (error: any) {
     console.error('Image generation error:', error);
-    return res.status(502).json({
-      error: error.message || 'The image provider request failed.',
-    });
+    return res.status(502).json({ error: error.message || 'The image provider request failed.' });
   }
 });
 
@@ -359,285 +338,118 @@ app.post('/api/generate-image', async (req, res) => {
 // Requirement: aspect ratio must be 16:9 or 9:16
 // ==========================================
 
-// 1. Start Video Generation
+// Start real Veo video generation. Provider failures are returned to the UI;
+// sample videos and simulated operation IDs are never presented as generated output.
 app.post('/api/generate-video', async (req, res) => {
   try {
-    const { image, mimeType = 'image/png', prompt = '', aspectRatio = '16:9' } = req.body;
+    const { image, mimeType = 'image/png', prompt = '', aspectRatio = '16:9', apiKey: customKey } = req.body;
+    if (!image) return res.status(400).json({ error: 'Photo is required to animate into a video.' });
 
-    if (!image) {
-      return res.status(400).json({ error: 'Photo is required to animate into a video.' });
+    const activeKey = customKey || apiKey;
+    if (!activeKey || activeKey === 'MY_GEMINI_API_KEY') {
+      return res.status(503).json({ error: 'Video generation requires a configured Gemini API key. No sample video was substituted.' });
     }
 
-    // Must be '16:9' or '9:16'
     const targetAspectRatio: '16:9' | '9:16' = aspectRatio === '9:16' ? '9:16' : '16:9';
-    const cleanBase64 = image.replace(/^data:[^;]+;base64,/, '');
-
-    if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
-      try {
-        const operation = await ai.models.generateVideos({
-          model: 'veo-3.1-fast-generate-preview',
-          prompt: prompt || 'Animate this photo with fluid natural cinematic motion, subtle lighting dynamics, and lifelike movement',
-          image: {
-            imageBytes: cleanBase64,
-            mimeType: mimeType || 'image/png',
-          },
-          config: {
-            numberOfVideos: 1,
-            resolution: '720p',
-            aspectRatio: targetAspectRatio,
-          },
-        });
-
-        return res.json({
-          operationName: operation.name,
-          model: 'veo-3.1-fast-generate-preview',
-          aspectRatio: targetAspectRatio,
-        });
-      } catch (apiError: any) {
-        console.warn('Veo API call encountered quota or error, falling back to simulation:', apiError.message);
-        // Fall through to simulated job below
-      }
-    }
-
-    // Simulated job registration for testing
-    const simulatedOpName = `models/veo-3.1-fast-generate-preview/operations/sim-${Date.now()}`;
-    simulatedJobs.set(simulatedOpName, {
-      operationName: simulatedOpName,
-      createdAt: Date.now(),
-      prompt: prompt || 'Cinematic feline motion',
-      aspectRatio: targetAspectRatio,
-      thumbnailUrl: image.startsWith('data:') ? image : `data:${mimeType};base64,${cleanBase64}`,
+    const client = new GoogleGenAI({
+      apiKey: activeKey,
+      httpOptions: { headers: { 'User-Agent': 'supru-desktop' } },
     });
-
+    const operation = await client.models.generateVideos({
+      model: 'veo-3.1-fast-generate-preview',
+      prompt: prompt || 'Animate this photo with fluid natural cinematic motion, subtle lighting dynamics, and lifelike movement',
+      image: {
+        imageBytes: image.replace(/^data:[^;]+;base64,/, ''),
+        mimeType: mimeType || 'image/png',
+      },
+      config: { numberOfVideos: 1, resolution: '720p', aspectRatio: targetAspectRatio },
+    });
+    if (!operation.name) {
+      return res.status(502).json({ error: 'Veo did not return an operation ID.' });
+    }
+    videoOperationKeys.set(operation.name, activeKey);
     return res.json({
-      operationName: simulatedOpName,
+      operationName: operation.name,
       model: 'veo-3.1-fast-generate-preview',
       aspectRatio: targetAspectRatio,
-      simulated: true,
-      notice: 'Live Veo requires active paid quota. Served video preview.',
     });
   } catch (error: any) {
     console.error('Video generation start error:', error);
-    return res.status(500).json({ error: error.message || 'Failed to start video generation' });
+    return res.status(502).json({ error: error.message || 'The configured video provider request failed.' });
   }
 });
 
-// 2. Poll Video Operation Status
+// Poll a real provider operation.
 app.post('/api/video-status', async (req, res) => {
   try {
-    const { operationName } = req.body;
-
-    if (!operationName) {
-      return res.status(400).json({ error: 'operationName is required' });
+    const { operationName, apiKey: customKey } = req.body;
+    if (!operationName) return res.status(400).json({ error: 'operationName is required.' });
+    const activeKey = customKey || videoOperationKeys.get(operationName) || apiKey;
+    if (!activeKey || activeKey === 'MY_GEMINI_API_KEY') {
+      return res.status(503).json({ error: 'No provider key is available for this video operation.' });
     }
-
-    const isSimulated = operationName.includes('/sim-') || simulatedJobs.has(operationName);
-
-    if (!isSimulated && apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
-      const op = new GenerateVideosOperation();
-      op.name = operationName;
-      const updated = await ai.operations.getVideosOperation({ operation: op });
-
-      return res.json({
-        done: Boolean(updated.done),
-        error: updated.error ? (updated.error as any).message || 'Generation failed' : null,
-      });
-    }
-
-    // Check simulated job
-    const job = simulatedJobs.get(operationName);
-    if (!job) {
-      return res.json({ done: true });
-    }
-
-    const elapsed = Date.now() - job.createdAt;
-    // Complete after 5 seconds of progressive polling
-    const done = elapsed > 5000;
-    const progress = Math.min(100, Math.round((elapsed / 5000) * 100));
-
+    const client = new GoogleGenAI({ apiKey: activeKey });
+    const operation = new GenerateVideosOperation();
+    operation.name = operationName;
+    const updated = await client.operations.getVideosOperation({ operation });
     return res.json({
-      done,
-      progress,
-      simulated: true,
+      done: Boolean(updated.done),
+      error: updated.error ? (updated.error as any).message || 'Video generation failed.' : null,
     });
   } catch (error: any) {
     console.error('Video status polling error:', error);
-    return res.status(500).json({ error: error.message || 'Failed to poll video status' });
+    return res.status(502).json({ error: error.message || 'Failed to poll the video provider.' });
   }
 });
 
-// 3. Download / Stream Video
+async function sendGeneratedVideo(operationName: string, activeKey: string, res: express.Response) {
+  const client = new GoogleGenAI({ apiKey: activeKey });
+  const operation = new GenerateVideosOperation();
+  operation.name = operationName;
+  const updated = await client.operations.getVideosOperation({ operation });
+  const uri = updated.response?.generatedVideos?.[0]?.video?.uri;
+  if (!uri) {
+    return res.status(404).json({ error: 'The generated video is not available yet.' });
+  }
+  const videoResponse = await fetch(uri, { headers: { 'x-goog-api-key': activeKey } });
+  if (!videoResponse.ok) {
+    return res.status(videoResponse.status).json({ error: 'The provider could not return the generated video.' });
+  }
+  const buffer = Buffer.from(await videoResponse.arrayBuffer());
+  res.setHeader('Content-Type', 'video/mp4');
+  res.setHeader('Content-Disposition', 'inline; filename="supru-generated-video.mp4"');
+  return res.send(buffer);
+}
+
 app.get('/api/video-download', async (req, res) => {
   try {
     const operationName = (req.query.operationName || req.query.op) as string;
-
-    if (!operationName) {
-      return res.status(400).json({ error: 'operationName query param required' });
+    if (!operationName) return res.status(400).json({ error: 'operationName query param required.' });
+    const activeKey = videoOperationKeys.get(operationName) || apiKey;
+    if (!activeKey || activeKey === 'MY_GEMINI_API_KEY') {
+      return res.status(503).json({ error: 'No provider key is available for this video operation.' });
     }
-
-    const isSimulated = operationName.includes('/sim-') || simulatedJobs.has(operationName);
-
-    if (!isSimulated && apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
-      const op = new GenerateVideosOperation();
-      op.name = operationName;
-      const updated = await ai.operations.getVideosOperation({ operation: op });
-      const uri = updated.response?.generatedVideos?.[0]?.video?.uri;
-
-      if (!uri) {
-        return res.status(404).json({ error: 'Video URI not available yet.' });
-      }
-
-      const videoRes = await fetch(uri, {
-        headers: { 'x-goog-api-key': apiKey },
-      });
-
-      if (!videoRes.ok) {
-        return res.status(videoRes.status).json({ error: 'Failed to download video from storage' });
-      }
-
-      res.setHeader('Content-Type', 'video/mp4');
-      res.setHeader('Content-Disposition', 'inline; filename="supru-veo-video.mp4"');
-
-      const arrayBuffer = await videoRes.arrayBuffer();
-      return res.send(Buffer.from(arrayBuffer));
-    }
-
-    // Sample video stream for simulated testing
-    const sampleVideoUrl = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
-    const sampleRes = await fetch(sampleVideoUrl);
-    if (sampleRes.ok) {
-      res.setHeader('Content-Type', 'video/mp4');
-      const arrayBuffer = await sampleRes.arrayBuffer();
-      return res.send(Buffer.from(arrayBuffer));
-    }
-
-    return res.status(404).json({ error: 'Sample video could not be loaded.' });
+    return await sendGeneratedVideo(operationName, activeKey, res);
   } catch (error: any) {
     console.error('Video download error:', error);
-    return res.status(500).json({ error: error.message || 'Failed to download video' });
+    return res.status(502).json({ error: error.message || 'Failed to download the generated video.' });
   }
 });
 
 app.post('/api/video-download', async (req, res) => {
   try {
-    const { operationName } = req.body;
-    if (!operationName) {
-      return res.status(400).json({ error: 'operationName required' });
+    const { operationName, apiKey: customKey } = req.body;
+    if (!operationName) return res.status(400).json({ error: 'operationName is required.' });
+    const activeKey = customKey || videoOperationKeys.get(operationName) || apiKey;
+    if (!activeKey || activeKey === 'MY_GEMINI_API_KEY') {
+      return res.status(503).json({ error: 'No provider key is available for this video operation.' });
     }
-
-    const isSimulated = operationName.includes('/sim-') || simulatedJobs.has(operationName);
-
-    if (!isSimulated && apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
-      const op = new GenerateVideosOperation();
-      op.name = operationName;
-      const updated = await ai.operations.getVideosOperation({ operation: op });
-      const uri = updated.response?.generatedVideos?.[0]?.video?.uri;
-
-      if (!uri) {
-        return res.status(404).json({ error: 'Video URI not available yet.' });
-      }
-
-      const videoRes = await fetch(uri, {
-        headers: { 'x-goog-api-key': apiKey },
-      });
-
-      res.setHeader('Content-Type', 'video/mp4');
-      res.setHeader('Content-Disposition', 'inline; filename="supru-veo-video.mp4"');
-      const arrayBuffer = await videoRes.arrayBuffer();
-      return res.send(Buffer.from(arrayBuffer));
-    }
-
-    // Return sample video
-    const sampleVideoUrl = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
-    const sampleRes = await fetch(sampleVideoUrl);
-    if (sampleRes.ok) {
-      res.setHeader('Content-Type', 'video/mp4');
-      const arrayBuffer = await sampleRes.arrayBuffer();
-      return res.send(Buffer.from(arrayBuffer));
-    }
-    return res.status(404).json({ error: 'Sample video not found' });
+    return await sendGeneratedVideo(operationName, activeKey, res);
   } catch (error: any) {
     console.error('Video download error:', error);
-    return res.status(500).json({ error: error.message || 'Failed to download video' });
+    return res.status(502).json({ error: error.message || 'Failed to download the generated video.' });
   }
 });
-
-// Helper for simulated creative artwork
-function generateSimulatedImageSvg(prompt: string, isEdit: boolean, aspectRatio: string): string {
-  let width = 768;
-  let height = 768;
-
-  if (aspectRatio === '16:9') {
-    width = 1024;
-    height = 576;
-  } else if (aspectRatio === '9:16') {
-    width = 576;
-    height = 1024;
-  } else if (aspectRatio === '4:3') {
-    width = 800;
-    height = 600;
-  } else if (aspectRatio === '3:4') {
-    width = 600;
-    height = 800;
-  }
-
-  const safePrompt = prompt.replace(/"/g, '&quot;').slice(0, 75);
-  const actionLabel = isEdit ? 'Gemini 3.1 Flash Image • Edited Art' : 'Gemini 3.1 Flash Image • Created Art';
-
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-    <defs>
-      <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#0b0b12"/>
-        <stop offset="50%" stop-color="#14111d"/>
-        <stop offset="100%" stop-color="#1e140d"/>
-      </linearGradient>
-      <linearGradient id="amberGold" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stop-color="#fbbf24"/>
-        <stop offset="50%" stop-color="#f59e0b"/>
-        <stop offset="100%" stop-color="#d97706"/>
-      </linearGradient>
-      <radialGradient id="glow" cx="50%" cy="45%" r="40%">
-        <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.35"/>
-        <stop offset="100%" stop-color="#0b0b12" stop-opacity="0"/>
-      </radialGradient>
-      <filter id="blurFilter" x="-20%" y="-20%" width="140%" height="140%">
-        <feGaussianBlur stdDeviation="30"/>
-      </filter>
-    </defs>
-
-    <rect width="${width}" height="${height}" fill="url(#bgGrad)"/>
-    <circle cx="${width / 2}" cy="${height / 2 - 20}" r="${Math.min(width, height) * 0.35}" fill="url(#glow)"/>
-
-    <!-- Decorative Feline Geometric Silhouette -->
-    <g transform="translate(${width / 2 - 100}, ${height / 2 - 130}) scale(0.8)">
-      <polygon points="125,20 185,110 65,110" fill="url(#amberGold)" opacity="0.85"/>
-      <polygon points="50,40 100,120 20,120" fill="url(#amberGold)" opacity="0.6"/>
-      <polygon points="200,40 230,120 150,120" fill="url(#amberGold)" opacity="0.6"/>
-      <circle cx="90" cy="150" r="14" fill="#fbbf24"/>
-      <circle cx="160" cy="150" r="14" fill="#fbbf24"/>
-      <polygon points="125,185 110,165 140,165" fill="#f59e0b"/>
-      <path d="M 60 170 Q 125 210 190 170" stroke="#f59e0b" stroke-width="4" fill="none"/>
-    </g>
-
-    <rect x="${width * 0.08}" y="${height - 120}" width="${width * 0.84}" height="80" rx="16" fill="#14141c" fill-opacity="0.85" stroke="#333342" stroke-width="1.5"/>
-
-    <text x="${width * 0.12}" y="${height - 85}" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#f59e0b" letter-spacing="1.5">
-      ${actionLabel.toUpperCase()}
-    </text>
-
-    <text x="${width * 0.12}" y="${height - 60}" font-family="system-ui, sans-serif" font-size="15" font-weight="500" fill="#f3f4f6">
-      "${safePrompt}"
-    </text>
-
-    <text x="${width - width * 0.12}" y="${height - 72}" font-family="monospace" font-size="12" fill="#9ca3af" text-anchor="end">
-      ${aspectRatio} • High Fidelity
-    </text>
-  </svg>`;
-
-  const base64Svg = Buffer.from(svg).toString('base64');
-  return `data:image/svg+xml;base64,${base64Svg}`;
-}
-
 
 // Chat Completion endpoint (Non-streaming)
 app.post('/api/chat', async (req, res) => {
