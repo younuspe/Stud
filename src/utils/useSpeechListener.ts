@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { soundFx } from './audio';
 
 export interface UseSpeechListenerOptions {
+  /** SpeechRecognition accepts one locale per recognizer instance. */
+  language?: 'en-US' | 'ml-IN';
   onTranscript?: (text: string) => void;
   onInterim?: (text: string) => void;
   onNotice?: (notice: string | null) => void;
@@ -156,7 +158,7 @@ export function useSpeechListener(options?: UseSpeechListenerOptions) {
 
         try {
           const recognition = new SpeechRecognition();
-          recognition.lang = 'en-US';
+          recognition.lang = options?.language || 'en-US';
           recognition.continuous = true; // Crucial: Keep listening continuously!
           recognition.interimResults = true;
           recognition.maxAlternatives = 1;
