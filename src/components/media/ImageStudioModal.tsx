@@ -25,6 +25,7 @@ interface ImageStudioModalProps {
   onSendToChat?: (imageUrl: string, promptText: string) => void;
   initialSourceImage?: string | null;
   initialPrompt?: string;
+  apiKey?: string;
 }
 
 export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
@@ -34,6 +35,7 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
   onSendToChat,
   initialSourceImage = null,
   initialPrompt = '',
+  apiKey,
 }) => {
   const [tab, setTab] = useState<'create' | 'edit'>(initialSourceImage ? 'edit' : 'create');
   const [prompt, setPrompt] = useState(initialPrompt || '');
@@ -91,6 +93,7 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
           prompt: prompt.trim(),
           sourceImage: tab === 'edit' ? sourceImage : undefined,
           aspectRatio: aspectRatio,
+          apiKey,
         }),
       });
 
