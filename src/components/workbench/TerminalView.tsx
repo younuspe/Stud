@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { 
   Terminal as TerminalIcon, 
   Trash2, 
@@ -186,13 +187,27 @@ API Key:  ${localConfig.provider === 'gemini_cloud' ? 'Configured or fallback' :
     }
 
     try {
-      const res = await fetch('/api/terminal/execute', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: rawCmd }),
-      });
+      let data: { output?: string; exitCode?: number; durationMs?: number; clearScreen?: boolean };
 
-      const data = await res.json();
+      if (isTauri()) {
+        // Packaged desktop uses the native Rust execution command; it does not
+        // depend on a development-only Express server.
+        data = await invoke<{ output: string; exitCode: number; durationMs: number }>(
+          'execute_terminal_command',
+          { command: rawCmd, cwd: null }
+        );
+      } else {
+        // Browser development mode retains the local API implementation.
+        const res = await fetch('/api/terminal/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: rawCmd }),
+        });
+        data = await res.json();
+        if (!res.ok || (data as any).error) {
+          throw new Error((data as any).error || `Command failed (HTTP ${res.status})`);
+        }
+      }
 
       if (data.clearScreen) {
         setHistory([]);
@@ -203,9 +218,9 @@ API Key:  ${localConfig.provider === 'gemini_cloud' ? 'Configured or fallback' :
             id: cmdId,
             command: rawCmd,
             output: data.output || '(No output)',
-            exitCode: data.exitCode || 0,
+            exitCode: data.exitCode ?? 1,
             timestamp: Date.now(),
-            durationMs: data.durationMs || Date.now() - startTime,
+            durationMs: data.durationMs ?? Date.now() - startTime,
           },
         ]);
       }
