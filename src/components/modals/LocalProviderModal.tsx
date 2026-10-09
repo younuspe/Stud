@@ -153,6 +153,7 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
                       onUpdateConfig({
                         provider: p.id,
                         endpointUrl: p.defaultUrl,
+                        ...(p.id === 'gemini_cloud' ? { modelName: 'gemini-3.8-flash' } : {}),
                       });
                       setTestStatus('idle');
                     }}
