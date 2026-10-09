@@ -124,13 +124,13 @@ export const VeoVideoModal: React.FC<VeoVideoModalProps> = ({
       }
 
       const operationName = data.operationName;
-      setGenerationStep('Synthesizing temporal keyframes and fluid motion vectors...');
-      setProgressPercent(20);
+      setGenerationStep('Provider accepted the job; waiting for completion...');
+      setProgressPercent(0);
 
       // Start polling status
       pollingRef.current = window.setInterval(async () => {
         setGenerationStep('Waiting for the video provider to finish generation...');
-        setProgressPercent(20);
+        setProgressPercent(0);
 
         try {
           const statusRes = await fetch('/api/video-status', {
@@ -436,7 +436,7 @@ export const VeoVideoModal: React.FC<VeoVideoModalProps> = ({
                 <div className="w-full max-w-sm space-y-1">
                   <div className="flex justify-between text-[11px] text-gray-400">
                     <span>Rendering</span>
-                    <span>{progressPercent}%</span>
+                    <span>{progressPercent === 100 ? '100% complete' : 'Provider progress unavailable'}</span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-[#1e1e2b]">
                     <div
