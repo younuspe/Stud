@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { 
   X, 
   Check, 
@@ -68,18 +69,32 @@ export const ConnectExternalModelModal: React.FC<ConnectExternalModelModalProps>
     setTestResult(null);
 
     try {
-      const res = await fetch('/api/studio/test-connection', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: currentSelected.provider,
-          modelId: currentSelected.modelId,
-          apiKey: apiKey.trim() || undefined,
-          endpointUrl: endpointUrl.trim() || undefined,
-        }),
-      });
-
-      const data = await res.json();
+      let data: { status: string; message?: string; latencyMs?: number };
+      if (typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__) {
+        const started = performance.now();
+        data = await (await import('@tauri-apps/api/core')).invoke<{ status: string; message: string; models: string[] }>(
+          'test_provider_connection',
+          {
+            provider: currentSelected.provider,
+            endpointUrl: endpointUrl.trim(),
+            modelName: currentSelected.modelId,
+            apiKey: apiKey.trim() || null,
+          }
+        );
+        data.latencyMs = Math.round(performance.now() - started);
+      } else {
+        const res = await fetch('/api/studio/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: currentSelected.provider,
+            modelId: currentSelected.modelId,
+            apiKey: apiKey.trim() || undefined,
+            endpointUrl: endpointUrl.trim() || undefined,
+          }),
+        });
+        data = await res.json();
+      }
       setTestResult({
         status: data.status === 'online' ? 'online' : 'offline',
         message: data.message || (data.status === 'online' ? 'Connection verified!' : 'Connection failed'),
