@@ -613,7 +613,7 @@ app.post('/api/terminal/execute', (_req, res) => {
 // LOCAL HOST & CUSTOM AI PROVIDER TEST / PROXY
 // ==========================================
 app.post('/api/provider/test', async (req, res) => {
-  const { provider, endpointUrl = 'http://localhost:11434', modelName = 'llama3' } = req.body;
+  const { provider, endpointUrl = 'http://localhost:11434', modelName = 'llama3', apiKey: customKey } = req.body;
 
   try {
     if (provider === 'ollama_local') {
@@ -1012,7 +1012,9 @@ app.post('/api/studio/test-connection', async (req, res) => {
       const pingUrl = provider === 'ollama' ? `${url.replace(/\/$/, '')}/api/tags` : `${url.replace(/\/$/, '')}/models`;
 
       try {
-        const pingRes = await fetch(pingUrl, { signal: AbortSignal.timeout(3500) });
+        const pingHeaders: Record<string, string> = {};
+        if (provider === 'custom' && customKey) pingHeaders.Authorization = `Bearer ${customKey}`;
+        const pingRes = await fetch(pingUrl, { headers: pingHeaders, signal: AbortSignal.timeout(3500) });
         const latencyMs = Date.now() - startTime;
         if (pingRes.ok) {
           return res.json({
