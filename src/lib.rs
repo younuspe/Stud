@@ -63,6 +63,153 @@ async fn execute_terminal_command(command: String, cwd: Option<String>) -> Resul
     })
 }
 
+#[derive(serde::Deserialize)]
+struct ChatMessageInput {
+    role: String,
+    content: String,
+}
+
+#[tauri::command]
+async fn chat_completion(
+    provider: String,
+    endpoint_url: String,
+    model_name: String,
+    api_key: Option<String>,
+    messages: Vec<ChatMessageInput>,
+    temperature: Option<f32>,
+) -> Result<String, String> {
+    if messages.is_empty() {
+        return Err("At least one chat message is required.".to_string());
+    }
+    if messages.len() > 200 {
+        return Err("Conversation exceeds the 200-message limit.".to_string());
+    }
+    let model = model_name.trim();
+    if model.is_empty() {
+        return Err("Select a model before sending a message.".to_string());
+    }
+
+    let endpoint = endpoint_url.trim().trim_end_matches('/');
+    let key = api_key.as_deref().unwrap_or("").trim();
+    let temp = temperature.unwrap_or(0.7).clamp(0.0, 2.0);
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("Could not initialize provider client: {e}"))?;
+
+    let provider_lower = provider.to_lowercase();
+    let (url, body, auth_mode) = if provider_lower == "ollama_local" || provider_lower == "ollama" {
+        let base = if endpoint.is_empty() { "http://127.0.0.1:11434" } else { endpoint };
+        (
+            format!("{}/api/chat", base.trim_end_matches('/')),
+            serde_json::json!({
+                "model": model,
+                "messages": messages.iter().map(|m| serde_json::json!({"role": m.role, "content": m.content})).collect::<Vec<_>>(),
+                "stream": false,
+                "options": {"temperature": temp}
+            }),
+            "none"
+        )
+    } else if provider_lower == "gemini_cloud" || provider_lower == "gemini" {
+        if key.is_empty() {
+            return Err("Gemini API key is missing. Add it in provider settings.".to_string());
+        }
+        let base = if endpoint.is_empty() || endpoint == "local://builtin" {
+            "https://generativelanguage.googleapis.com"
+        } else {
+            endpoint
+        };
+        let system = messages.iter().filter(|m| m.role == "system").map(|m| m.content.as_str()).collect::<Vec<_>>().join("\n\n");
+        let contents = messages.iter().filter(|m| m.role != "system").map(|m| {
+            serde_json::json!({
+                "role": if m.role == "assistant" { "model" } else { "user" },
+                "parts": [{"text": m.content}]
+            })
+        }).collect::<Vec<_>>();
+        (
+            format!("{}/v1beta/models/{}:generateContent?key={}", base.trim_end_matches('/'), model, key),
+            serde_json::json!({
+                "contents": contents,
+                "systemInstruction": if system.is_empty() { serde_json::Value::Null } else { serde_json::json!({"parts":[{"text":system}]}) },
+                "generationConfig": {"temperature": temp}
+            }),
+            "none"
+        )
+    } else if provider_lower == "anthropic" {
+        if key.is_empty() {
+            return Err("Anthropic API key is missing. Add it in provider settings.".to_string());
+        }
+        let base = if endpoint.is_empty() { "https://api.anthropic.com" } else { endpoint };
+        let system = messages.iter().filter(|m| m.role == "system").map(|m| m.content.as_str()).collect::<Vec<_>>().join("\n\n");
+        let history = messages.iter().filter(|m| m.role != "system").map(|m| {
+            serde_json::json!({"role": if m.role == "assistant" { "assistant" } else { "user" }, "content": m.content})
+        }).collect::<Vec<_>>();
+        (
+            format!("{}/v1/messages", base.trim_end_matches('/')),
+            serde_json::json!({"model": model, "max_tokens": 4096, "temperature": temp, "system": system, "messages": history}),
+            "anthropic"
+        )
+    } else {
+        let base = if endpoint.is_empty() { "https://api.openai.com/v1" } else { endpoint };
+        let url = if base.ends_with("/chat/completions") {
+            base.to_string()
+        } else if base.ends_with("/v1") {
+            format!("{base}/chat/completions")
+        } else {
+            format!("{base}/v1/chat/completions")
+        };
+        if key.is_empty() && (provider_lower == "openai" || provider_lower == "deepseek" || provider_lower == "groq") {
+            return Err(format!("{} API key is missing. Add it in provider settings.", provider));
+        }
+        (
+            url,
+            serde_json::json!({
+                "model": model,
+                "messages": messages.iter().map(|m| serde_json::json!({"role": m.role, "content": m.content})).collect::<Vec<_>>(),
+                "temperature": temp,
+                "stream": false
+            }),
+            "bearer"
+        )
+    };
+
+    let mut request = client.post(&url).json(&body);
+    match auth_mode {
+        "bearer" if !key.is_empty() => { request = request.bearer_auth(key); }
+        "anthropic" => {
+            request = request.header("x-api-key", key).header("anthropic-version", "2023-06-01");
+        }
+        _ => {}
+    }
+    let response = request.send().await.map_err(|e| format!("Provider request failed: {e}"))?;
+    let status = response.status();
+    let response_text = response.text().await.map_err(|e| format!("Could not read provider response: {e}"))?;
+    if !status.is_success() {
+        let detail = serde_json::from_str::<serde_json::Value>(&response_text)
+            .ok()
+            .and_then(|v| v.get("error").and_then(|e| e.get("message").or_else(|| e.get("type"))).and_then(|v| v.as_str()).map(str::to_string))
+            .unwrap_or_else(|| response_text.chars().take(700).collect());
+        return Err(format!("Provider returned HTTP {status}: {detail}"));
+    }
+    let value: serde_json::Value = serde_json::from_str(&response_text)
+        .map_err(|e| format!("Provider returned invalid JSON: {e}"))?;
+    let reply = if provider_lower == "ollama_local" || provider_lower == "ollama" {
+        value.pointer("/message/content").and_then(|v| v.as_str()).map(str::to_string)
+    } else if provider_lower == "gemini_cloud" || provider_lower == "gemini" {
+        value.pointer("/candidates/0/content/parts").and_then(|v| v.as_array()).map(|parts| {
+            parts.iter().filter_map(|p| p.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("")
+        })
+    } else if provider_lower == "anthropic" {
+        value.get("content").and_then(|v| v.as_array()).map(|parts| {
+            parts.iter().filter_map(|p| p.get("text").and_then(|t| t.as_str())).collect::<Vec<_>>().join("")
+        })
+    } else {
+        value.pointer("/choices/0/message/content").and_then(|v| v.as_str()).map(str::to_string)
+            .or_else(|| value.pointer("/choices/0/message/content/0/text").and_then(|v| v.as_str()).map(str::to_string))
+    };
+    reply.filter(|s| !s.trim().is_empty()).ok_or_else(|| "Provider returned no text content. Check the selected model and provider response format.".to_string())
+}
+
 /// Starts the native Supru desktop shell.
 /// The filesystem plugin's only global config option is requireLiteralLeadingDot;
 /// path scopes and shell command scopes belong in Tauri v2 capability permissions.
@@ -73,7 +220,7 @@ async fn execute_terminal_command(command: String, cwd: Option<String>) -> Resul
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![execute_terminal_command])
+        .invoke_handler(tauri::generate_handler![execute_terminal_command, chat_completion])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
