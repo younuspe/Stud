@@ -1249,9 +1249,12 @@ For HTML, return a self-contained HTML5 document with CSS and JavaScript suitabl
 
         const responseText = response.text || '';
         const extracted = extractCodeFromMarkdown(responseText, language);
+        if (!extracted.code) {
+          return res.status(502).json({ error: 'The provider returned no usable code. The existing editor content was not reported as a successful generation.' });
+        }
 
         return res.json({
-          code: extracted.code || currentCode,
+          code: extracted.code,
           explanation: extracted.explanation || 'Code synthesized successfully with Google Gemini.',
           model: modelId,
           provider: 'gemini',
@@ -1295,8 +1298,11 @@ For HTML, return a self-contained HTML5 document with CSS and JavaScript suitabl
         const data = await extRes.json();
         const responseText = data.choices?.[0]?.message?.content || '';
         const extracted = extractCodeFromMarkdown(responseText, language);
+        if (!extracted.code) {
+          return res.status(502).json({ error: 'The provider returned no usable code. The existing editor content was not reported as a successful generation.' });
+        }
         return res.json({
-          code: extracted.code || currentCode,
+          code: extracted.code,
           explanation: extracted.explanation || `Synthesized via ${provider.toUpperCase()} (${modelId})`,
           model: modelId,
           provider,
@@ -1379,7 +1385,8 @@ Guidelines:
       });
 
       const response = await Promise.race([apiPromise, timeoutPromise]);
-      const replyText = response.text || 'No response generated.';
+      const replyText = response.text || '';
+      if (!replyText.trim()) return res.status(502).json({ error: 'The provider returned an empty Copilot response.' });
       const extracted = extractCodeFromMarkdown(replyText, language);
 
       return res.json({
@@ -1425,6 +1432,7 @@ Guidelines:
       if (extRes.ok) {
         const data = await extRes.json();
         const replyText = data.choices?.[0]?.message?.content || '';
+        if (!replyText.trim()) return res.status(502).json({ error: 'The provider returned an empty Copilot response.' });
         const extracted = extractCodeFromMarkdown(replyText, language);
         return res.json({
           reply: replyText,
