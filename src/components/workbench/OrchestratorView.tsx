@@ -169,14 +169,7 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
             'execute_sandboxed_command', { command, cwd: workspacePath.trim() }
           );
         } else {
-          const response = await fetch('/api/terminal/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ command, cwd: workspacePath.trim() }),
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || `Execution service returned HTTP ${response.status}`);
-          result = data;
+          throw new Error('OS-isolated project commands require the packaged Tauri desktop app. Browser/server mode will not run project commands without the native sandbox.');
         }
         output = `$ ${command}\n${result.output || '(no output)'}\nExit code: ${result.exitCode}`;
         status = result.exitCode === 0 ? 'success' : 'error';
