@@ -436,7 +436,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
     {
       id: 'copilot-init',
       role: 'assistant',
-      text: "👋 **Supru Code Copilot** is active.\n\nI have real-time context of **index.html**. Ask questions about your code, request features, or tell me to inspect, refactor, or fix bugs! (All chats stay right here inside Supru Code).",
+      text: "👋 **Supru Code Copilot** is ready. Connect a model and open a workspace file to ask questions, request changes, or review code. No project file is assumed to be open.",
       timestamp: Date.now(),
     }
   ]);
@@ -448,30 +448,12 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
 
   // Files in the editor
   const [files, setFiles] = useState<EditorFile[]>([
-    PRESET_TEMPLATES[0].file,
     {
-      id: 'f-pipe',
-      name: 'supru_pipeline.ts',
-      language: 'typescript',
-      content: `// 🐾 Supru Code - Enterprise Architecture Pipeline
-export interface AgentTask {
-  id: string;
-  objective: string;
-  status: 'idle' | 'running' | 'completed';
-  confidence: number;
-}
-
-export class SupruPipeline {
-  private persona: string = 'supru_cat';
-
-  constructor(private readonly endpoint: string = 'http://localhost:11434') {}
-
-  public async evaluateObjective(task: AgentTask): Promise<string> {
-    console.log(\`[Supru Code] Synthesizing: \${task.objective}\`);
-    return \`Autonomous delivery pipeline synthesized for: \${task.id}\`;
-  }
-}
-`,
+      id: 'untitled-initial',
+      name: 'untitled.html',
+      language: 'html',
+      content: '',
+      isModified: true,
     }
   ]);
   const [activeFileId, setActiveFileId] = useState<string>(files[0].id);
@@ -747,6 +729,10 @@ export class SupruPipeline {
     );
     if (!fileName?.trim()) return;
     const name = fileName.trim().replace(/\\/g, '/');
+    if (workspaceRoot && workspaceEntries.some((entry) => !entry.isDir && entry.path === name)) {
+      setWorkspaceStatus(`File already exists: ${name}. Open it from the file list instead.`);
+      return;
+    }
     const newId = workspaceRoot ? `workspace:${name}` : `f-${Date.now()}`;
     const newFile: EditorFile = {
       id: newId,
