@@ -88,7 +88,7 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider: isCloudProvider ? 'gemini' : config.provider,
+          provider: isCloudProvider ? 'gemini' : config.provider === 'ollama_local' ? 'ollama' : config.provider === 'lmstudio_local' ? 'lmstudio' : config.provider === 'custom_local' ? 'custom' : config.provider,
           endpointUrl: config.endpointUrl,
           modelId: config.modelName,
           modelName: config.modelName,
