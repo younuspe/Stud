@@ -91,7 +91,7 @@ async fn execute_sandboxed_command(command: String, cwd: String) -> Result<Termi
         if !workspace.is_dir() {
             return Err("Sandbox workspace must be a directory.".to_string());
         }
-        if workspace.to_string_lossy().contains(['\\n', '\\r']) {
+        if workspace.to_string_lossy().chars().any(|ch| ch == '\n' || ch == '\r') {
             return Err("Sandbox workspace path cannot contain newline characters.".to_string());
         }
         let sandbox_exec = Path::new("/usr/bin/sandbox-exec");
@@ -277,7 +277,7 @@ async fn write_workspace_file(workspace_root: String, relative_path: String, con
         }
     }
     let temp = parent.join(format!(".supru-write-{}-{}.tmp", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
-    std::fs::write(&temp, content).map_err(|e| format!("Could not stage file content: {e}"))?;
+    std::fs::write(&temp, &content).map_err(|e| format!("Could not stage file content: {e}"))?;
     if let Err(error) = std::fs::rename(&temp, &target) {
         let _ = std::fs::remove_file(&temp);
         return Err(format!("Could not commit file atomically: {error}"));
@@ -559,7 +559,7 @@ async fn test_provider_connection(
                 Ok(text) if status.is_success() => {
                     let value = serde_json::from_str::<serde_json::Value>(&text).unwrap_or(serde_json::Value::Null);
                     let models = if kind == "ollama_local" || kind == "ollama" {
-                        value.get("models").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect()).unwrap_or_default()
+                        value.get("models").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect::<Vec<String>>()).unwrap_or_default()
                     } else if kind == "gemini_cloud" || kind == "gemini" {
                         value.get("models").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(|n| n.strip_prefix("models/").unwrap_or(n).to_string())).collect()).unwrap_or_default()
                     } else {
