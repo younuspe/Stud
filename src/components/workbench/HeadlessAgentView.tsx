@@ -450,24 +450,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
   // Run terminal command via Rust authority bridge
   const handleRunTerminalCommand = async (command: string) => {
-    const workspaceRoot = localStorage.getItem('supru_workspace_root');
     setTerminalLogs((prev) => [...prev, `$ ${command}`]);
-
-    if (!workspaceRoot) {
-      const output = 'BLOCKED: Open a workspace folder in Supru Code before running commands. No command was executed.';
-      setTerminalLogs((prev) => [...prev, output]);
-      setEvidenceList((prev) => [{
-        id: `ev-${Date.now()}`,
-        type: 'command',
-        claim: 'Command blocked because no workspace was selected',
-        command,
-        exitCode: 1,
-        outputSnippet: output,
-        timestamp: Date.now(),
-        isVerified: false,
-      }, ...prev]);
-      return;
-    }
 
     try {
       const data = await invoke<{ stdout: string; stderr: string; exitCode: number; durationMs: number }>(
