@@ -25,17 +25,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   userSettings,
   onUpdateUserSettings,
 }) => {
-  const [name, setName] = useState(userSettings.userName || 'Ahvan Traveller');
-  const [email, setEmail] = useState(userSettings.userEmail || 'younuspe@gmail.com');
+  const [name, setName] = useState(userSettings.userName || '');
+  const [email, setEmail] = useState(userSettings.userEmail || '');
 
   if (!isOpen) return null;
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name.trim() || !email.trim()) return;
     soundFx.playMeowChime();
     onUpdateUserSettings({
-      userName: name.trim() || 'Feline Commander',
-      userEmail: email.trim() || 'supru.user@nexus.ai',
+      userName: name.trim(),
+      userEmail: email.trim(),
       isLoggedIn: true,
     });
     onClose();
@@ -45,7 +46,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     soundFx.playClick();
     onUpdateUserSettings({
       isLoggedIn: false,
-      userName: 'Guest Explorer',
+      userName: '',
+      userEmail: '',
     });
     onClose();
   };
@@ -61,9 +63,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-white">
-                {userSettings.isLoggedIn ? 'Account Profile' : 'Sign in to Supru Ecosystem'}
+                {userSettings.isLoggedIn ? 'Local Profile' : 'Set Up Local Profile'}
               </h3>
-              <p className="text-xs text-gray-400">Sync conversations & custom personas</p>
+              <p className="text-xs text-gray-400">Stored on this device only; cloud account sync is not implemented</p>
             </div>
           </div>
           <button
@@ -87,7 +89,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   <div className="text-xs text-amber-300/80">{userSettings.userEmail}</div>
                   <div className="text-[10px] text-emerald-400 mt-0.5 flex items-center gap-1">
                     <ShieldCheck size={11} />
-                    <span>Supru Pro Neural Pass Active</span>
+                    <span>Local profile saved — no cloud authentication</span>
                   </div>
                 </div>
               </div>
@@ -136,7 +138,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 type="submit"
                 className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 py-2.5 text-xs font-semibold text-neutral-950 shadow-lg hover:from-amber-400 hover:to-amber-500 active:scale-98 transition-all"
               >
-                <span>Continue as {name || 'Traveller'}</span>
+                <span>Save Local Profile</span>
               </button>
             </form>
           )}
