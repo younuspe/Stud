@@ -141,3 +141,8 @@ The coding environment must include a real project File Explorer as a core featu
 - Models can request file operations through typed tool calls. Supru validates arguments, scopes paths to the approved workspace, checks permissions, records evidence, and reports the real result.
 - The explorer works even without an AI provider. Editing and basic project navigation must not require a model connection.
 - Include actual loading, empty, permission-denied, backend-unavailable, and error states. Never use fake project entries or claim an operation succeeded without backend confirmation.
+
+
+## Global Kilo Code execution controller and hard boundaries
+
+See [Kilo Code — Global Master Orchestrator V3](KILO_CODE_GLOBAL_MASTER_ORCHESTRATOR_V3.md) for the project operating contract, adaptive concurrency, bounded retries, checkpoints, timeout recovery, and explicit execution limits. The corresponding `executionLimits` object in `supru.agents.json` supplies project defaults and caps. These remain specifications until runtime enforcement is implemented; do not treat configuration values alone as proof that an operation is actually bounded.
