@@ -71,7 +71,7 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
       id: 'offline_core',
       name: 'Supru Smart Core (Zero-Key)',
       badge: 'Built-in Engine',
-      desc: 'Instant, zero-configuration feline neural intelligence running without keys',
+      desc: 'Not implemented in this build. Choose a connected cloud or local model instead.',
       defaultUrl: 'local://builtin',
       icon: <Zap size={18} className="text-amber-300" />,
     },
@@ -83,13 +83,16 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
     soundFx.playClick();
 
     try {
-      const res = await fetch('/api/provider/test', {
+      const isCloudProvider = config.provider === 'gemini_cloud';
+      const res = await fetch(isCloudProvider ? '/api/studio/test-connection' : '/api/provider/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          provider: config.provider,
+          provider: isCloudProvider ? 'gemini' : config.provider,
           endpointUrl: config.endpointUrl,
+          modelId: config.modelName,
           modelName: config.modelName,
+          apiKey: config.apiKey,
         }),
       });
 
@@ -144,6 +147,7 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
                 return (
                   <button
                     key={p.id}
+                    disabled={p.id === 'offline_core'}
                     onClick={() => {
                       soundFx.playClick();
                       onUpdateConfig({
@@ -155,7 +159,7 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
                     className={`flex flex-col justify-between rounded-2xl border p-3.5 text-left transition-all ${
                       isSelected
                         ? 'border-amber-500 bg-amber-500/15 shadow-[0_0_15px_rgba(245,158,11,0.15)] ring-1 ring-amber-500/30'
-                        : 'border-[#22222f] bg-[#161622] hover:border-gray-500 hover:bg-[#1a1a27]'
+                        : p.id === 'offline_core' ? 'border-[#22222f] bg-[#161622] opacity-40 cursor-not-allowed' : 'border-[#22222f] bg-[#161622] hover:border-gray-500 hover:bg-[#1a1a27]'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-2">
@@ -176,6 +180,33 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
               })}
             </div>
           </div>
+
+          {config.provider === 'gemini_cloud' && (
+            <div className="space-y-3 rounded-2xl border border-[#272738] bg-[#151522] p-4">
+              <div className="text-xs font-bold text-white">Google Gemini Cloud Credentials</div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-gray-300">Gemini API Key</label>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={config.apiKey || ''}
+                  onChange={(event) => onUpdateConfig({ apiKey: event.target.value })}
+                  placeholder="Paste your Google AI Studio API key"
+                  className="w-full rounded-xl border border-[#2b2b3c] bg-[#101018] px-3.5 py-2 text-xs font-mono text-white outline-none focus:border-amber-500/60"
+                />
+                <p className="text-[10px] text-gray-500">Stored in this app's local settings. It is sent only to the local Supru API and Google for requests.</p>
+              </div>
+              <button
+                onClick={handleTestConnection}
+                disabled={testStatus === 'testing' || !config.apiKey?.trim()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#202030] px-4 py-2 text-xs font-semibold text-gray-200 hover:bg-[#28283c] hover:text-white transition-colors disabled:opacity-50"
+              >
+                <RefreshCw size={13} className={testStatus === 'testing' ? 'animate-spin' : ''} />
+                <span>Test Gemini API Key</span>
+              </button>
+              {testMessage && <div className={`rounded-xl p-2.5 text-xs ${testStatus === 'success' ? 'border border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border border-amber-500/30 bg-amber-500/10 text-amber-200'}`}>{testMessage}</div>}
+            </div>
+          )}
 
           {/* Localhost Configuration Details (if local provider selected) */}
           {config.provider !== 'gemini_cloud' && config.provider !== 'offline_core' && (
