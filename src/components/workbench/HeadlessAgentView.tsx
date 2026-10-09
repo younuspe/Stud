@@ -131,13 +131,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   const [inspectedAgent, setInspectedAgent] = useState<HunterAgentDefinition | null>(null);
 
   // Terminal PTY logs
-  const [terminalLogs, setTerminalLogs] = useState<string[]>([
-    'Tauri / Rust Execution Layer Initialized.',
-    'PTY Session mounted: portable-pty (xterm.js ready)',
-    'Loaded policy: deny > ask > allow.',
-    '$ cargo check --package supru-core -> OK (0.42s)',
-    '$ cargo test test_permission_resolution -> 6 passed (12ms)'
-  ]);
+  const [terminalLogs, setTerminalLogs] = useState<string[]>(['No commands have been executed in this session.']);
 
   // Floating Pill visibility
   const [isPillVisible, setIsPillVisible] = useState(true);
@@ -148,7 +142,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   // Pipeline Execution State
   const [isPipelineRunning, setIsPipelineRunning] = useState<boolean>(false);
   const [isPipelinePaused, setIsPipelinePaused] = useState<boolean>(false);
-  const [isZeroInteraction, setIsZeroInteraction] = useState<boolean>(true);
+  const [isZeroInteraction, setIsZeroInteraction] = useState<boolean>(false);
   const [isPipelineComplete, setIsPipelineComplete] = useState<boolean>(false);
   const [currentRunningAgentIndex, setCurrentRunningAgentIndex] = useState<number>(-1);
 
@@ -432,39 +426,64 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   };
 
   // Run terminal command via Rust authority bridge
-  const handleRunTerminalCommand = (command: string) => {
+  const handleRunTerminalCommand = async (command: string) => {
+    const workspaceRoot = localStorage.getItem('supru_workspace_root');
     setTerminalLogs((prev) => [...prev, `$ ${command}`]);
 
-    setTimeout(() => {
-      let output = '';
-      let isVerified = true;
-      let exitCode = 0;
-
-      if (command.includes('cargo check') || command.includes('typecheck')) {
-        output = 'Finished `dev` profile [unoptimized + debuginfo] in 0.38s. 0 errors, 0 warnings.';
-      } else if (command.includes('cargo test') || command.includes('test')) {
-        output = 'running 18 tests ... ok. test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured.';
-      } else if (command.includes('lint')) {
-        output = 'ESLint & Rust Clippy checked 38 files. 0 violations found.';
-      } else {
-        output = `Command executed successfully under Rust execution sandbox. Exit status: 0.`;
-      }
-
+    if (!workspaceRoot) {
+      const output = 'BLOCKED: Open a workspace folder in Supru Code before running commands. No command was executed.';
       setTerminalLogs((prev) => [...prev, output]);
-
-      const newEvidence: HunterEvidence = {
+      setEvidenceList((prev) => [{
         id: `ev-${Date.now()}`,
         type: 'command',
-        claim: `Execution of \`${command}\` completed with exit code ${exitCode}`,
+        claim: 'Command blocked because no workspace was selected',
         command,
-        exitCode,
+        exitCode: 1,
         outputSnippet: output,
         timestamp: Date.now(),
-        isVerified
-      };
-      setEvidenceList((prev) => [newEvidence, ...prev]);
-      soundFx.playChime();
-    }, 400);
+        isVerified: false,
+      }, ...prev]);
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/terminal/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, cwd: workspaceRoot }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `Command request failed (HTTP ${response.status})`);
+
+      const exitCode = Number.isInteger(data.exitCode) ? data.exitCode : 1;
+      const output = String(data.output || '(Command completed with no output)');
+      setTerminalLogs((prev) => [...prev, `Exit code: ${exitCode}`, output]);
+      setEvidenceList((prev) => [{
+        id: `ev-${Date.now()}`,
+        type: 'command',
+        claim: `Actual command ${exitCode === 0 ? 'completed successfully' : 'failed'} with exit code ${exitCode}`,
+        command,
+        exitCode,
+        filePath: workspaceRoot,
+        outputSnippet: output.slice(0, 1200),
+        timestamp: Date.now(),
+        isVerified: exitCode === 0,
+      }, ...prev]);
+      soundFx.playClick();
+    } catch (error) {
+      const output = error instanceof Error ? error.message : String(error);
+      setTerminalLogs((prev) => [...prev, `Command failed: ${output}`]);
+      setEvidenceList((prev) => [{
+        id: `ev-${Date.now()}`,
+        type: 'command',
+        claim: 'Command request failed; execution was not verified',
+        command,
+        exitCode: 1,
+        outputSnippet: output.slice(0, 1200),
+        timestamp: Date.now(),
+        isVerified: false,
+      }, ...prev]);
+    }
   };
 
   // Update file content in Editor
@@ -480,22 +499,34 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   // Evaluate Absolute Judge
   const handleEvaluateJudge = () => {
     soundFx.playClick();
-    setTimeout(() => {
-      setJudgeVerdict({
-        status: 'verified',
-        milestone: `Milestone ${activeMilestone}: Fully Verified`,
-        criteria: [
-          { id: 'c-1', title: 'Rust is the authoritative execution layer', isMet: true, evidenceRef: 'ev-1' },
-          { id: 'c-2', title: 'Permission priority (deny > ask > allow) verified', isMet: true, evidenceRef: 'ev-2' },
-          { id: 'c-3', title: 'No claim accepted without verifiable exit code evidence', isMet: true, evidenceRef: 'ev-1' },
-          { id: 'c-4', title: 'Multi-agent handoff pipeline executed with zero context contamination', isMet: true, evidenceRef: 'ev-2' }
-        ],
-        evidence: evidenceList,
-        remainingRisks: ['Formal Z3 invariant holds across all state boundaries.'],
-        timestamp: Date.now()
-      });
-      soundFx.playChime();
-    }, 600);
+    const hasCommandEvidence = evidenceList.some((item) => Boolean(item.command) && typeof item.exitCode === 'number');
+    setJudgeVerdict({
+      status: 'blocked',
+      milestone: `Milestone ${activeMilestone}: Formal verification not available`,
+      criteria: [
+        {
+          id: 'c-1',
+          title: 'Real command output and exit codes are recorded',
+          isMet: hasCommandEvidence,
+          evidenceRef: evidenceList.find((item) => Boolean(item.command))?.id,
+        },
+        {
+          id: 'c-2',
+          title: 'Formal SMT proof was executed and independently checked',
+          isMet: false,
+        },
+      ],
+      evidence: evidenceList,
+      remainingRisks: [
+        'The Absolute Judge has no connected SMT proof runner in this build.',
+        'Command success alone does not prove system invariants; no verified verdict is issued.',
+      ],
+      timestamp: Date.now(),
+    });
+    setTerminalLogs((prev) => [
+      ...prev,
+      '[Absolute Judge] BLOCKED: no formal SMT proof runner is connected. No proof or verified status was fabricated.',
+    ]);
   };
 
   return (
