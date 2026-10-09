@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { 
   Code2, 
   Play, 
@@ -6,6 +7,8 @@ import {
   Copy, 
   Check, 
   Download, 
+  FolderOpen,
+  Save,
   Plus, 
   X, 
   FileCode, 
@@ -75,6 +78,18 @@ interface CodeEditorViewProps {
   activeCustomModel?: ExternalAIModelConfig | null;
   externalPrompt?: { id: string; text: string } | null;
   onClearExternalPrompt?: () => void;
+}
+
+type WorkspaceEntry = { path: string; name: string; isDir: boolean; size: number };
+
+function languageForPath(filePath: string): SupportedLanguage {
+  const extension = filePath.split('.').pop()?.toLowerCase() || '';
+  const languages: Record<string, SupportedLanguage> = {
+    ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+    py: 'python', rs: 'rust', go: 'go', html: 'html', css: 'css',
+    json: 'json', md: 'markdown', sh: 'bash', sql: 'sql',
+  };
+  return languages[extension] || 'html';
 }
 
 // Preset interactive showcase applications for instant 1-click loading
@@ -460,6 +475,12 @@ export class SupruPipeline {
     }
   ]);
   const [activeFileId, setActiveFileId] = useState<string>(files[0].id);
+  const [workspaceRoot, setWorkspaceRoot] = useState<string>(() => {
+    try { return localStorage.getItem('supru_workspace_root') || ''; } catch { return ''; }
+  });
+  const [workspaceEntries, setWorkspaceEntries] = useState<WorkspaceEntry[]>([]);
+  const [workspaceStatus, setWorkspaceStatus] = useState('');
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -514,6 +535,126 @@ export class SupruPipeline {
   const directivesRef = useRef<HTMLDivElement>(null);
 
   const activeFile = files.find((f) => f.id === activeFileId) || files[0];
+
+  const isTauriDesktop = Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+
+  const refreshWorkspaceEntries = async (root: string) => {
+    const entries = await invoke<WorkspaceEntry[]>('workspace_list', { root });
+    setWorkspaceEntries(entries);
+    return entries;
+  };
+
+  const handleOpenWorkspaceFile = async (relativePath: string, root = workspaceRoot) => {
+    if (!root || !relativePath) return;
+    setWorkspaceBusy(true);
+    setWorkspaceStatus('');
+    try {
+      const existing = files.find((file) => file.path === relativePath);
+      if (existing && root === workspaceRoot) {
+        setActiveFileId(existing.id);
+        return;
+      }
+      const content = await invoke<string>('workspace_read_file', { root, relativePath });
+      const id = `workspace:${relativePath}`;
+      const file: EditorFile = {
+        id,
+        name: relativePath,
+        path: relativePath,
+        language: languageForPath(relativePath),
+        content,
+        isModified: false,
+      };
+      setFiles((previous) => {
+        const index = previous.findIndex((item) => item.id === id);
+        if (index < 0) return [...previous, file];
+        const next = [...previous];
+        next[index] = file;
+        return next;
+      });
+      setActiveFileId(id);
+      setWorkspaceStatus(`Opened ${relativePath}`);
+    } catch (error) {
+      setWorkspaceStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
+  const handleOpenWorkspace = async () => {
+    if (!isTauriDesktop) {
+      setWorkspaceStatus('Open a workspace folder from the installed Supru desktop app.');
+      return;
+    }
+    if (files.some((file) => file.isModified) && !window.confirm('Discard unsaved editor changes and open another folder?')) return;
+    setWorkspaceBusy(true);
+    setWorkspaceStatus('');
+    try {
+      const selected = await invoke<string | null>('select_workspace');
+      if (!selected) return;
+      localStorage.setItem('supru_workspace_root', selected);
+      setWorkspaceRoot(selected);
+      const entries = await refreshWorkspaceEntries(selected);
+      setFiles([]);
+      if (entries.some((entry) => !entry.isDir)) {
+        await handleOpenWorkspaceFile(entries.find((entry) => !entry.isDir)!.path, selected);
+      } else {
+        const blank: EditorFile = {
+          id: 'workspace:index.html',
+          name: 'index.html',
+          path: 'index.html',
+          language: 'html',
+          content: '',
+          isModified: true,
+        };
+        setFiles([blank]);
+        setActiveFileId(blank.id);
+        setWorkspaceStatus('Workspace opened. Create or edit a file, then Save.');
+      }
+    } catch (error) {
+      setWorkspaceStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
+  const handleSaveWorkspaceFile = async () => {
+    if (!workspaceRoot) {
+      setWorkspaceStatus('Choose a workspace folder before saving to disk.');
+      return;
+    }
+    if (!isTauriDesktop) {
+      setWorkspaceStatus('Saving workspace files requires the installed desktop app.');
+      return;
+    }
+    const targetPath = activeFile.path || window.prompt('Path relative to the workspace folder:', activeFile.name);
+    if (!targetPath?.trim()) return;
+    setWorkspaceBusy(true);
+    setWorkspaceStatus('');
+    try {
+      await invoke('workspace_write_file', {
+        root: workspaceRoot,
+        relativePath: targetPath.trim(),
+        content: activeFile.content,
+      });
+      const savedPath = targetPath.trim().replace(/\\/g, '/');
+      setFiles((previous) => previous.map((file) => file.id === activeFileId
+        ? { ...file, path: savedPath, name: savedPath, isModified: false }
+        : file));
+      setWorkspaceEntries(await invoke<WorkspaceEntry[]>('workspace_list', { root: workspaceRoot }));
+      setWorkspaceStatus(`Saved ${savedPath}`);
+    } catch (error) {
+      setWorkspaceStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!workspaceRoot || !isTauriDesktop) return;
+    refreshWorkspaceEntries(workspaceRoot).catch((error) => {
+      setWorkspaceStatus(error instanceof Error ? error.message : String(error));
+    });
+  }, []);
 
   // If a file was sent from GitHub or CLI
   useEffect(() => {
@@ -599,27 +740,25 @@ export class SupruPipeline {
 
   const handleCreateFile = () => {
     soundFx.playClick();
-    const newId = `f-${Date.now()}`;
+    const suggestedName = workspaceRoot ? 'new-file.ts' : `untitled-${files.length + 1}.html`;
+    const fileName = window.prompt(
+      workspaceRoot ? 'New file path (relative to the workspace):' : 'New unsaved file name:',
+      suggestedName,
+    );
+    if (!fileName?.trim()) return;
+    const name = fileName.trim().replace(/\\/g, '/');
+    const newId = workspaceRoot ? `workspace:${name}` : `f-${Date.now()}`;
     const newFile: EditorFile = {
       id: newId,
-      name: `app_${files.length + 1}.html`,
-      language: 'html',
-      content: `<!DOCTYPE html>
-<html>
-<head>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-slate-950 text-white flex items-center justify-center min-h-screen">
-  <div class="text-center p-6 border border-amber-500/30 rounded-2xl bg-slate-900 shadow-xl">
-    <h1 class="text-xl font-bold text-amber-400">🐾 New Web Applet</h1>
-    <p class="text-xs text-gray-400 mt-2">Start coding or generate by message!</p>
-  </div>
-</body>
-</html>`,
+      name,
+      path: workspaceRoot ? name : undefined,
+      language: languageForPath(name),
+      content: '',
       isModified: true,
     };
     setFiles((prev) => [...prev, newFile]);
     setActiveFileId(newId);
+    setWorkspaceStatus(workspaceRoot ? `New file: ${name}. Save to create it on disk.` : 'Unsaved buffer created. Open a workspace folder to save it.');
   };
 
   const handleCloseFile = (id: string, e: React.MouseEvent) => {
@@ -1007,6 +1146,29 @@ export class SupruPipeline {
       <div className="flex h-8 items-center justify-between border-b border-white/[0.08] bg-[#101018] px-2 text-[11px] shrink-0">
         {/* File Tabs */}
         <div className="flex items-center gap-1 overflow-x-auto py-1 scrollbar-none">
+          <button
+            onClick={() => void handleOpenWorkspace()}
+            disabled={workspaceBusy}
+            className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-gray-400 hover:bg-[#1a1a24] hover:text-white disabled:opacity-50"
+            title={workspaceRoot ? `Open another folder (current: ${workspaceRoot})` : 'Open workspace folder'}
+          >
+            <FolderOpen size={12} />
+            <span className="hidden xl:inline">Folder</span>
+          </button>
+          {workspaceRoot && (
+            <select
+              aria-label="Open workspace file"
+              value=""
+              onChange={(event) => { if (event.target.value) void handleOpenWorkspaceFile(event.target.value); }}
+              className="max-w-36 rounded-md border border-white/10 bg-[#141420] px-1.5 py-0.5 text-[10px] text-gray-300"
+              title={workspaceRoot}
+            >
+              <option value="">Open file…</option>
+              {workspaceEntries.filter((entry) => !entry.isDir).map((entry) => (
+                <option key={entry.path} value={entry.path}>{entry.path}</option>
+              ))}
+            </select>
+          )}
           {files.map((file) => {
             const isActive = file.id === activeFileId;
             return (
@@ -1049,6 +1211,15 @@ export class SupruPipeline {
 
         {/* Editor Controls & Window Dock/Close */}
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => void handleSaveWorkspaceFile()}
+            disabled={workspaceBusy || !activeFile}
+            className="flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-300 hover:bg-amber-500/20 disabled:opacity-50"
+            title="Save the active file to the selected workspace"
+          >
+            <Save size={11} />
+            <span className="hidden sm:inline">Save</span>
+          </button>
           {/* Auto-run Toggle */}
           <button
             onClick={() => setIsAutoRun(!isAutoRun)}
