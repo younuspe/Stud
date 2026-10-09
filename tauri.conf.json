@@ -1,0 +1,125 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Supru AI",
+  "version": "0.1.0",
+  "identifier": "com.supru.ai",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Supru AI Studio",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 768,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "visible": false,
+        "label": "main"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' data: https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https: blob:; connect-src 'self' https: wss: http: ws:;"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "../public/favicon.ico",
+      "../public/favicon.png",
+      "../public/apple-touch-icon.png"
+    ],
+    "resources": [
+      "../server.ts"
+    ],
+    "externalBin": [],
+    "macOS": {
+      "minimumSystemVersion": "10.15",
+      "entitlements": "../entitlements.plist",
+      "signingIdentity": "Developer ID Application: Your Name (TEAM_ID)",
+      "providerShortName": "YourProviderShortName",
+      "certificate": "Developer ID Application: Your Name (TEAM_ID)",
+      "exceptionDomain": "",
+      "frameworks": [],
+      "provider": "short-name"
+    },
+    "windows": {
+      "certificateThumbprint": "YOUR_CERTIFICATE_THUMBPRINT",
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "webviewInstallMode": "downloadBootstrapper",
+      "allowDowngrades": true,
+      "nsis": {
+        "installerIcon": "../public/favicon.ico",
+        "installerHeaderIcon": "../public/favicon.ico",
+        "script": "installer.nsh"
+      }
+    },
+    "linux": {
+      "appImage": {
+        "bundleMediaFramework": true
+      },
+      "deb": {
+        "depends": [
+          "libgtk-3-0",
+          "libwebkit2gtk-4.0-37",
+          "libayatana-appindicator3-1",
+          "librsvg2-common"
+        ]
+      },
+      "snap": {
+        "confinement": "strict",
+        "plugs": [
+          "network",
+          "network-bind",
+          "home",
+          "removable-media",
+          "gsettings",
+          "cups-control",
+          "audio-playback",
+          "audio-record"
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "fs": {
+      "scope": {
+        "allow": [
+          "$APPDATA/supru/**",
+          "$HOME/.supru/**",
+          "$RESOURCE/**"
+        ]
+      }
+    },
+    "shell": {
+      "scope": {
+        "allow": [
+          "cargo *",
+          "npm *",
+          "node *",
+          "git *",
+          "python *",
+          "rustc *",
+          "tauri *"
+        ]
+      }
+    },
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://releases.supru.ai/{{target}}/{{current_version}}"
+      ],
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEUwQkQzNzQ1QjY3N0YzQjYKUldTQzBnN3ZJQW1Zc2V5bWlXeVd5eVl5eVl5eVl5eVl5eVl5eVl5eVl5eVl5eVl5eVlkK0RwZ0x6Cg=="
+    }
+  }
+}

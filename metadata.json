@@ -1,0 +1,6 @@
+{
+  "name": "Supru AI - Generative Chatbot",
+  "description": "Supru AI: Experience the power of Meow! A sleek, high-performance generative AI chatbot with feline personality modes, streaming chat, and code intelligence.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

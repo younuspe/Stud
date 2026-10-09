@@ -1,0 +1,4 @@
+{"event":"fs.read","agent":"researcher","path":"supru.agents.json","result":"success","timestamp":1727950010000,"evidenceType":"file"}
+{"event":"permission.check","agent":"coder","action":"fs.edit","path":"src/App.tsx","policy":"ask","approved":true,"timestamp":1727950020000}
+{"event":"shell.run","agent":"tester","command":"npm run lint","exitCode":0,"durationMs":340,"timestamp":1727950030000,"evidenceType":"command"}
+{"event":"judge.verdict","agent":"judge","verdict":"verified","invarianceProof":"Z3_SAT_PROOF_0x8F","timestamp":1727950040000}

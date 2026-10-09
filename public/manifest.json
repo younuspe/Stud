@@ -1,0 +1,31 @@
+{
+  "id": "/",
+  "name": "Supru AI - Generative Studio",
+  "short_name": "Supru AI",
+  "description": "Supru AI Generative Studio: 4D world-state synthesis, autonomous multi-agent pipelines, code intelligence, and macOS desktop app.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#07070d",
+  "theme_color": "#ec4899",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/cat_icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/cat_icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

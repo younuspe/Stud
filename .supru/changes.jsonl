@@ -1,0 +1,2 @@
+{"operation":"edit","path":"src/components/workbench/HeadlessAgentView.tsx","agent":"coder","timestamp":1727950020000,"approved":true,"diffLines":42}
+{"operation":"create","path":"supru.agents.json","agent":"architect","timestamp":1727950025000,"approved":true,"diffLines":120}

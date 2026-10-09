@@ -1,0 +1,18 @@
+{
+  "activeMilestone": "M1",
+  "taskStatus": "executing",
+  "activeTaskId": "task-hunter-init",
+  "objective": "Bootstrapping Supru Hunter Rust-Authoritative Execution Environment",
+  "currentAgent": "lead",
+  "completedAgents": ["researcher", "planner"],
+  "pendingAgents": ["architect", "coder", "tester", "reviewer", "judge"],
+  "permissionPolicy": "deny > ask > allow",
+  "evidenceCount": 4,
+  "lastCheckpoint": 1727950000000,
+  "costAccounting": {
+    "totalTokens": 8420,
+    "toolCallsCount": 12,
+    "filesChanged": 5,
+    "estimatedCost": "Cost tracking active"
+  }
+}
