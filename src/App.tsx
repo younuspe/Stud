@@ -67,7 +67,7 @@ const DEFAULT_SETTINGS: UserSettings = {
 const DEFAULT_LOCAL_CONFIG: LocalHostConfig = {
   provider: 'gemini_cloud',
   endpointUrl: 'http://localhost:11434',
-  modelName: 'llama3',
+  modelName: 'gemini-3.8-flash',
   isCustomUrl: false,
 };
 
@@ -591,6 +591,7 @@ export default function App() {
             provider: localConfig.provider,
             endpointUrl: localConfig.endpointUrl,
             modelName: localConfig.modelName,
+            apiKey: localConfig.apiKey,
             temperature: settings.temperature,
           }),
         });
@@ -628,6 +629,8 @@ export default function App() {
           persona: settings.persona,
           temperature: settings.temperature,
           attachment: attachment ? { data: attachment.data, mimeType: attachment.mimeType } : undefined,
+          apiKey: localConfig.apiKey,
+          modelName: localConfig.modelName || 'gemini-3.8-flash',
         }),
       });
 
