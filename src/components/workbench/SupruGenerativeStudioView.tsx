@@ -382,7 +382,10 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
         setManifestedArtifacts((prev) => [newArtifact, ...prev]);
         soundFx.playChime();
       } else if (activeMode === 'motion') {
-        // Trigger Veo Video API
+        if (isTauri()) {
+          throw new Error('Native video generation is not connected in the packaged desktop app yet. No development-server request or placeholder video was used.');
+        }
+        // Browser development mode only; the packaged desktop app has no Express server.
         const res = await fetch('/api/generate-video', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
