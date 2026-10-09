@@ -544,13 +544,13 @@ export class SupruPipeline {
     return entries;
   };
 
-  const handleOpenWorkspaceFile = async (relativePath: string, root = workspaceRoot) => {
+  const handleOpenWorkspaceFile = async (relativePath: string, root = workspaceRoot, replaceTabs = false) => {
     if (!root || !relativePath) return;
     setWorkspaceBusy(true);
     setWorkspaceStatus('');
     try {
       const existing = files.find((file) => file.path === relativePath);
-      if (existing && root === workspaceRoot) {
+      if (existing && root === workspaceRoot && !replaceTabs) {
         setActiveFileId(existing.id);
         return;
       }
@@ -565,6 +565,7 @@ export class SupruPipeline {
         isModified: false,
       };
       setFiles((previous) => {
+        if (replaceTabs) return [file];
         const index = previous.findIndex((item) => item.id === id);
         if (index < 0) return [...previous, file];
         const next = [...previous];
@@ -594,9 +595,8 @@ export class SupruPipeline {
       localStorage.setItem('supru_workspace_root', selected);
       setWorkspaceRoot(selected);
       const entries = await refreshWorkspaceEntries(selected);
-      setFiles([]);
       if (entries.some((entry) => !entry.isDir)) {
-        await handleOpenWorkspaceFile(entries.find((entry) => !entry.isDir)!.path, selected);
+        await handleOpenWorkspaceFile(entries.find((entry) => !entry.isDir)!.path, selected, true);
       } else {
         const blank: EditorFile = {
           id: 'workspace:index.html',
@@ -1281,6 +1281,12 @@ export class SupruPipeline {
           </button>
         </div>
       </div>
+
+      {workspaceStatus && (
+        <div className="truncate border-b border-white/[0.06] bg-[#11111a] px-2 py-1 text-[10px] text-gray-400" title={workspaceStatus}>
+          {workspaceStatus}
+        </div>
+      )}
 
       {/* Code Textarea & Gutter */}
       <div className="relative flex flex-1 overflow-hidden bg-[#09090f]">
