@@ -1,13 +1,8 @@
 name: macOS desktop build
 
+# Manual-only while the desktop core is under repair.
+# Do not build automatically on each code commit.
 on:
-  push:
-    branches:
-      - main
-      - fix/desktop-app-launch
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
