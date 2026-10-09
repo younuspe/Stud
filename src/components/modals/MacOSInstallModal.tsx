@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { 
   X, 
   Download, 
@@ -29,8 +30,6 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
   onClose,
 }) => {
   const [copiedTerminal, setCopiedTerminal] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [isDownloadingZip, setIsDownloadingZip] = useState(false);
   const [showDockHelp, setShowDockHelp] = useState(false);
   const [activeInstallTab, setActiveInstallTab] = useState<'laptop' | 'terminal' | 'download'>('laptop');
 
@@ -38,7 +37,21 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
 
   if (!isOpen) return null;
 
-  const terminalInstallCmd = `curl -fsSL ${window.location.origin}/api/install/macos | bash`;
+  const terminalInstallCmd = 'open "https://github.com/younuspe/Stud/actions"';
+  const isTauriDesktop = Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+  const buildPageUrl = 'https://github.com/younuspe/Stud/actions';
+
+  const openBuildPage = async () => {
+    try {
+      if (isTauriDesktop) {
+        await invoke('plugin:opener|open_url', { url: buildPageUrl });
+      } else {
+        window.open(buildPageUrl, '_blank', 'noopener,noreferrer');
+      }
+    } catch {
+      window.open(buildPageUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   const handleCopyCmd = () => {
     soundFx.playClick();
@@ -48,31 +61,21 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
   };
 
   const handleDownloadDmg = () => {
-    soundFx.playChime();
-    setIsDownloading(true);
-    const link = document.createElement('a');
-    link.href = '/api/download/dmg';
-    link.download = 'Supru-AI-Generative-Studio-macOS.dmg';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => setIsDownloading(false), 2500);
+    soundFx.playClick();
+    void openBuildPage();
   };
 
   const handleDownloadZip = () => {
-    soundFx.playChime();
-    setIsDownloadingZip(true);
-    const link = document.createElement('a');
-    link.href = '/api/download/zip';
-    link.download = 'Supru-AI-macOS-Universal.zip';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => setIsDownloadingZip(false), 2500);
+    soundFx.playClick();
+    void openBuildPage();
   };
 
   const handleOneClickLaptopInstall = async () => {
     soundFx.playChime();
+    if (isTauriDesktop) {
+      await openBuildPage();
+      return;
+    }
     const installed = await triggerInstall();
     if (!installed) {
       setShowDockHelp(true);
@@ -149,7 +152,7 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
               }`}
             >
               <Terminal size={14} className="text-emerald-400" />
-              <span>Mac Terminal (100% Native)</span>
+              <span>Mac Terminal — Open Build Page</span>
             </button>
 
             <button
@@ -193,7 +196,7 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
                   className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl font-black text-xs uppercase tracking-wider text-white shadow-xl transition-all duration-300 bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 hover:brightness-110 active:scale-98 shadow-[0_0_25px_rgba(236,72,153,0.35)]"
                 >
                   <Laptop size={16} />
-                  <span>⚡ Install Supru AI on this Laptop Now</span>
+                  <span>{isTauriDesktop ? 'View Native macOS Build Artifacts' : 'Install Supru Web App on this Laptop'}</span>
                 </button>
               </div>
 
@@ -222,7 +225,7 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
               <div className="rounded-2xl border border-emerald-500/30 bg-emerald-950/20 p-4 space-y-2">
                 <div className="flex items-center gap-2 text-xs font-bold text-emerald-300">
                   <ShieldCheck size={16} />
-                  <span>100% Guaranteed Native Mac Application Bundle</span>
+                  <span>Native macOS builds are published as GitHub Actions artifacts</span>
                 </div>
                 <p className="text-[11px] text-gray-300 leading-relaxed">
                   This command uses Apple's native <code className="text-emerald-400">osacompile</code> engine built into your Mac to generate a complete, genuine Mach-O Universal Application in <code className="text-white">/Applications/Supru AI.app</code> with zero Gatekeeper warnings.
@@ -272,27 +275,21 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
                 {/* Primary DMG */}
                 <button
                   onClick={handleDownloadDmg}
-                  disabled={isDownloading}
-                  className={`flex flex-col items-center justify-center gap-1.5 p-4 rounded-2xl font-bold text-xs border border-white/[0.15] bg-white/[0.05] hover:bg-white/[0.1] text-white transition-all hover:border-pink-500/40 ${
-                    isDownloading ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/40 animate-pulse' : ''
-                  }`}
+                  className="flex flex-col items-center justify-center gap-1.5 p-4 rounded-2xl font-bold text-xs border border-white/[0.15] bg-white/[0.05] hover:bg-white/[0.1] text-white transition-all hover:border-pink-500/40"
                 >
                   <Download size={20} className="text-pink-400" />
-                  <span className="font-black text-sm">Download macOS .dmg</span>
-                  <span className="text-[10px] text-gray-400 font-mono">1.0 MB • Full Core Structure</span>
+                  <span className="font-black text-sm">Find macOS .dmg Artifact</span>
+                  <span className="text-[10px] text-gray-400 font-mono">Opens GitHub Actions builds</span>
                 </button>
 
                 {/* Direct App Bundle ZIP */}
                 <button
                   onClick={handleDownloadZip}
-                  disabled={isDownloadingZip}
-                  className={`flex flex-col items-center justify-center gap-1.5 p-4 rounded-2xl font-bold text-xs border border-white/[0.15] bg-white/[0.05] hover:bg-white/[0.1] text-white transition-all hover:border-amber-500/40 ${
-                    isDownloadingZip ? 'bg-emerald-600/30 text-emerald-300 border-emerald-500/40 animate-pulse' : ''
-                  }`}
+                  className="flex flex-col items-center justify-center gap-1.5 p-4 rounded-2xl font-bold text-xs border border-white/[0.15] bg-white/[0.05] hover:bg-white/[0.1] text-white transition-all hover:border-amber-500/40"
                 >
                   <Layers size={20} className="text-amber-400" />
-                  <span className="font-black text-sm">Download .app Bundle (.zip)</span>
-                  <span className="text-[10px] text-gray-400 font-mono">631 KB • Instant Unpack</span>
+                  <span className="font-black text-sm">Find .app Bundle (.zip)</span>
+                  <span className="text-[10px] text-gray-400 font-mono">Opens GitHub Actions builds</span>
                 </button>
               </div>
 
