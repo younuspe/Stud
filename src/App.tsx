@@ -1072,6 +1072,7 @@ export default function App() {
             {/* 4. SUPRU HUNTER (HEADLESS DEVELOPING STUDIO AGENT) */}
             {workspaceView === 'agent' && (
               <HeadlessAgentView
+                localConfig={localConfig}
                 initialObjective={agentInitialObjective}
                 onSendToChat={(report) => {
                   handleSendMessage(report);
