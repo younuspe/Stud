@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { 
   Workflow, 
   Play, 
@@ -142,16 +143,12 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
         output = `This tool is not implemented yet. No operation was run for "${toolName}".`;
         status = 'warning';
       } else {
-        const response = await fetch('/api/terminal/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command }),
-        });
-        if (!response.ok) {
-          throw new Error(`Execution service returned HTTP ${response.status}`);
-        }
-        const result = await response.json();
-        output = `$ ${command}\n${result.output || '(no output)'}\nExit code: ${result.exitCode}`;
+        const result = await invoke<{ stdout: string; stderr: string; exitCode: number; durationMs: number }>(
+          'run_workspace_command',
+          { command },
+        );
+        const commandOutput = [result.stdout, result.stderr].filter(Boolean).join('\n') || '(no output)';
+        output = `$ ${command}\n${commandOutput}\nExit code: ${result.exitCode}`;
         status = result.exitCode === 0 ? 'success' : 'error';
         durationMs = Number(result.durationMs) || Date.now() - startedAt;
       }
