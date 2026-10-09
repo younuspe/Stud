@@ -1092,6 +1092,7 @@ export default function App() {
         onClose={() => setIsImageStudioOpen(false)}
         initialSourceImage={imageStudioPhoto}
         initialPrompt={imageStudioPrompt}
+        apiKey={activeCustomModel?.provider === 'gemini' ? activeCustomModel.apiKey : localConfig.apiKey}
         onAnimateWithVeo={handleAnimateFromImageStudio}
         onSendToChat={handleSendMediaToChat}
       />
@@ -1102,6 +1103,7 @@ export default function App() {
         onClose={() => setIsVeoModalOpen(false)}
         initialPhotoUrl={veoPhoto}
         initialPrompt={veoPrompt}
+        apiKey={activeCustomModel?.provider === 'gemini' ? activeCustomModel.apiKey : localConfig.apiKey}
       />
 
       {/* Universal Floating Chat Pill (Can move across any tab, link Supru Code, open any ecosystem tool) */}
