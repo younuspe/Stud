@@ -155,157 +155,49 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
     }
   }, [initialObjective]);
 
-  // Execute a single step in the agent pipeline
-  const executeAgentStep = (index: number) => {
+  // Each handoff calls the configured provider. No fabricated tool results or verification.
+  const executeAgentStep = async (index: number): Promise<void> => {
     if (index >= agents.length) {
       setIsPipelineRunning(false);
       setIsPipelineComplete(true);
       setCurrentRunningAgentIndex(-1);
-      soundFx.playChime();
-      setTerminalLogs((prev) => [
-        ...prev,
-        '═══════════════════════════════════════════════════════════════════════════',
-        '✔ [Absolute Judge] Full 8-agent pipeline executed end-to-end with ZERO human touch.',
-        '✔ [SMT Invariance Verification] SATISFIABLE (100% Mathematically Proven).',
-        '✔ [Audit Ledger] Checkpoint state committed to .supru/audit.jsonl.',
-        '═══════════════════════════════════════════════════════════════════════════'
-      ]);
+      setJudgeVerdict({ status: 'blocked', milestone: 'Model responses completed; verification pending', criteria: [], evidence: evidenceList, remainingRisks: ['Model responses alone do not prove files changed or tests passed.'], timestamp: Date.now() });
+      setTerminalLogs((prev) => [...prev, 'Model handoffs finished. No code-edit or test success is claimed; verification remains blocked until real tools run.']);
       return;
     }
-
-    if (isPausedRef.current) {
-      setIsPipelineRunning(false);
-      return;
-    }
-
-    setCurrentRunningAgentIndex(index);
+    if (isPausedRef.current) { setIsPipelineRunning(false); return; }
     const agent = agents[index];
-
-    // Mark current agent as working
-    setAgents((prev) =>
-      prev.map((ag, i) => (i === index ? { ...ag, status: 'working' } : ag))
-    );
-
-    setTerminalLogs((prev) => [
-      ...prev,
-      `[Pipeline Handoff ${index + 1}/8] -> Agent: ${agent.id.toUpperCase()} (${agent.role}) | Model: ${agent.model}`
-    ]);
-
-    // Generate output artifact for this agent
-    const artifact = generateHunterAgentArtifact(agent.id, pipelineObjective);
-    setAgentArtifacts((prev) => ({ ...prev, [agent.id]: artifact }));
-
-    // If agent is CODER, handle zero-interaction autonomous diff write
-    if (agent.id === 'coder') {
-      if (autoApproveGates || isZeroInteraction) {
-        setTimeout(() => {
-          setTerminalLogs((prev) => [
-            ...prev,
-            `[Zero-Interaction Policy] Action auto-approved via sovereign policy (allow). Zero human touch required.`,
-            `[coder] Executing atomic AST write to src/main.rs... OK (0.24s).`,
-            `[coder] Stage 5/8 Complete -> Seamless autonomous handoff to TESTER.`
-          ]);
-          setAgents((prev) =>
-            prev.map((ag) => (ag.id === 'coder' ? { ...ag, status: 'done' } : ag))
-          );
-          if (!isPausedRef.current) {
-            executeAgentStep(5);
-          }
-        }, 500);
-        return;
-      }
-
-      setTimeout(() => {
-        setAgents((prev) =>
-          prev.map((ag) => (ag.id === 'coder' ? { ...ag, status: 'waiting_approval' } : ag))
-        );
-
-        const coderApproval: HunterApprovalRequest = {
-          id: `appr-${Date.now()}`,
-          action: 'fs.edit',
-          agentId: 'coder',
-          risk: 'high',
-          whatWillHappen: `Apply atomic AST diff for: "${pipelineObjective}" and write to .supru/changes.jsonl`,
-          why: `Fulfill acceptance criteria for Milestone ${activeMilestone}`,
-          affectedFiles: ['src/main.rs', 'supru.agents.json'],
-          command: 'fs.edit --path src/main.rs --atomic',
-          status: 'pending',
-          timestamp: Date.now()
-        };
-
-        setApprovals((prev) => [coderApproval, ...prev]);
-        setActiveApprovalModal(coderApproval);
-        setIsPipelineRunning(false);
-        soundFx.playClick();
-      }, 700);
-      return;
-    }
-
-    // If agent is TESTER, collect verifiable evidence
-    if (agent.id === 'tester') {
-      setTimeout(() => {
-        const testEvidence: HunterEvidence = {
-          id: `ev-${Date.now()}`,
-          type: 'test',
-          claim: `Unit & regression suite for "${pipelineObjective}" passed with 0 failures`,
-          command: 'cargo test --all-targets',
-          exitCode: 0,
-          outputSnippet: 'running 18 tests\ntest test_sandboxing ... ok\ntest test_policy_resolution ... ok\ntest result: ok. 18 passed; 0 failed; 0 ignored.',
-          timestamp: Date.now(),
-          isVerified: true
-        };
-        setEvidenceList((prev) => [testEvidence, ...prev]);
-        setTerminalLogs((prev) => [
-          ...prev,
-          `[tester] running 18 tests... ok. 18 passed; 0 failed. 100% assertions green.`,
-          `[tester] Stage 6/8 Complete -> Autonomous handoff to REVIEWER.`
-        ]);
-      }, 350);
-    }
-
-    // If agent is REVIEWER, perform audit verification
-    if (agent.id === 'reviewer') {
-      setTimeout(() => {
-        setTerminalLogs((prev) => [
-          ...prev,
-          `[reviewer] Diff audit against acceptance criteria: 0 defects, 0 regressions.`,
-          `[reviewer] Stage 7/8 Complete -> Autonomous handoff to ABSOLUTE JUDGE.`
-        ]);
-      }, 350);
-    }
-
-    // If agent is JUDGE, issue formal verification via Z3 SMT solver
-    if (agent.id === 'judge') {
-      setTimeout(() => {
-        setJudgeVerdict((prev) => ({
-          ...prev,
-          status: 'verified',
-          milestone: `Milestone ${activeMilestone}: Verified via Absolute Judge`,
-          timestamp: Date.now()
-        }));
-        setTerminalLogs((prev) => [
-          ...prev,
-          `[judge] Z3 SMT Theorem Prover: forall s in State: AuthToken(s) -> ValidSession(s). SAT (0.04s).`,
-          `[judge] Mathematical proof generated: Invariant Soundness 100% PROVEN.`
-        ]);
-      }, 450);
-    }
-
-    // Finish current agent and move to next
-    setTimeout(() => {
-      setAgents((prev) =>
-        prev.map((ag, i) => (i === index ? { ...ag, status: 'done' } : ag))
-      );
+    setCurrentRunningAgentIndex(index);
+    setAgents((prev) => prev.map((item, i) => i === index ? { ...item, status: 'working' } : item));
+    setTerminalLogs((prev) => [...prev, '[Model handoff ' + (index + 1) + '/' + agents.length + '] ' + agent.id + ' (' + agent.role + ') using configured model: ' + (localConfig.modelName || '(none selected)')]);
+    try {
+      if (!isTauri()) throw new Error('Hunter model execution currently requires the packaged Tauri desktop app.');
+      if (localConfig.provider === 'offline_core') throw new Error('No chat model is configured for Offline Core. Select Ollama, LM Studio, or a cloud provider.');
+      if (!localConfig.modelName.trim()) throw new Error('Select a model in provider settings before running Hunter.');
+      const provider = localConfig.provider === 'gemini_cloud' ? 'gemini_cloud' : localConfig.provider === 'ollama_local' ? 'ollama' : localConfig.provider === 'lmstudio_local' ? 'lmstudio' : 'custom';
+      const prior = Object.values(agentArtifacts).map((artifact) => '[' + artifact.agentId + ']\n' + artifact.artifactContent).join('\n\n');
+      const response = await invoke<string>('chat_completion', {
+        provider, endpointUrl: localConfig.endpointUrl, modelName: localConfig.modelName, apiKey: localConfig.apiKey || null, temperature: 0.2,
+        messages: [
+          { role: 'system', content: 'You are the ' + agent.role + ' in Supru Hunter. Duties: ' + agent.duties.join('; ') + '. Boundaries: ' + agent.boundaries.join('; ') + '. You have no tools in this step. Do not claim to inspect files, run commands, edit code, or verify tests. State what evidence/tools are still needed.' },
+          { role: 'user', content: 'User objective:\n' + pipelineObjective + '\n\nPrior agent outputs:\n' + (prior || '(No prior outputs.)') + '\n\nProvide your actual ' + agent.role + ' response for this objective.' }
+        ]
+      });
+      const artifact: HunterAgentArtifact = { agentId: agent.id, summary: response.slice(0, 500), artifactContent: response, timestamp: Date.now() };
+      setAgentArtifacts((prev) => ({ ...prev, [agent.id]: artifact }));
+      setAgents((prev) => prev.map((item, i) => i === index ? { ...item, status: 'done' } : item));
+      setTerminalLogs((prev) => [...prev, '[' + agent.id + '] Received ' + response.length + ' characters from the configured model. No tools executed in this handoff.']);
       soundFx.playClick();
-
-      if (!isPausedRef.current) {
-        executeAgentStep(index + 1);
-      } else {
-        setIsPipelineRunning(false);
-      }
-    }, 750);
+      if (!isPausedRef.current) await executeAgentStep(index + 1); else setIsPipelineRunning(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setAgents((prev) => prev.map((item, i) => i === index ? { ...item, status: 'failed' } : item));
+      setEvidenceList((prev) => [{ id: 'ev-' + Date.now(), type: 'provider', claim: 'Model handoff failed for ' + agent.id + ': ' + message, timestamp: Date.now(), isVerified: false, outputSnippet: message }, ...prev]);
+      setTerminalLogs((prev) => [...prev, '[' + agent.id + '] FAILED: ' + message, 'Pipeline stopped. No successful completion or verification is claimed.']);
+      setJudgeVerdict({ status: 'blocked', milestone: 'Blocked at ' + agent.id, criteria: [], evidence: evidenceList, remainingRisks: [message], timestamp: Date.now() });
+      setIsPipelineRunning(false); setIsPipelineComplete(false); setCurrentRunningAgentIndex(-1);
+    }
   };
-
   // Run Entire Pipeline from Start (End-to-End Workflow with Zero Interaction)
   const handleRunFullPipeline = (autoApprove: boolean = true) => {
     soundFx.playClick();
@@ -318,15 +210,9 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
     // Reset agents to idle first
     setAgents((prev) => prev.map((ag) => ({ ...ag, status: 'idle' })));
-    setTerminalLogs((prev) => [
-      ...prev,
-      `--- Starting ${autoApprove ? 'Zero-Interaction Autonomous End-to-End' : 'Human-Gated'} 8-Agent Pipeline for: "${pipelineObjective}" ---`,
-      `[Policy Engine] Security gate policy set to ALLOW. Zero human interaction required between agents.`
-    ]);
+    setTerminalLogs((prev) => [...prev, '--- Starting model-analysis chain for: "' + pipelineObjective + '" ---', '[Execution policy] This run does not auto-approve file writes or claim tools were executed.']);
 
-    setTimeout(() => {
-      executeAgentStep(0);
-    }, 200);
+    void executeAgentStep(0);
   };
 
   // Step-by-step: execute single next pending agent
