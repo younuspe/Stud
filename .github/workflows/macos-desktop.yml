@@ -20,6 +20,10 @@ on:
       - src/**/*.tsx
       - src/**/*.ts
 
+concurrency:
+  group: supru-functional-audit-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
