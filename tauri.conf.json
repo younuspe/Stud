@@ -50,37 +50,21 @@
     "windows": {
       "digestAlgorithm": "sha256",
       "timestampUrl": "http://timestamp.digicert.com",
-      "webviewInstallMode": "downloadBootstrapper",
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
       "allowDowngrades": true,
       "nsis": {
-        "installerIcon": "public/favicon.ico",
-        "installerHeaderIcon": "public/favicon.ico",
-        "script": "installer.nsh"
+        "installerIcon": "public/favicon.ico"
       }
     },
     "linux": {
-      "appImage": {
-        "bundleMediaFramework": true
-      },
       "deb": {
         "depends": [
           "libgtk-3-0",
           "libwebkit2gtk-4.0-37",
           "libayatana-appindicator3-1",
           "librsvg2-common"
-        ]
-      },
-      "snap": {
-        "confinement": "strict",
-        "plugs": [
-          "network",
-          "network-bind",
-          "home",
-          "removable-media",
-          "gsettings",
-          "cups-control",
-          "audio-playback",
-          "audio-record"
         ]
       }
     }
