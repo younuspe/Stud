@@ -164,7 +164,7 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
               }`}
             >
               <Download size={14} className="text-pink-400" />
-              <span>Download Files (.dmg / .zip)</span>
+              <span>Find Build Artifacts</span>
             </button>
           </div>
 
@@ -180,13 +180,13 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
                       className="h-14 w-14 rounded-2xl border-2 border-white/20 shadow-xl object-cover"
                     />
                     <div>
-                      <h3 className="font-black text-sm text-white">Standalone Desktop Application</h3>
-                      <p className="text-xs text-gray-400">Creates an independent window with custom Dock icon and full offline storage</p>
+                      <h3 className="font-black text-sm text-white">Supru AI Install Options</h3>
+                      <p className="text-xs text-gray-400">Install the web app in your browser or open the published native macOS build artifacts.</p>
                     </div>
                   </div>
                   <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-[10px] font-mono font-bold">
                     <MonitorCheck size={12} />
-                    Verified Compatible
+                    Web or native install
                   </span>
                 </div>
 
@@ -200,22 +200,19 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
                 </button>
               </div>
 
-              {/* Browser-specific instructions */}
-              <div className="rounded-2xl border border-white/[0.08] bg-[#0c0c16] p-3 text-xs space-y-2 text-gray-300">
-                <div className="font-bold text-white flex items-center gap-2">
-                  <span>How to install in your browser:</span>
+              {isTauriDesktop ? (
+                <div className="rounded-2xl border border-white/[0.08] bg-[#0c0c16] p-3 text-xs text-gray-300">
+                  Use the native build-artifacts button to open GitHub Actions, then download the successful macOS artifact. This panel does not fabricate or download an installer itself.
                 </div>
-                <ul className="space-y-1.5 text-[11px] text-gray-300">
-                  <li className="flex items-start gap-2">
-                    <span className="text-pink-400 font-bold">•</span>
-                    <span><strong>In Chrome / Edge / Brave:</strong> Click the button above, or click the <strong>Install</strong> icon (computer with down arrow) on the right side of the address bar at the top of your screen.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-pink-400 font-bold">•</span>
-                    <span><strong>In Safari on macOS:</strong> In the top Mac menu bar, click <strong>File</strong> &gt; <strong>Add to Dock</strong> (or click the Share button &gt; <em>Add to Dock</em>).</span>
-                  </li>
-                </ul>
-              </div>
+              ) : (
+                <div className="rounded-2xl border border-white/[0.08] bg-[#0c0c16] p-3 text-xs space-y-2 text-gray-300">
+                  <div className="font-bold text-white">Install the web app in your browser</div>
+                  <ul className="space-y-1.5 text-[11px] text-gray-300">
+                    <li>Chrome / Edge / Brave: use the Install icon in the address bar when it is available.</li>
+                    <li>Safari on macOS: use File → Add to Dock.</li>
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 
@@ -228,7 +225,7 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
                   <span>Native macOS builds are published as GitHub Actions artifacts</span>
                 </div>
                 <p className="text-[11px] text-gray-300 leading-relaxed">
-                  This command uses Apple's native <code className="text-emerald-400">osacompile</code> engine built into your Mac to generate a complete, genuine Mach-O Universal Application in <code className="text-white">/Applications/Supru AI.app</code> with zero Gatekeeper warnings.
+                  The command opens the GitHub Actions build page. Download a successful macOS .dmg artifact from the workflow. Current builds are ad-hoc signed, so macOS may require you to choose Open Anyway in Privacy &amp; Security.
                 </p>
               </div>
 
