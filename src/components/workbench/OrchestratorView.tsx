@@ -48,81 +48,20 @@ interface OrchestratorViewProps {
 
 const PRESET_PROJECTS: OrchestratorProject[] = [
   {
-    id: 'proj-1',
-    name: 'Unified AI Gateway & Token Proxy',
-    complexity: 'complex',
-    description: 'High-throughput microservices managing model switching, token rearrangement, and local Ollama routing.',
-    tokenBudget: 16384,
-    tokensUsed: 6240,
-    tokensSaved: 12480,
-    activeModel: 'Gemini 2.5 Pro (Deep Reasoning)',
-    fallbackModel: 'Ollama Llama-3-8B (Local Triage)',
-    tasks: [
-      { id: 't-1', title: 'Parse OpenAPI schemas & validate contracts', stage: 'plan', status: 'completed', assignedModel: 'Gemini 2.5 Flash' },
-      { id: 't-2', title: 'Implement dynamic AST token pruner', stage: 'code', status: 'in_progress', assignedModel: 'Gemini 2.5 Pro' },
-      { id: 't-3', title: 'Execute regression test suite with mock endpoints', stage: 'test', status: 'pending', assignedModel: 'Ollama Llama-3-8B' },
-      { id: 't-4', title: 'Bug triage: Handle unexpected buffer overflow in CLI parser', stage: 'bugfix', status: 'pending', assignedModel: 'Gemini 2.5 Pro' },
-    ]
-  },
-  {
-    id: 'proj-2',
-    name: 'Single Micro-Script Validator',
+    id: 'workspace-default',
+    name: 'New Workflow',
     complexity: 'small',
-    description: 'Lightweight utility for data sanitization, schema migration, and fast CLI benchmarking.',
-    tokenBudget: 4096,
-    tokensUsed: 1120,
-    tokensSaved: 3840,
-    activeModel: 'Gemini 2.5 Flash',
-    fallbackModel: 'Local Mistral 7B',
-    tasks: [
-      { id: 't-5', title: 'Scaffold CLI argument parser', stage: 'code', status: 'completed', assignedModel: 'Gemini 2.5 Flash' },
-      { id: 't-6', title: 'Verify exit codes and signal trapping', stage: 'test', status: 'completed', assignedModel: 'Local Mistral 7B' },
-    ]
+    description: 'No tasks or execution results yet. Add a task and run a real tool to populate this workspace.',
+    tokenBudget: 0,
+    tokensUsed: 0,
+    tokensSaved: 0,
+    activeModel: 'Not connected',
+    fallbackModel: 'Not configured',
+    tasks: [],
   },
-  {
-    id: 'proj-3',
-    name: 'Distributed Cloud Monorepo Architecture',
-    complexity: 'multi_service',
-    description: 'Multi-complex full-stack deployment across Docker clusters, PostgreSQL persistence, and distributed worker queues.',
-    tokenBudget: 32768,
-    tokensUsed: 14800,
-    tokensSaved: 36200,
-    activeModel: 'Gemini 2.5 Pro',
-    fallbackModel: 'Claude 3.7 / Local Qwen2.5',
-    tasks: [
-      { id: 't-7', title: 'Cluster service discovery & orchestrator daemon', stage: 'plan', status: 'completed', assignedModel: 'Gemini 2.5 Pro' },
-      { id: 't-8', title: 'Type-safe RPC boundary verification', stage: 'code', status: 'in_progress', assignedModel: 'Gemini 2.5 Pro' },
-      { id: 't-9', title: 'Automated fuzz testing for packet race conditions', stage: 'test', status: 'pending', assignedModel: 'Local Qwen2.5' },
-    ]
-  }
 ];
 
-const INITIAL_BUGS: OrchestratorBug[] = [
-  {
-    id: 'bug-101',
-    title: 'AST Parser Memory Allocation Leak in Large Files',
-    file: 'src/services/token_parser.ts',
-    line: 84,
-    severity: 'high',
-    errorDetails: 'FATAL: Max buffer exceeded while tokenizing 48,000 lines of generated code. Memory spike: +380MB.',
-    recommendedTool: 'token_budgeter',
-    recommendedModel: 'Gemini 2.5 Pro (Deep Reasoning)',
-    status: 'open',
-    solutionDiff: `// Optimized Token Rearrangement chunking:\n- const rawTokens = tokenizeEntireFile(hugeBuffer);\n+ const chunks = streamChunkAST(hugeBuffer, { maxChunkTokens: 4096 });\n+ const prunedContext = pruneIrrelevantASTNodes(chunks);`
-  },
-  {
-    id: 'bug-102',
-    title: 'Type Mismatch in Localhost Provider Handshake',
-    file: 'src/providers/ollama_adapter.ts',
-    line: 112,
-    severity: 'medium',
-    errorDetails: 'TypeError: Provider response format does not match expected ModelPayload. Missing "choices" array.',
-    recommendedTool: 'type_checker',
-    recommendedModel: 'Gemini 2.5 Flash (Quick Triage)',
-    status: 'open',
-    solutionDiff: `// Safe adapter normalization:\n- return res.data.choices[0].message;\n+ return res.data.message?.content || res.data.response || res.data.choices?.[0]?.message?.content || '';`
-  }
-];
+const INITIAL_BUGS: OrchestratorBug[] = [];
 
 export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   localConfig,
@@ -132,8 +71,17 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   onSendToChat,
   onChangeWorkspaceView
 }) => {
-  const [projects, setProjects] = useState<OrchestratorProject[]>(PRESET_PROJECTS);
-  const [activeProjectId, setActiveProjectId] = useState<string>(PRESET_PROJECTS[0].id);
+  const [projects, setProjects] = useState<OrchestratorProject[]>(() => {
+    try {
+      const saved = localStorage.getItem('supru_orchestrator_projects_v1');
+      const parsed = saved ? JSON.parse(saved) : null;
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    } catch {}
+    return PRESET_PROJECTS;
+  });
+  const [activeProjectId, setActiveProjectId] = useState<string>(() => {
+    try { return localStorage.getItem('supru_orchestrator_active_project_v1') || PRESET_PROJECTS[0].id; } catch { return PRESET_PROJECTS[0].id; }
+  });
   const [bugs, setBugs] = useState<OrchestratorBug[]>(INITIAL_BUGS);
   const [activeTab, setActiveTab] = useState<'pipeline' | 'protocol' | 'overview' | 'tools' | 'tokens' | 'bugs'>('pipeline');
   const [pillObjective, setPillObjective] = useState('');
@@ -164,6 +112,13 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   const [activeTool, setActiveTool] = useState<OrchestratorToolName>('test_runner');
 
   const activeProject = projects.find(p => p.id === activeProjectId) || projects[0];
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('supru_orchestrator_projects_v1', JSON.stringify(projects));
+      localStorage.setItem('supru_orchestrator_active_project_v1', activeProjectId);
+    } catch {}
+  }, [projects, activeProjectId]);
 
   // Execute only real, fixed project checks. Tools without an implementation report that fact.
   const handleExecuteTool = async (toolName: OrchestratorToolName): Promise<boolean> => {
