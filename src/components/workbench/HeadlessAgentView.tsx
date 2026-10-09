@@ -101,7 +101,6 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   // Dropdown states for uncluttered UI
   const [openDropdown, setOpenDropdown] = useState<'milestone' | 'governance' | 'pipelineActions' | 'presets' | null>(null);
   // Default to true for zero-interaction end-to-end workflow (User request)
-  const [autoApproveGates, setAutoApproveGates] = useState<boolean>(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -141,7 +140,6 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   // Pipeline Execution State
   const [isPipelineRunning, setIsPipelineRunning] = useState<boolean>(false);
   const [isPipelinePaused, setIsPipelinePaused] = useState<boolean>(false);
-  const [isZeroInteraction, setIsZeroInteraction] = useState<boolean>(false);
   const [isPipelineComplete, setIsPipelineComplete] = useState<boolean>(false);
   const [currentRunningAgentIndex, setCurrentRunningAgentIndex] = useState<number>(-1);
 
@@ -339,10 +337,8 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   };
 
   // Run Entire Pipeline from Start (End-to-End Workflow with Zero Interaction)
-  const handleRunFullPipeline = (_autoApprove: boolean = false) => {
+  const handleRunFullPipeline = () => {
     soundFx.playClick();
-    setAutoApproveGates(false);
-    setIsZeroInteraction(false);
     setIsPipelinePaused(false);
     setIsPipelineRunning(true);
     setIsPipelineComplete(false);
@@ -823,7 +819,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                 {/* Master Action Controls: Clean Primary + Actions Dropdown */}
                 <div className="flex flex-wrap items-center gap-2">
                   <button
-                    onClick={() => handleRunFullPipeline(false)}
+                    onClick={() => handleRunFullPipeline()}
                     disabled={isPipelineRunning}
                     className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 px-3.5 py-1.5 text-xs font-black text-neutral-950 hover:brightness-110 active:scale-95 transition-all shadow-[0_0_20px_rgba(245,158,11,0.35)] disabled:opacity-50"
                     title="Run provider-backed agent steps; proposed code pauses for human review"
@@ -868,7 +864,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                     {openDropdown === 'pipelineActions' && (
                       <div className="absolute right-0 top-8 w-60 rounded-xl border border-white/[0.12] bg-[#101018]/98 p-1.5 shadow-2xl z-50 backdrop-blur-xl animate-fadeIn text-xs">
                         <button
-                          onClick={() => handleRunFullPipeline(false)}
+                          onClick={() => handleRunFullPipeline()}
                           className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-white/[0.08] text-gray-200"
                         >
                           <Play size={12} className="text-[#c49a6c]" />
@@ -876,11 +872,11 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                         </button>
 
                         <button
-                          onClick={() => handleRunFullPipeline(false)}
+                          onClick={() => handleRunFullPipeline()}
                           className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-white/[0.08] text-amber-300 font-semibold"
                         >
                           <Zap size={12} className="text-amber-400" />
-                          <span>Run Autonomous (Auto-Approve)</span>
+                          <span>Run Provider-backed Workflow</span>
                         </button>
 
                         <button
@@ -891,19 +887,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                           <span>{isPipelineRunning ? 'Pause Pipeline' : 'Resume Pipeline'}</span>
                         </button>
 
-                        <button
-                          onClick={() => {
-                            soundFx.playClick();
-                            setAutoApproveGates(!autoApproveGates);
-                            setOpenDropdown(null);
-                          }}
-                          className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left hover:bg-white/[0.08] text-gray-200"
-                        >
-                          <span>Policy: Auto-Approve</span>
-                          <span className={`text-[10px] font-mono px-1 rounded ${autoApproveGates ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-800 text-gray-400'}`}>
-                            {autoApproveGates ? 'ALLOW' : 'ASK'}
-                          </span>
-                        </button>
+
 
                         <div className="h-px bg-white/[0.08] my-1" />
 
@@ -929,7 +913,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                     </span>
                     <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-2 py-0.5 text-[9.5px] font-mono font-bold text-amber-300 border border-amber-500/30">
                       <Zap size={10} className="fill-amber-400" />
-                      Zero-Interaction End-to-End Mode
+                      Human review required for proposed code
                     </span>
                   </div>
                   <span className="text-[10px] text-gray-400">
@@ -987,7 +971,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
               </div>
 
               {/* LIVE ZERO-INTERACTION PROGRESS BANNER */}
-              {isPipelineRunning && isZeroInteraction && (
+              {isPipelineRunning && (
                 <div className="rounded-xl border border-amber-500/50 bg-gradient-to-r from-amber-500/15 via-[#181512] to-amber-500/15 p-3.5 shadow-lg flex flex-wrap items-center justify-between gap-3 animate-pulse">
                   <div className="flex items-center gap-3">
                     <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/25 text-amber-300 border border-amber-500/50">
@@ -995,7 +979,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                     </div>
                     <div>
                       <div className="text-xs font-bold text-white flex items-center gap-2">
-                        <span>8-Agent Autonomous Chain Active (Zero-Interaction Mode)</span>
+                        <span>Provider-backed workflow running</span>
                         <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[9.5px] font-mono font-bold text-amber-300 border border-amber-500/40">
                           Step {currentRunningAgentIndex + 1} of 8: {agents[currentRunningAgentIndex]?.role || 'Orchestrating'}
                         </span>
