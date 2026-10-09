@@ -327,7 +327,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
               ) : (
                 <>
                   <Scale size={13} />
-                  <span>Prove with SMT (Z3)</span>
+                  <span>Generate Hypothesis (Proof Runner Unavailable)</span>
                 </>
               )}
             </button>
@@ -498,7 +498,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
             ) : (
               <>
                 <Zap size={12} />
-                <span>Trigger Self-Factory Core Mutation</span>
+                <span>Check Self-Modification Status</span>
               </>
             )}
           </button>
