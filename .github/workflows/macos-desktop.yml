@@ -7,6 +7,7 @@ on:
     branches:
       - fix/desktop-app-launch
       - fix/macos-app-bundle-signature
+      - fix/functional-implementation-audit
     paths:
       - src/lib.rs
       - tauri.conf.json
@@ -16,6 +17,8 @@ on:
       - package-lock.json
       - build.rs
       - .github/workflows/macos-desktop.yml
+      - src/**/*.tsx
+      - src/**/*.ts
 
 permissions:
   contents: read
@@ -58,6 +61,12 @@ jobs:
 
       - name: Install frontend dependencies from lockfile
         run: npm ci --legacy-peer-deps
+
+      - name: Type-check frontend
+        run: npm run lint
+
+      - name: Build frontend bundle
+        run: npm run build
 
       - name: Convert cat icon to RGBA PNG for Tauri
         run: |
