@@ -128,20 +128,9 @@ export const VeoVideoModal: React.FC<VeoVideoModalProps> = ({
       setProgressPercent(20);
 
       // Start polling status
-      let pollCount = 0;
-      const stepMessages = [
-        'Synthesizing temporal keyframes and fluid motion vectors...',
-        'Computing frame interpolations and realistic light refractions...',
-        'Applying physics-based motion coherence with veo-3.1-fast-generate-preview...',
-        'Refining cinematic color grade and final video stream encoding...',
-        'Almost ready! Wrapping up 720p video package...',
-      ];
-
       pollingRef.current = window.setInterval(async () => {
-        pollCount++;
-        const stepIdx = Math.min(stepMessages.length - 1, Math.floor(pollCount / 2));
-        setGenerationStep(stepMessages[stepIdx]);
-        setProgressPercent((prev) => Math.min(95, prev + 8));
+        setGenerationStep('Waiting for the video provider to finish generation...');
+        setProgressPercent(20);
 
         try {
           const statusRes = await fetch('/api/video-status', {
