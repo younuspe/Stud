@@ -26,6 +26,7 @@ interface VeoVideoModalProps {
   onClose: () => void;
   initialPhotoUrl?: string | null;
   initialPrompt?: string;
+  apiKey?: string;
 }
 
 export const VeoVideoModal: React.FC<VeoVideoModalProps> = ({
@@ -33,6 +34,7 @@ export const VeoVideoModal: React.FC<VeoVideoModalProps> = ({
   onClose,
   initialPhotoUrl = null,
   initialPrompt = '',
+  apiKey,
 }) => {
   const [photoUrl, setPhotoUrl] = useState<string | null>(initialPhotoUrl);
   const [motionPrompt, setMotionPrompt] = useState<string>(initialPrompt || '');
@@ -112,6 +114,7 @@ export const VeoVideoModal: React.FC<VeoVideoModalProps> = ({
           image: photoUrl,
           prompt: motionPrompt.trim() || undefined,
           aspectRatio: aspectRatio, // strictly '16:9' or '9:16'
+          apiKey,
         }),
       });
 
@@ -144,7 +147,7 @@ export const VeoVideoModal: React.FC<VeoVideoModalProps> = ({
           const statusRes = await fetch('/api/video-status', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ operationName }),
+            body: JSON.stringify({ operationName, apiKey }),
           });
 
           const statusData = await statusRes.json();
