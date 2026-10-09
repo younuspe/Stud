@@ -166,7 +166,7 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
         let result: { output: string; exitCode: number; durationMs: number };
         if (isTauri()) {
           result = await invoke<{ output: string; exitCode: number; durationMs: number }>(
-            'execute_terminal_command', { command, cwd: workspacePath.trim() }
+            'execute_sandboxed_command', { command, cwd: workspacePath.trim() }
           );
         } else {
           const response = await fetch('/api/terminal/execute', {
