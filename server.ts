@@ -646,7 +646,7 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ error: 'Messages array is required' });
     }
 
-    const systemInstruction = PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat;
+    const systemInstruction = (PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat) + "\n\nLanguage policy: Understand the user's message in the language they use, including Malayalam or English. Unless they explicitly request another output language, always write the response in English. If the user speaks Malayalam, do not reply in Malayalam; answer in clear English.";
 
     // If Gemini API key is configured, use real Gemini 3.8 Flash
     if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
@@ -722,26 +722,6 @@ app.post('/api/chat/stream', async (req, res) => {
   const latestUserMsg = effectiveMessages[effectiveMessages.length - 1]?.content || '';
   const systemInstruction = PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat;
 
-  // Stream high-speed 2027 futuristic responses smoothly
-  const streamFallbackResponse = async (customText?: string) => {
-    const fullText = customText || generateSimulatedSupruResponse(latestUserMsg, persona);
-    // Split into natural semantic tokens (words and punctuation)
-    const tokens = fullText.match(/\S+|\s+/g) || [fullText];
-
-    for (let i = 0; i < tokens.length; i++) {
-      if (res.writableEnded) break;
-      res.write(`data: ${JSON.stringify({ chunk: tokens[i] })}\n\n`);
-      // 10ms smooth cadence = 100+ tokens/sec modern 2027 speed
-      if (i % 2 === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 8));
-      }
-    }
-
-    if (!res.writableEnded) {
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-      res.end();
-    }
-  };
 
   if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
     try {
@@ -795,18 +775,20 @@ app.post('/api/chat/stream', async (req, res) => {
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         return res.end();
       } else if (!res.writableEnded) {
-        return streamFallbackResponse();
+        res.write(`data: ${JSON.stringify({ error: 'The configured AI provider returned no response.' })}\n\n`);
+        return res.end();
       }
     } catch (apiError: any) {
-      console.warn('Gemini cloud stream fallback triggered:', apiError.message);
+      console.error('Gemini cloud request failed:', apiError.message);
       if (!res.writableEnded) {
-        return streamFallbackResponse();
+        res.write(`data: ${JSON.stringify({ error: apiError.message || 'Gemini request failed.' })}\n\n`);
+        return res.end();
       }
     }
   }
 
-  // Streaming fallback when running offline or testing
-  return streamFallbackResponse();
+  res.write(`data: ${JSON.stringify({ error: 'Gemini is not configured. Connect a cloud provider or select a local model in Settings.' })}\n\n`);
+  return res.end();
 });
 
 // Helper for high quality 2027 generative AI responses tailored to Supru persona
