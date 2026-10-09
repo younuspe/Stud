@@ -8,6 +8,13 @@ on:
       - fix/desktop-app-launch
     paths:
       - src/lib.rs
+      - tauri.conf.json
+      - Cargo.toml
+      - Cargo.lock
+      - package.json
+      - package-lock.json
+      - build.rs
+      - .github/workflows/macos-desktop.yml
 
 permissions:
   contents: read
