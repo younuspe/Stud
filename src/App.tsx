@@ -603,7 +603,7 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           signal: abortControllerRef.current.signal,
           body: JSON.stringify({
-            messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
+            messages: [{ role: 'system', content: "Always write responses in English, even when the user speaks Malayalam. Understand the user's language, but do not answer in Malayalam unless the user explicitly asks for Malayalam output." }, ...updatedMessages.map((m) => ({ role: m.role, content: m.content }))],
             provider: isLocal ? (activeCustomModel.provider === 'ollama' ? 'ollama_local' : 'lmstudio_local') : activeCustomModel.provider,
             endpointUrl: activeCustomModel.endpointUrl || (activeCustomModel.provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234/v1'),
             modelName: activeCustomModel.modelId,
@@ -701,6 +701,7 @@ export default function App() {
           if (trimmed.startsWith('data: ')) {
             try {
               const data = JSON.parse(trimmed.replace(/^data:\s*/, ''));
+              if (data.error) data.chunk = `AI request failed: ${data.error}`;
               if (data.chunk) {
                 accumulated += data.chunk;
                 setThreads((prev) =>
@@ -758,9 +759,7 @@ export default function App() {
                     m.id === assistantMsgId
                       ? {
                           ...m,
-                          content:
-                            m.content ||
-                            `*Purrs gently* 🐾 I encountered a brief neural flicker, but I'm ready to continue our journey! Try submitting your prompt once more.`,
+                          content: `${m.content ? m.content + '\n\n' : ''}Request failed: ${err.message || 'Unknown error'}`,
                           isStreaming: false,
                         }
                       : m
