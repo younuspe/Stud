@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { 
   Workflow, 
   Play, 
@@ -162,6 +163,7 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   const [toolCalls, setToolCalls] = useState<OrchestratorToolCall[]>([]);
   const [isCallingTool, setIsCallingTool] = useState<boolean>(false);
   const [activeTool, setActiveTool] = useState<OrchestratorToolName>('test_runner');
+  const [workspacePath, setWorkspacePath] = useState<string>('');
 
   const activeProject = projects.find(p => p.id === activeProjectId) || projects[0];
 
@@ -187,15 +189,22 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
         output = `This tool is not implemented yet. No operation was run for "${toolName}".`;
         status = 'warning';
       } else {
-        const response = await fetch('/api/terminal/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command }),
-        });
-        if (!response.ok) {
-          throw new Error(`Execution service returned HTTP ${response.status}`);
+        if (!workspacePath.trim()) throw new Error('Set the full project folder path before running project tools.');
+        let result: { output: string; exitCode: number; durationMs: number };
+        if (isTauri()) {
+          result = await invoke<{ output: string; exitCode: number; durationMs: number }>(
+            'execute_terminal_command', { command, cwd: workspacePath.trim() }
+          );
+        } else {
+          const response = await fetch('/api/terminal/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command, cwd: workspacePath.trim() }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || `Execution service returned HTTP ${response.status}`);
+          result = data;
         }
-        const result = await response.json();
         output = `$ ${command}\n${result.output || '(no output)'}\nExit code: ${result.exitCode}`;
         status = result.exitCode === 0 ? 'success' : 'error';
         durationMs = Number(result.durationMs) || Date.now() - startedAt;
@@ -272,6 +281,17 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
               <p className="text-[11px] text-gray-400">
                 Manage small to multi-complex projects, call verification tools, arrange models & eliminate token wastage
               </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <label htmlFor="orchestrator-workspace" className="text-[10px] text-gray-400">Project folder path</label>
+                <input
+                  id="orchestrator-workspace"
+                  value={workspacePath}
+                  onChange={(event) => setWorkspacePath(event.target.value)}
+                  placeholder="/Users/yourname/path/to/project"
+                  className="min-w-[260px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1.5 text-[11px] text-white outline-none focus:border-amber-500/60"
+                />
+                <span className="text-[10px] text-gray-500">Required before running project tools</span>
+              </div>
             </div>
           </div>
 
