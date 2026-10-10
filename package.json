@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "lint:server": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution bundler --esModuleInterop --skipLibCheck --types node server.ts",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:init": "tauri init"
