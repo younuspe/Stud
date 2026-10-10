@@ -533,19 +533,20 @@ async fn test_provider_connection(
     let kind = provider.to_lowercase();
     let endpoint = endpoint_url.trim().trim_end_matches('/');
     let key = api_key.as_deref().unwrap_or("").trim();
+    let failed = |message: String| ProviderTestResult {
+        status: "offline".into(),
+        message,
+        models: vec![],
+    };
+
     if kind == "offline_core" {
-        return ProviderTestResult {
-            status: "offline".into(),
-            message: "The built-in offline model engine is not implemented yet. Select Ollama or another real provider.".into(),
-            models: vec![],
-        };
+        return failed("The built-in offline model engine is not implemented. Select Ollama or another real provider.".into());
     }
-    if (kind == "gemini_cloud" || kind == "gemini" || kind == "openai" || kind == "anthropic" || kind == "deepseek" || kind == "groq") && key.is_empty() {
-        return ProviderTestResult {
-            status: "offline".into(),
-            message: "API key is missing. Add the provider key before testing the connection.".into(),
-            models: vec![],
-        };
+    if model_name.trim().is_empty() {
+        return failed("Select a model before testing the connection.".into());
+    }
+    if matches!(kind.as_str(), "gemini_cloud" | "gemini" | "openai" | "anthropic" | "deepseek" | "groq") && key.is_empty() {
+        return failed("API key is missing. Add the provider key before testing the connection.".into());
     }
 
     let base = if endpoint.is_empty() {
@@ -558,53 +559,127 @@ async fn test_provider_connection(
             "groq" => "https://api.groq.com/openai/v1",
             _ => "https://api.openai.com/v1",
         }
-    } else { endpoint };
-
-    let (url, auth) = if kind == "ollama_local" || kind == "ollama" {
-        (format!("{}/api/tags", base), "none")
-    } else if kind == "gemini_cloud" || kind == "gemini" {
-        (format!("{}/v1beta/models?key={}", base, key), "none")
-    } else if kind == "anthropic" {
-        (format!("{}/v1/models", base), "anthropic")
     } else {
-        let url = openai_compatible_models_url(base);
-        (url, "bearer")
+        endpoint
     };
 
-    let client = match reqwest::Client::builder().timeout(Duration::from_secs(10)).build() {
+    let client = match reqwest::Client::builder().timeout(Duration::from_secs(20)).build() {
         Ok(client) => client,
-        Err(e) => return ProviderTestResult { status: "offline".into(), message: format!("Could not initialize network client: {e}"), models: vec![] },
+        Err(e) => return failed(format!("Could not initialize network client: {e}")),
     };
-    let mut request = client.get(&url);
+
+    let model = model_name.trim();
+    let (url, body, auth) = if kind == "ollama_local" || kind == "ollama" {
+        let url = if base.ends_with("/api/chat") {
+            base.to_string()
+        } else if base.ends_with("/api/tags") {
+            format!("{}/api/chat", base.trim_end_matches("/api/tags"))
+        } else {
+            format!("{base}/api/chat")
+        };
+        (
+            url,
+            serde_json::json!({
+                "model": model,
+                "messages": [{"role": "user", "content": "Reply with OK."}],
+                "stream": false,
+                "options": {"temperature": 0}
+            }),
+            "none"
+        )
+    } else if kind == "gemini_cloud" || kind == "gemini" {
+        (
+            format!("{}/v1beta/models/{}:generateContent", base.trim_end_matches('/'), model),
+            serde_json::json!({
+                "contents": [{"parts": [{"text": "Reply with OK."}]}],
+                "generationConfig": {"temperature": 0, "maxOutputTokens": 8}
+            }),
+            "gemini"
+        )
+    } else if kind == "anthropic" {
+        let url = if base.ends_with("/v1") {
+            format!("{base}/messages")
+        } else {
+            format!("{base}/v1/messages")
+        };
+        (
+            url,
+            serde_json::json!({
+                "model": model,
+                "max_tokens": 8,
+                "temperature": 0,
+                "messages": [{"role": "user", "content": "Reply with OK."}]
+            }),
+            "anthropic"
+        )
+    } else {
+        (
+            openai_compatible_chat_url(base),
+            serde_json::json!({
+                "model": model,
+                "messages": [{"role": "user", "content": "Reply with OK."}],
+                "temperature": 0,
+                "max_tokens": 8,
+                "stream": false
+            }),
+            "bearer"
+        )
+    };
+
+    let mut request = client.post(&url).json(&body);
     match auth {
         "bearer" if !key.is_empty() => { request = request.bearer_auth(key); }
-        "anthropic" => { request = request.header("x-api-key", key).header("anthropic-version", "2023-06-01"); }
+        "anthropic" => {
+            request = request.header("x-api-key", key).header("anthropic-version", "2023-06-01");
+        }
+        "gemini" => { request = request.query(&[("key", key)]); }
         _ => {}
     }
+
     match request.send().await {
         Ok(response) => {
             let status = response.status();
-            match response.text().await {
-                Ok(text) if status.is_success() => {
-                    let value = serde_json::from_str::<serde_json::Value>(&text).unwrap_or(serde_json::Value::Null);
-                    let models = if kind == "ollama_local" || kind == "ollama" {
-                        value.get("models").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect::<Vec<String>>()).unwrap_or_default()
-                    } else if kind == "gemini_cloud" || kind == "gemini" {
-                        value.get("models").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|m| m.get("name").and_then(|n| n.as_str()).map(|n| n.strip_prefix("models/").unwrap_or(n).to_string())).collect()).unwrap_or_default()
-                    } else {
-                        value.get("data").or_else(|| value.get("models")).and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|m| m.get("id").or_else(|| m.get("name")).and_then(|n| n.as_str()).map(str::to_string)).collect()).unwrap_or_default()
-                    };
-                    let model_note = if model_name.trim().is_empty() { "No model selected.".to_string() } else if models.is_empty() { format!("Connected, but the provider did not return a model list. Selected model: {}.", model_name) } else if models.iter().any(|m| m == model_name.trim() || m.ends_with(&format!("/{}", model_name.trim()))) { format!("Connected. Selected model '{}' is listed by the provider.", model_name) } else { format!("Connected, but selected model '{}' was not found in the returned model list.", model_name) };
-                    ProviderTestResult { status: "online".into(), message: model_note, models }
-                }
-                Ok(text) => {
-                    let detail = text.chars().take(500).collect::<String>();
-                    ProviderTestResult { status: "offline".into(), message: format!("Provider returned HTTP {status}: {detail}"), models: vec![] }
-                }
-                Err(e) => ProviderTestResult { status: "offline".into(), message: format!("Could not read provider response: {e}"), models: vec![] }
+            let response_text = match response.text().await {
+                Ok(text) => text,
+                Err(e) => return failed(format!("Could not read provider response: {e}")),
+            };
+            if !status.is_success() {
+                let detail = serde_json::from_str::<serde_json::Value>(&response_text)
+                    .ok()
+                    .and_then(|v| {
+                        v.pointer("/error/message")
+                            .or_else(|| v.pointer("/error"))
+                            .or_else(|| v.pointer("/message"))
+                            .and_then(|value| value.as_str().map(str::to_string).or_else(|| Some(value.to_string())))
+                    })
+                    .unwrap_or_else(|| response_text.chars().take(600).collect());
+                return failed(format!("Provider returned HTTP {status}: {detail}"));
+            }
+
+            let value = match serde_json::from_str::<serde_json::Value>(&response_text) {
+                Ok(value) => value,
+                Err(e) => return failed(format!("Provider returned invalid JSON: {e}")),
+            };
+            let generated_text = if kind == "ollama_local" || kind == "ollama" {
+                value.pointer("/message/content").and_then(|v| v.as_str())
+            } else if kind == "gemini_cloud" || kind == "gemini" {
+                value.pointer("/candidates/0/content/parts/0/text").and_then(|v| v.as_str())
+            } else if kind == "anthropic" {
+                value.pointer("/content/0/text").and_then(|v| v.as_str())
+            } else {
+                value.pointer("/choices/0/message/content").and_then(|v| v.as_str())
+            };
+
+            match generated_text {
+                Some(text) if !text.trim().is_empty() => ProviderTestResult {
+                    status: "online".into(),
+                    message: format!("Live test succeeded: '{}' generated a response.", model),
+                    models: vec![model.to_string()],
+                },
+                _ => failed("The endpoint responded successfully but returned no readable text for the test prompt. Check the model and response format.".into()),
             }
         }
-        Err(e) => ProviderTestResult { status: "offline".into(), message: format!("Connection failed: {e}"), models: vec![] }
+        Err(e) => failed(format!("Connection failed: {e}")),
     }
 }
 
