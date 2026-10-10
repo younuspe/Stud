@@ -670,7 +670,7 @@ export default function App() {
             provider: isLocal ? (isOllama ? 'ollama_local' : 'lmstudio_local') : activeCustomModel.provider,
             endpointUrl: activeCustomModel.endpointUrl || fallbackEndpoint,
             modelName: activeCustomModel.modelId,
-            apiKey: activeCustomModel.apiKey,
+            apiKey: activeCustomModel.apiKey || (activeCustomModel.provider === 'gemini' ? localConfig.apiKey : undefined),
             temperature: settings.temperature,
           }),
         });
