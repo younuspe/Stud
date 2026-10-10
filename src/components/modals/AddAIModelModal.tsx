@@ -505,7 +505,14 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
                 ) : (
                   <AlertCircle size={15} className="text-rose-400" />
                 )}
-                <span>{testResult.message}</span>
+                <span>
+                  {testResult.message}
+                  {testResult.status === 'online' && (
+                    <span className="mt-1 block text-[10px] opacity-80">
+                      Connection test only — chat will use this model after you click “Save & Activate Model”.
+                    </span>
+                  )}
+                </span>
               </div>
               {testResult.latencyMs && (
                 <span className="font-mono text-[10px] opacity-75">{testResult.latencyMs}ms</span>
