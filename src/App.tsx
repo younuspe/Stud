@@ -264,7 +264,7 @@ export default function App() {
         setLocalConfig((prev) => ({
           ...prev,
           provider: model.provider === 'ollama' ? 'ollama_local' : model.provider === 'lmstudio' ? 'lmstudio_local' : 'custom_local',
-          endpointUrl: model.endpointUrl || (model.provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234/v1'),
+          endpointUrl: model.endpointUrl || (model.provider === 'ollama' ? 'http://localhost:11434' : model.provider === 'lmstudio' ? 'http://localhost:1234/v1' : ''),
           modelName: model.modelId,
           apiKey: model.apiKey,
         }));
@@ -608,7 +608,7 @@ export default function App() {
           custom: 'http://127.0.0.1:1234/v1',
         };
         const selectedEndpoint = activeCustomModel
-          ? activeCustomModel.endpointUrl || customEndpointDefaults[activeCustomModel.provider] || localConfig.endpointUrl
+          ? activeCustomModel.endpointUrl || (activeCustomModel.provider === 'custom' ? '' : customEndpointDefaults[activeCustomModel.provider] || localConfig.endpointUrl)
           : localConfig.endpointUrl;
         const selectedModel = activeCustomModel?.modelId || localConfig.modelName;
         const selectedKey = activeCustomModel?.apiKey || localConfig.apiKey;
