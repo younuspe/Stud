@@ -712,6 +712,12 @@ export class SupruPipeline {
   // If a file was sent from GitHub or CLI
   useEffect(() => {
     if (activeFileBuffer) {
+      if (isTauri() && workspaceRoot && /^generated-app-\d+\.html$/i.test(activeFileBuffer.name)) {
+        // The Studio has already created this unique file through the native Rust boundary.
+        // Open it as a real project file so Monaco's Save action remains connected to disk.
+        void openProjectFile(activeFileBuffer.name);
+        return;
+      }
       const existing = files.find((f) => f.name === activeFileBuffer.name);
       if (existing) {
         setActiveFileId(existing.id);
