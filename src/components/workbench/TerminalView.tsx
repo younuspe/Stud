@@ -14,6 +14,7 @@ import { soundFx } from '../../utils/audio';
 
 interface TerminalViewProps {
   localConfig: LocalHostConfig;
+  workspaceRoot?: string;
   onOpenLocalSettings: () => void;
   onOpenEditorWithFile?: (fileName: string, content: string) => void;
   onTriggerAgent?: (objective: string) => void;
@@ -31,6 +32,7 @@ const PRESET_COMMANDS = [
 
 export const TerminalView: React.FC<TerminalViewProps> = ({
   localConfig,
+  workspaceRoot = '',
   onOpenLocalSettings,
   onOpenEditorWithFile,
   onTriggerAgent,
@@ -194,7 +196,7 @@ API Key:  ${localConfig.provider === 'gemini_cloud' ? 'Configured or fallback' :
         // depend on a development-only Express server.
         data = await invoke<{ output: string; exitCode: number; durationMs: number }>(
           'execute_terminal_command',
-          { command: rawCmd, cwd: null }
+          { command: rawCmd, cwd: workspaceRoot || null }
         );
       } else {
         // Browser development mode retains the local API implementation.
