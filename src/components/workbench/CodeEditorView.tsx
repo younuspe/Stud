@@ -783,30 +783,55 @@ export class SupruPipeline {
         };
 
     try {
-      const res = await fetch('/api/studio/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: promptToSend,
-          currentCode: activeFile.content,
-          language: activeFile.language,
-          modelConfig: modelConfigPayload,
-        }),
-      });
-
-      const data = await res.json();
+      let data: { code?: string; explanation?: string; error?: string };
+      if (isTauri()) {
+        const nativeModel = resolveNativeModelConfig(localConfig, activeCustomModel);
+        const responseText = await invoke<string>('chat_completion', {
+          provider: nativeModel.provider,
+          endpointUrl: nativeModel.endpointUrl,
+          modelName: nativeModel.modelName,
+          apiKey: nativeModel.apiKey,
+          temperature: 0.2,
+          messages: [
+            {
+              role: 'system',
+              content: `You are Supru Code's app builder. Apply the user's requested changes to the current ${activeFile.language} file. Return the COMPLETE updated file inside one fenced code block, then give a short explanation. Do not claim changes were applied; the UI will apply the returned code only after receiving it. Current file: ${activeFile.name}.\n\nCurrent source:\n```${activeFile.language}\n${activeFile.content}\n````,
+            },
+            { role: 'user', content: promptToSend },
+          ],
+        });
+        const code = extractGeneratedCode(responseText);
+        data = code
+          ? { code, explanation: `Received updated code from ${nativeModel.modelName}.` }
+          : { explanation: responseText };
+      } else {
+        const res = await fetch('/api/studio/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: promptToSend,
+            currentCode: activeFile.content,
+            language: activeFile.language,
+            modelConfig: modelConfigPayload,
+          }),
+        });
+        data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || `Generation failed (HTTP ${res.status})`);
+      }
 
       if (data.code) {
         handleUpdateContent(data.code);
-        setGenerationSummary(data.explanation || `Code synthesized via ${modelConfigPayload.modelId || 'AI Studio'}.`);
+        setGenerationSummary(data.explanation || `Code updated by ${modelConfigPayload.modelId || 'the selected AI model'}.`);
         setIframeKey(Date.now());
         soundFx.playChime();
         if (!presetPrompt) setGeneratorPrompt('');
       } else {
-        setGenerationSummary(data.explanation || 'Generation finished.');
+        setGenerationSummary(data.explanation
+          ? `No code was applied. The model did not return a complete code block.\n\n${data.explanation}`
+          : 'No code was returned; the current file was left unchanged.');
       }
     } catch (err: any) {
-      setGenerationSummary(`Generation error: ${err.message}. Check model connection.`);
+      setGenerationSummary(`Generation error: ${err.message}. The current file was left unchanged.`);
     } finally {
       setIsGeneratingCode(false);
     }
