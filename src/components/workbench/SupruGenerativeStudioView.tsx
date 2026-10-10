@@ -1011,7 +1011,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                     {currentResultApp && onOpenInEditor && (
                       <button
                         type="button"
-                        onClick={() => onOpenInEditor('generated-app.html', currentResultApp)}
+                        onClick={() => onOpenInEditor(`generated-app-${Date.now()}.html`, currentResultApp)}
                         className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-200 hover:bg-emerald-500/20"
                       >
                         Open source in editor
