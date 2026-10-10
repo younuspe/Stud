@@ -1081,7 +1081,7 @@ export class SupruPipeline {
 
       if (!windows.generator?.isOpen) onToggleWindow?.('generator');
       if (drawerHeight < 280) setDrawerHeight(340);
-      setActiveAiTab('generator');
+      setActiveAiTab('synthesizer');
       void handleGenerateByMessage(externalPrompt.text.trim(), true);
       onClearExternalPrompt?.();
       return;
