@@ -926,11 +926,11 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
     const promptToSend = presetPrompt || generatorPrompt.trim();
     if (!promptToSend || isGeneratingCode) return;
     // Build-by-Chat must never overwrite a README or project manifest just because it was selected first.
-    const buildIntoNewFile = Boolean(workspaceRoot) &&
-      (!activeProjectPath || !isBuildableSourcePath(activeProjectPath));
-    const targetLanguage: SupportedLanguage = buildIntoNewFile ? 'html' : activeFile.language;
-    const targetFileName = buildIntoNewFile ? 'generated-app.html' : activeFile.name;
-    const targetSource = buildIntoNewFile ? '' : activeFile.content;
+    const createNewHtmlApp = activeFile.language !== 'html' ||
+      (Boolean(workspaceRoot) && (!activeProjectPath || !/\.html?$/i.test(activeProjectPath)));
+    const targetLanguage: SupportedLanguage = createNewHtmlApp ? 'html' : activeFile.language;
+    const targetFileName = createNewHtmlApp ? 'generated-app.html' : activeFile.name;
+    const targetSource = createNewHtmlApp ? '' : activeFile.content;
 
     if (isVoiceListening) {
       stopVoiceListening();
@@ -1002,7 +1002,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
         let persistenceNote = 'Updated the live preview buffer only. Select a project folder to save generated code to disk.';
         if (isTauri() && workspaceRoot) {
           const isWorkspaceFile = activeFileId.startsWith('workspace-file:') && Boolean(activeProjectPath);
-          if (isWorkspaceFile && !buildIntoNewFile) {
+          if (isWorkspaceFile && !createNewHtmlApp) {
             if (saveProjectFile) {
               // Build-by-Chat is an explicit request to modify the selected project file.
               const saveResult = await invoke<string>('write_workspace_file', {
@@ -1023,7 +1023,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
             }
           } else {
             // Generating from a demo tab creates a new project file instead of overwriting a real file.
-            const extension = buildIntoNewFile ? 'html' : (activeFile.name.split('.').pop() || 'html').replace(/[^a-z0-9]/gi, '') || 'html';
+            const extension = createNewHtmlApp ? 'html' : (activeFile.name.split('.').pop() || 'html').replace(/[^a-z0-9]/gi, '') || 'html';
             const targetPath = `generated-app-${Date.now()}.${extension}`;
             const targetId = `workspace-file:${targetPath}`;
             const saveResult = await invoke<string>('write_workspace_file', {
@@ -1045,6 +1045,20 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
             setProjectFileNotice(saveResult || `Created ${targetPath} in the selected project.`);
             persistenceNote = `Created project file ${targetPath}.`;
           }
+        } else if (createNewHtmlApp) {
+          const targetId = `scratch-generated-${Date.now()}`;
+          const scratchFile: EditorFile = {
+            id: targetId,
+            name: 'generated-app.html',
+            language: 'html',
+            content: data.code,
+            isModified: true,
+          };
+          setFiles((current) => [...current.filter((item) => item.id !== targetId), scratchFile]);
+          setActiveFileId(targetId);
+          setActiveProjectPath(null);
+          setProjectFileNotice('Generated a new scratch HTML app. Open a project folder to save it directly, or download the file.');
+          persistenceNote = 'Created a new scratch HTML app; it is editable and previewable but not yet saved to disk.';
         } else {
           handleUpdateContent(data.code);
         }
