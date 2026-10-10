@@ -15,6 +15,9 @@ export interface Message {
   attachment?: Attachment;
   persona?: PersonaType;
   isStreaming?: boolean;
+  /** Provider/model actually used for this assistant response, never a UI default. */
+  provider?: string;
+  model?: string;
 }
 
 export interface ChatThread {
