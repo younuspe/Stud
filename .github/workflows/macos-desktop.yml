@@ -15,6 +15,7 @@ on:
       - Cargo.lock
       - package.json
       - package-lock.json
+      - server.ts
       - build.rs
       - .github/workflows/macos-desktop.yml
       - src/**/*.tsx
@@ -65,6 +66,9 @@ jobs:
 
       - name: Install frontend dependencies from lockfile
         run: npm ci --legacy-peer-deps
+
+      - name: Type-check provider server
+        run: npm run lint:server
 
       - name: Type-check frontend
         run: npm run lint
