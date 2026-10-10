@@ -1394,8 +1394,6 @@ app.post('/api/studio/test-connection', async (req, res) => {
       groq: 'https://api.groq.com/openai/v1',
       lmstudio: 'http://localhost:1234/v1',
       lmstudio_local: 'http://localhost:1234/v1',
-      custom: 'http://localhost:1234/v1',
-      custom_local: 'http://localhost:1234/v1',
     };
     const endpoint = String(endpointUrl || defaults[provider] || '').trim();
     if (!endpoint) return fail('Enter the provider base URL or full /chat/completions URL.');
