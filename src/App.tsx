@@ -30,7 +30,6 @@ import { HeadlessAgentView } from './components/workbench/HeadlessAgentView';
 import { GitHubView } from './components/workbench/GitHubView';
 import { OrchestratorView } from './components/workbench/OrchestratorView';
 import { StratifiedTopologyView } from './components/workbench/StratifiedTopologyView';
-import { SupruGenerativeStudioView } from './components/workbench/SupruGenerativeStudioView';
 import { ChatThread, Message, PersonaType, UserSettings, Attachment, ServerStatus } from './types/chat';
 import { WorkspaceView, LocalHostConfig, CodingSpaceLayout, StudioWindowId, StudioWindowState, ExternalAIModelConfig } from './types/workbench';
 import { soundFx } from './utils/audio';
