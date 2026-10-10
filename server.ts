@@ -1514,7 +1514,7 @@ app.post('/api/studio/generate', async (req, res) => {
   }
 });
 
-// // Supru Code AI Copilot Chat Endpoint (Conversational IDE intelligence for active code)
+// Supru Code AI Copilot Chat Endpoint (Conversational IDE intelligence for active code)
 app.post('/api/studio/chat', async (req, res) => {
   const { messages = [], currentCode = '', fileName = 'index.html', language = 'html', modelConfig = {}, settings = {} } = req.body || {};
   if (!Array.isArray(messages) || messages.length === 0) {
