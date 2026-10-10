@@ -611,7 +611,7 @@ export default function App() {
           ? activeCustomModel.endpointUrl || (activeCustomModel.provider === 'custom' ? '' : customEndpointDefaults[activeCustomModel.provider] || localConfig.endpointUrl)
           : localConfig.endpointUrl;
         const selectedModel = activeCustomModel?.modelId || localConfig.modelName;
-        const selectedKey = activeCustomModel?.apiKey || localConfig.apiKey;
+        const selectedKey = activeCustomModel ? (activeCustomModel.apiKey || (activeCustomModel.provider === 'gemini' ? localConfig.apiKey : undefined)) : localConfig.apiKey;
         const chatMessages = [
           { role: 'system', content: "You are Supru AI. Be accurate, useful, and direct. Always answer in English unless the user explicitly requests another language." },
           ...updatedMessages.map((m) => ({ role: m.role, content: m.content })),
