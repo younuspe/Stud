@@ -138,10 +138,20 @@ function resolveNativeModelConfig(
 }
 
 function extractGeneratedCode(responseText: string): string | null {
-  const match = responseText.match(/```[^\\n`]*\\n([\\s\\S]*?)```/);
-  if (match?.[1]?.trim()) return match[1].trim();
+  const fenceStart = responseText.indexOf('```');
+  if (fenceStart >= 0) {
+    const lineEnd = responseText.indexOf('\n', fenceStart + 3);
+    if (lineEnd >= 0) {
+      const fenceEnd = responseText.indexOf('```', lineEnd + 1);
+      if (fenceEnd > lineEnd) {
+        const code = responseText.slice(lineEnd + 1, fenceEnd).trim();
+        if (code) return code;
+      }
+    }
+  }
   const trimmed = responseText.trim();
-  if (/^<!doctype html/i.test(trimmed) || /^<html[\\s>]/i.test(trimmed) || /^import\\s/m.test(trimmed) || /^export\\s/m.test(trimmed)) {
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('<!doctype html') || lower.startsWith('<html') || trimmed.startsWith('import ') || trimmed.startsWith('export ')) {
     return trimmed;
   }
   return null;
