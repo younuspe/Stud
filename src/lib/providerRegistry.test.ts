@@ -1,5 +1,6 @@
 import type { ExternalAIModelConfig, LocalHostConfig } from '../types/workbench';
 import { resolveProviderConfig } from './providerRegistry';
+import { extractCompleteHtml } from './htmlSource';
 
 function assertEqual(actual: unknown, expected: unknown, label: string): void {
   if (actual !== expected) {
@@ -93,4 +94,9 @@ assertThrows(
   'base URL',
 );
 
-console.log('Provider registry tests passed: OpenRouter, NVIDIA, OpenAI, Gemini, Ollama, missing endpoint, and credential isolation.');
+const htmlDocument = '<!doctype html><html><head><title>App</title></head><body><button id="go">Go</button></body></html>';
+assertEqual(extractCompleteHtml(```html\n${htmlDocument}\n```\n\nHere is the updated app.`), htmlDocument, 'HTML extraction with fenced code and trailing commentary');
+assertEqual(extractCompleteHtml(`I updated your app:\n${htmlDocument}\nDone.`), htmlDocument, 'HTML extraction with surrounding commentary');
+assertEqual(extractCompleteHtml('<!doctype html><html><body>unfinished'), '', 'Reject incomplete HTML response');
+
+console.log('Provider registry and HTML extraction tests passed: OpenRouter, NVIDIA, OpenAI, Gemini, Ollama, missing endpoint, credential isolation, and generated-source parsing.');
