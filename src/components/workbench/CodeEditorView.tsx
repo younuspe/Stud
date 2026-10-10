@@ -795,7 +795,7 @@ export class SupruPipeline {
           messages: [
             {
               role: 'system',
-              content: `You are Supru Code's app builder. Apply the user's requested changes to the current ${activeFile.language} file. Return the COMPLETE updated file inside one fenced code block, then give a short explanation. Do not claim changes were applied; the UI will apply the returned code only after receiving it. Current file: ${activeFile.name}.\n\nCurrent source:\n```${activeFile.language}\n${activeFile.content}\n````,
+              content: `You are Supru Code's app builder. Apply the user's requested changes to the current ${activeFile.language} file. Return the COMPLETE updated file inside one fenced code block, then give a short explanation. Do not claim changes were applied; the UI will apply the returned code only after receiving it. Current file: ${activeFile.name}.\n\nCurrent source starts below:\n${activeFile.content}\n\nCurrent source ends above.`,
             },
             { role: 'user', content: promptToSend },
           ],
