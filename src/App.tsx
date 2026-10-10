@@ -135,7 +135,7 @@ export default function App() {
   };
 
   // Active Workspace View (Supru Chat, Supru Code, Supru CLI, Supru Hunter, Supru Git)
-  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('chat');
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('editor');
 
   // Coding Space Window Layout (Single, Split with Terminal, Split with Hunter, Split with Git)
   const [codingLayout, setCodingLayout] = useState<CodingSpaceLayout>(() => {
@@ -938,77 +938,33 @@ export default function App() {
   return (
     <div className="flex h-screen w-full flex-col bg-[#08080a] text-[#f1f2f6] overflow-hidden">
       {/* UNIFIED 2027 STUDIO HEADER (File, Edit, View, Windows Dropdown, Models, Presets, View Switcher) */}
-      <StudioHeader
-        onToggleSidebar={() => setSidebarMobileOpen(!sidebarMobileOpen)}
-        isSidebarCollapsed={isSidebarCollapsed}
-        onToggleCollapseSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        activeWorkspaceView={workspaceView}
-        onChangeWorkspaceView={setWorkspaceView}
-        windows={studioWindows}
-        onToggleWindow={handleToggleWindow}
-        onToggleUndockWindow={handleToggleUndockWindow}
-        onDockAllWindows={handleDockAllWindows}
-        onResetWindowLayout={handleResetWindowLayout}
-        onNewChat={handleNewChat}
-        onNewFile={() => {
-          setWorkspaceView('editor');
-        }}
-        onOpenWorkspaceFolder={handleOpenWorkspaceFolder}
-        workspaceRoot={workspaceRoot}
-        onDownloadFile={handleDownloadFile}
-        onClearChat={handleClearCurrentChat}
-        activePersona={settings.persona}
-        onChangePersona={(p) => setSettings((s) => ({ ...s, persona: p }))}
-        userSettings={settings}
-        activeProvider={localConfig.provider}
-        isConnected={isConnected}
-        onOpenSettings={() => setIsSettingsModalOpen(true)}
-        onOpenLocalSettings={() => setIsLocalModalOpen(true)}
-        onOpenSupruTeam={() => setIsSupruTeamModalOpen(true)}
-        onOpenShare={() => setIsShareModalOpen(true)}
-        onOpenLogin={() => setIsLoginModalOpen(true)}
-        onOpenHelp={() => setIsHelpModalOpen(true)}
-        onOpenImageStudio={() => handleOpenImageStudio()}
-        onOpenVeoStudio={() => handleOpenVeoStudio()}
-        onToggleSound={() => setSettings((s) => ({ ...s, soundEffects: !s.soundEffects }))}
-        onOpenConnectModel={() => setIsConnectModalOpen(true)}
-        onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
-        activeModelName={activeCustomModel?.modelId || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'gemini-3.8-flash')}
-        onOpenGetCode={() => setIsGetCodeModalOpen(true)}
-        onOpenMacOSInstall={() => setIsMacOSModalOpen(true)}
-      />
+      <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-[#0b0b11] px-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg border border-amber-400/30 bg-amber-400/10 text-sm font-black text-amber-300">S</div>
+          <div className="min-w-0">
+            <div className="text-xs font-bold tracking-wide text-white">Supru App Builder</div>
+            <div className="max-w-[45vw] truncate text-[10px] text-gray-500" title={workspaceRoot || 'No project folder selected'}>
+              {workspaceRoot || 'Scratch project · Open a folder to save files directly'}
+            </div>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button type="button" onClick={() => void handleOpenWorkspaceFolder()} className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium text-gray-200 hover:border-amber-400/40 hover:text-amber-200">
+            {workspaceRoot ? 'Change Project' : 'Open Project'}
+          </button>
+          <button type="button" onClick={() => setIsLocalModalOpen(true)} className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium text-gray-200 hover:border-amber-400/40 hover:text-amber-200">
+            Provider Settings
+          </button>
+          <button type="button" onClick={() => setIsAddAIModelModalOpen(true)} className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-[11px] font-semibold text-amber-200 hover:bg-amber-400/15">
+            Models
+          </button>
+        </div>
+      </header>
 
       {/* Main Workspace Frame */}
       <div className="flex flex-1 w-full overflow-hidden">
         {/* Collapsible Left Side Panel Tab & Sidebar with Resizable Width */}
-        <Sidebar
-          threads={threads}
-          activeThreadId={activeThreadId}
-          onSelectThread={handleSelectThread}
-          onNewChat={handleNewChat}
-          onDeleteThread={handleDeleteThread}
-          onRenameThread={handleRenameThread}
-          onTogglePinThread={handleTogglePinThread}
-          onOpenSettings={() => setIsSettingsModalOpen(true)}
-          onOpenHelp={() => setIsHelpModalOpen(true)}
-          onOpenLogin={() => setIsLoginModalOpen(true)}
-          onOpenConnect={() => setIsConnectModalOpen(true)}
-          onOpenLocalSettings={() => setIsLocalModalOpen(true)}
-          onOpenSupruTeam={() => setIsSupruTeamModalOpen(true)}
-          onOpenImageStudio={() => handleOpenImageStudio()}
-          onOpenVeoStudio={() => handleOpenVeoStudio()}
-          isConnected={isConnected}
-          userSettings={settings}
-          isOpen={sidebarMobileOpen}
-          onToggleOpen={() => setSidebarMobileOpen(!sidebarMobileOpen)}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          activeWorkspaceView={workspaceView}
-          onChangeWorkspaceView={setWorkspaceView}
-          sidebarWidth={sidebarWidth}
-          onUpdateSidebarWidth={setSidebarWidth}
-          onOpenMacOSInstall={() => setIsMacOSModalOpen(true)}
-        />
+        {/* Focused App Builder: legacy workspace navigation is intentionally removed. */}
 
         {/* Dynamic Studio Workspace Body with Sovereign Ambient Backlight Glow */}
         <div className="relative flex flex-1 flex-col h-full overflow-hidden bg-[#050508]">
@@ -1031,151 +987,33 @@ export default function App() {
 
           {/* Active Workspace View Body */}
           <main className="relative flex flex-1 flex-col overflow-hidden z-10">
-            {/* 1. SUPRU CHAT */}
-            {workspaceView === 'chat' && (
-              <div className="flex h-full w-full flex-col overflow-hidden">
-                {activeMessages.length === 0 ? (
-                  <HeroLanding
-                    onSendMessage={handleSendMessage}
-                    activePersona={settings.persona}
-                    onOpenImageStudio={(img) => handleOpenImageStudio(img)}
-                    onOpenVeoStudio={(img) => handleOpenVeoStudio(img)}
-                    onOpenAIStudio={() => {
-                      soundFx.playClick();
-                      setWorkspaceView('editor');
-                    }}
-                    onOpenGenerativeStudio={() => {
-                      soundFx.playClick();
-                      setWorkspaceView('generative');
-                    }}
-                    onOpenMacOSInstall={() => setIsMacOSModalOpen(true)}
-                  />
-                ) : (
-                  <div className="flex flex-1 flex-col overflow-hidden pb-20">
-                    <ChatMessageList
-                      messages={activeMessages}
-                      isGenerating={isGenerating}
-                      onRegenerate={handleRegenerate}
-                      onAnimateWithVeo={(img) => handleOpenVeoStudio(img)}
-                      onEditWithImageStudio={(img) => handleOpenImageStudio(img)}
-                      onOpenInEditor={handleOpenInEditor}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 2. SUPRU GENERATIVE STUDIO (GENESIS PROTOCOL) */}
-            {workspaceView === 'generative' && (
-              <SupruGenerativeStudioView
-                localConfig={localConfig}
-                activeCustomModel={activeCustomModel}
-                onSendToChat={(text, img) => {
-                  handleSendMessage(text, img ? { name: 'manifestation.png', mimeType: 'image/png', data: img } : undefined);
-                  setWorkspaceView('chat');
-                }}
-                onOpenInEditor={handleOpenInEditor}
-                onRunInTerminal={(cmd) => {
-                  setWorkspaceView('terminal');
-                }}
-                onOpenImageStudio={(img) => handleOpenImageStudio(img)}
-                onOpenVeoStudio={(img) => handleOpenVeoStudio(img)}
-              />
-            )}
-
-            {/* 3. SUPRU CODE (MULTI-LANGUAGE IDE & ADJUSTABLE DOCKABLE WINDOWS) */}
-            {workspaceView === 'editor' && (
-              <CodeEditorView
-                onRunInTerminal={(command) => {
-                  setWorkspaceView('terminal');
-                }}
-                onSendToChat={(codePrompt) => {
-                  setExternalEditorPrompt({ id: `prompt-${Date.now()}`, text: codePrompt });
-                }}
-                externalPrompt={externalEditorPrompt}
-                onClearExternalPrompt={() => setExternalEditorPrompt(null)}
-                codingLayout={codingLayout}
-                onChangeCodingLayout={setCodingLayout}
-                localConfig={localConfig}
-                onOpenLocalSettings={() => setIsLocalModalOpen(true)}
-                onTriggerAgent={handleTriggerAgent}
-                activeFileBuffer={activeFileBuffer}
-                workspaceRoot={workspaceRoot}
-                windows={studioWindows}
-                onToggleWindow={handleToggleWindow}
-                onToggleUndockWindow={handleToggleUndockWindow}
-                onDockAllWindows={handleDockAllWindows}
-                onResetWindowLayout={handleResetWindowLayout}
-                onOpenConnectModel={() => setIsConnectModalOpen(true)}
-                onOpenGetCode={() => setIsGetCodeModalOpen(true)}
-                onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
-                activeModelName={activeCustomModel?.modelId || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'gemini-3.8-flash')}
-                activeCustomModel={activeCustomModel}
-              />
-            )}
-
-            {/* 3. SUPRU CLI (TERMINAL & SHELL) */}
-            {workspaceView === 'terminal' && (
-              <TerminalView
-                localConfig={localConfig}
-                workspaceRoot={workspaceRoot}
-                onOpenLocalSettings={() => setIsLocalModalOpen(true)}
-                onOpenEditorWithFile={handleOpenInEditor}
-                onTriggerAgent={handleTriggerAgent}
-              />
-            )}
-
-            {/* 4. SUPRU HUNTER (HEADLESS DEVELOPING STUDIO AGENT) */}
-            {workspaceView === 'agent' && (
-              <HeadlessAgentView
-                localConfig={localConfig}
-                activeCustomModel={activeCustomModel}
-                workspaceRoot={workspaceRoot}
-                initialObjective={agentInitialObjective}
-                initialWorkspacePath={agentInitialWorkspacePath}
-                onSendToChat={(report) => {
-                  handleSendMessage(report);
-                  setWorkspaceView('chat');
-                }}
-                onOpenInEditor={handleOpenInEditor}
-              />
-            )}
-
-            {/* 5. SUPRU GIT (GITHUB REPOSITORY INTEGRATION) */}
-            {workspaceView === 'github' && (
-              <GitHubView
-                onOpenInEditor={handleOpenInEditor}
-                onTriggerAgent={handleTriggerAgent}
-              />
-            )}
-
-            {/* 6. SUPRU ORCHESTRATOR (AUTONOMOUS MULTI-MODEL WORKFLOW PIPELINE & TOOL CALLING) */}
-            {workspaceView === 'orchestrator' && (
-              <OrchestratorView
-                localConfig={localConfig}
-                activeCustomModel={activeCustomModel}
-                onOpenLocalSettings={() => setIsLocalModalOpen(true)}
-                onOpenInEditor={handleOpenInEditor}
-                onTriggerHunter={handleTriggerAgent}
-                onSendToChat={(text) => {
-                  handleSendMessage(text);
-                  setWorkspaceView('chat');
-                }}
-                onChangeWorkspaceView={setWorkspaceView}
-              />
-            )}
-
-            {/* 7. THE STRATIFIED STACK (v1.3.0 - MANIFOLD ⊗ FORMULA & GLIDER LOGIC) */}
-            {workspaceView === 'topology' && (
-              <StratifiedTopologyView
-                onSendToChat={(text) => {
-                  handleSendMessage(text);
-                  setWorkspaceView('chat');
-                }}
-                onOpenInEditor={handleOpenInEditor}
-                onChangeWorkspaceView={setWorkspaceView}
-              />
-            )}
+            <CodeEditorView
+              onRunInTerminal={(command) => {
+                setExternalEditorPrompt({ id: `terminal-request-${Date.now()}`, text: `Run this command in the project terminal: ${command}` });
+              }}
+              onSendToChat={(codePrompt) => {
+                setExternalEditorPrompt({ id: `prompt-${Date.now()}`, text: codePrompt });
+              }}
+              externalPrompt={externalEditorPrompt}
+              onClearExternalPrompt={() => setExternalEditorPrompt(null)}
+              codingLayout={codingLayout}
+              onChangeCodingLayout={setCodingLayout}
+              localConfig={localConfig}
+              onOpenLocalSettings={() => setIsLocalModalOpen(true)}
+              onTriggerAgent={handleTriggerAgent}
+              activeFileBuffer={activeFileBuffer}
+              workspaceRoot={workspaceRoot}
+              windows={studioWindows}
+              onToggleWindow={handleToggleWindow}
+              onToggleUndockWindow={handleToggleUndockWindow}
+              onDockAllWindows={handleDockAllWindows}
+              onResetWindowLayout={handleResetWindowLayout}
+              onOpenConnectModel={() => setIsConnectModalOpen(true)}
+              onOpenGetCode={() => setIsGetCodeModalOpen(true)}
+              onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
+              activeModelName={activeCustomModel?.modelId || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'gemini-3.8-flash')}
+              activeCustomModel={activeCustomModel}
+            />
           </main>
         </div>
       </div>
@@ -1255,64 +1093,7 @@ export default function App() {
       />
 
       {/* Universal Floating Chat Pill (Can move across any tab, link Supru Code, open any ecosystem tool) */}
-      {(
-        <FloatingChatPill
-          onSendMessage={(text, attachment) => {
-            // The floating pill is a persistent, workspace-aware command bar.
-            // Sending from a tool must never change the selected workspace.
-            switch (workspaceView) {
-              case 'editor':
-                setExternalEditorPrompt({ id: `prompt-${Date.now()}`, text });
-                return;
-              case 'generative':
-                window.dispatchEvent(new CustomEvent('supru-generative-prompt', {
-                  detail: { text, attachment },
-                }));
-                return;
-              case 'agent':
-                handleTriggerAgent(text);
-                return;
-              case 'terminal':
-                window.dispatchEvent(new CustomEvent('supru-run-terminal-command', {
-                  detail: text,
-                }));
-                return;
-              case 'orchestrator':
-                window.dispatchEvent(new CustomEvent('supru-orchestrator-prompt', {
-                  detail: text,
-                }));
-                return;
-              case 'chat':
-                void handleSendMessage(text, attachment);
-                return;
-              default:
-                // Unsupported workspace: keep the user's context rather than silently
-                // throwing them back into Chat. The user can explicitly switch tabs.
-                window.dispatchEvent(new CustomEvent('supru-workspace-prompt', {
-                  detail: { workspace: workspaceView, text, attachment },
-                }));
-                return;
-            }
-          }}
-          isGenerating={isGenerating}
-          onStopGeneration={handleStopGeneration}
-          activeWorkspaceView={workspaceView}
-          onChangeWorkspaceView={setWorkspaceView}
-          onOpenImageStudio={() => handleOpenImageStudio()}
-          onOpenVeoStudio={() => handleOpenVeoStudio()}
-          onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
-          onBuildRequest={async (text) => {
-            // A build request must target a real folder, never the demo tabs.
-            if (!workspaceRoot) {
-              const selected = await handleOpenWorkspaceFolder();
-              if (!selected) return;
-            }
-            setWorkspaceView('editor');
-            setExternalEditorPrompt({ id: `build-prompt-${Date.now()}`, text });
-          }}
-          activeModelName={activeCustomModel?.modelId || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'gemini-3.8-flash')}
-        />
-      )}
+      {/* The focused builder uses its integrated chat-to-code panel. */}
 
       {/* Add Custom AI Models Modal (With or Without API Key) */}
       <AddAIModelModal
