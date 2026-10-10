@@ -201,7 +201,23 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
     setIsAutonomousRunning(true);
     const started = Date.now();
     let allSucceeded = true;
-    for (const node of activePipeline.nodes) {
+    const supportedTools = new Set<OrchestratorToolName>(['linter', 'type_checker', 'git_diff', 'package_manager']);
+    const executableNodes = activePipeline.nodes.filter((node) => supportedTools.has(node.toolToCall || 'ast_parser'));
+    const skippedNodes = activePipeline.nodes.filter((node) => !supportedTools.has(node.toolToCall || 'ast_parser'));
+    setPipelines((prev) => prev.map((pipe) => pipe.id !== activePipeline.id ? pipe : ({
+      ...pipe,
+      nodes: pipe.nodes.map((node) => skippedNodes.some((skipped) => skipped.id === node.id)
+        ? { ...node, status: 'idle', toolResult: 'Skipped: this tool is not implemented in the current build.', invarianceProof: 'Not verified' }
+        : node),
+    })));
+    if (executableNodes.length === 0) {
+      setQuickToolOutput('No implemented project-check tools exist in this preset. No command was run; use Dispatch to Hunter for model-backed work.');
+      setPipelines((prev) => prev.map((pipe) => pipe.id !== activePipeline.id ? pipe : ({ ...pipe, executionStatus: 'paused' })));
+      setRunningNodeId(null);
+      setIsAutonomousRunning(false);
+      return;
+    }
+    for (const node of executableNodes) {
       setRunningNodeId(node.id);
       setPipelines((prev) => prev.map((pipe) => pipe.id !== activePipeline.id ? pipe : ({
         ...pipe,
@@ -229,12 +245,17 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
     }
     setPipelines((prev) => prev.map((pipe) => pipe.id !== activePipeline.id ? pipe : ({
       ...pipe,
-      executionStatus: allSucceeded ? 'completed' : 'failed',
+      executionStatus: allSucceeded ? (skippedNodes.length > 0 ? 'paused' : 'completed') : 'failed',
       totalDurationMs: Date.now() - started,
     })));
     setRunningNodeId(null);
     setIsAutonomousRunning(false);
-    if (allSucceeded) soundFx.playChime();
+    if (allSucceeded) {
+      soundFx.playChime();
+      if (skippedNodes.length > 0) {
+        setQuickToolOutput(`Supported checks finished. ${skippedNodes.length} node(s) were skipped because their tools are not implemented; this is a partial check run, not end-to-end task verification.`);
+      }
+    }
   };
 
   // Self-healing requires a real failure detector and recovery executor; do not simulate one.
@@ -291,6 +312,9 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
 
   return (
     <div className="space-y-4">
+      <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 text-[11px] text-amber-100/80">
+        Preset stages are design templates. This panel runs only supported project-check commands; it does not execute model roles, AST parsing, fuzzing, self-healing, or SMT proofs. Use Dispatch to Hunter for model-backed coding tasks.
+      </div>
       <section className="rounded-xl border border-amber-500/30 bg-[#0c0c14] p-4">
         <div className="mb-2 flex items-center gap-2">
           <Send size={14} className="text-amber-400" />
@@ -407,7 +431,7 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
               ) : (
                 <>
                   <Play size={13} className="fill-neutral-950" />
-                  <span>▶ Run Autonomous Pipeline</span>
+                  <span>▶ Run Supported Tool Checks</span>
                 </>
               )}
             </button>

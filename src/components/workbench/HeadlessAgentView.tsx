@@ -801,7 +801,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                     <span>The Absolute Judge</span>
                   </div>
                   <span className="rounded bg-emerald-500/20 px-1.5 py-0.2 text-[9px] font-mono text-emerald-300">
-                    SMT Verified
+                    Not connected
                   </span>
                 </button>
 
@@ -1037,13 +1037,13 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                     </div>
                     <div>
                       <div className="text-xs font-bold text-white flex items-center gap-2">
-                        <span>8-Agent Autonomous Chain Active (Zero-Interaction Mode)</span>
+                        <span>8-stage model handoff chain active</span>
                         <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[9.5px] font-mono font-bold text-amber-300 border border-amber-500/40">
                           Step {currentRunningAgentIndex + 1} of 8: {agents[currentRunningAgentIndex]?.role || 'Orchestrating'}
                         </span>
                       </div>
                       <div className="text-[11px] text-gray-300 mt-0.5">
-                        Autonomous handoff from Lead to Absolute Judge • No human interaction required in between
+                        Configured model handoffs run in sequence. Workspace writes require approval; model responses do not verify completion.
                       </div>
                     </div>
                   </div>
@@ -1056,7 +1056,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
               {/* COMPLETION CELEBRATION CARD */}
               {isPipelineComplete && (
-                <div className="rounded-2xl border border-emerald-500/60 bg-gradient-to-r from-emerald-950/60 via-[#0d1612] to-emerald-950/60 p-4 shadow-[0_0_30px_rgba(16,185,129,0.25)] space-y-3 animate-fadeIn">
+                <div className="rounded-2xl border border-amber-500/50 bg-gradient-to-r from-amber-950/40 via-[#14120e] to-amber-950/40 p-4 shadow-[0_0_30px_rgba(16,185,129,0.25)] space-y-3 animate-fadeIn">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/50">
@@ -1064,29 +1064,17 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                       </div>
                       <div>
                         <div className="text-sm font-black text-white flex items-center gap-2">
-                          <span>8-Agent Multi-Agent Chain Complete</span>
-                          <span className="rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-mono font-bold text-emerald-300 border border-emerald-500/40">
-                            Zero-Interaction Verified • 8/8 Passed
+                          <span>Model handoffs ended</span>
+                          <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-mono font-bold text-amber-300 border border-amber-500/40">
+                            Verification blocked
                           </span>
                         </div>
                         <div className="text-xs text-emerald-200/80 mt-0.5">
-                          Full end-to-end execution completed without human intervention. Invariance theorem proved SAT by Z3 SMT solver.
+                          Model responses alone do not prove the task is complete. Review the evidence and run required checks; no formal solver is connected and the verdict remains blocked.
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          soundFx.playClick();
-                          if (onOpenInEditor) {
-                            onOpenInEditor('src/main.rs', '// Supru Hunter 8-Agent Verified Implementation\n// Invariance Proof: SATISFIABLE\n// Rust Authority Gate: ALLOW\n\nfn main() {\n    println!("Supru Sovereign Multi-Agent Chain: Verified");\n}\n');
-                          }
-                        }}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-neutral-950 text-xs font-bold transition-all shadow-md active:scale-95"
-                      >
-                        <Code2 size={13} />
-                        <span>Open Code in Editor</span>
-                      </button>
                       <button
                         onClick={() => handleRunFullPipeline(true)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-all"
@@ -1292,8 +1280,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
             onRunFullPipeline={() => handleRunFullPipeline(true)}
             isPipelineRunning={isPipelineRunning}
             onSendChatMessage={(msg) => {
-              handleRunTerminalCommand(`supru chat --prompt "${msg}"`);
-              soundFx.playChime();
+              onSendToChat(msg);
             }}
           />
         )}
@@ -1314,24 +1301,26 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
               <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 text-center text-xs font-mono">
                 {[
-                  { step: 'Syntax', status: 'verified', tool: 'AST parser' },
-                  { step: 'Type Check', status: 'verified', tool: 'cargo check' },
-                  { step: 'Lint', status: 'verified', tool: 'clippy/eslint' },
-                  { step: 'Unit Tests', status: 'verified', tool: 'cargo test' },
-                  { step: 'Integration', status: 'verified', tool: 'runtime test' },
-                  { step: 'Build', status: 'verified', tool: 'tauri build' },
-                  { step: 'Validation', status: 'verified', tool: 'acceptance' }
-                ].map((item, idx) => (
-                  <div
-                    key={item.step}
-                    className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-2.5 space-y-1"
-                  >
-                    <div className="text-[10px] text-gray-400">Layer {idx + 1}</div>
-                    <div className="font-bold text-white text-xs">{item.step}</div>
-                    <div className="text-[9.5px] text-emerald-400 font-semibold">✔ {item.status}</div>
-                    <div className="text-[9px] text-gray-500 truncate">{item.tool}</div>
-                  </div>
-                ))}
+                  { step: 'Syntax', tool: 'AST parser', match: (e: HunterEvidence) => /ast_parser|syntax/i.test(e.command || '') },
+                  { step: 'Type Check', tool: 'TypeScript/Rust check', match: (e: HunterEvidence) => /lint|tsc|cargo check|type.?check/i.test(e.command || '') },
+                  { step: 'Lint', tool: 'ESLint/Clippy', match: (e: HunterEvidence) => /eslint|clippy/i.test(e.command || '') },
+                  { step: 'Unit Tests', tool: 'Project test suite', match: (e: HunterEvidence) => /test/i.test(e.command || '') },
+                  { step: 'Integration', tool: 'Integration/runtime test', match: (e: HunterEvidence) => /integration|runtime/i.test(e.command || '') },
+                  { step: 'Build', tool: 'Project build', match: (e: HunterEvidence) => /build/i.test(e.command || '') },
+                  { step: 'Acceptance', tool: 'Acceptance criteria', match: (e: HunterEvidence) => /acceptance|validation/i.test(e.command || '') }
+                ].map((item, idx) => {
+                  const record = evidenceList.find(item.match);
+                  const status = !record ? 'not run' : record.isVerified && record.exitCode === 0 ? 'verified' : 'failed';
+                  const statusClass = status === 'verified' ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : status === 'failed' ? 'border-rose-500/30 bg-rose-500/10 text-rose-300' : 'border-white/[0.08] bg-white/[0.02] text-gray-500';
+                  return (
+                    <div key={item.step} className={`rounded-xl border ${statusClass} p-2.5 space-y-1`}>
+                      <div className="text-[10px] text-gray-400">Layer {idx + 1}</div>
+                      <div className="font-bold text-white text-xs">{item.step}</div>
+                      <div className="text-[9.5px] font-semibold">{status === 'verified' ? '✔ verified' : status === 'failed' ? '✖ failed' : '— not run'}</div>
+                      <div className="text-[9px] text-gray-500 truncate">{item.tool}</div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -1429,8 +1418,8 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                       )}
                       <span className="text-gray-200">{c.title}</span>
                     </div>
-                    <span className="text-[10px] text-emerald-400 font-mono font-bold">
-                      VERIFIED (Ref: {c.evidenceRef})
+                    <span className={`text-[10px] font-mono font-bold ${c.isMet ? 'text-emerald-400' : 'text-rose-300'}`}>
+                      {c.isMet ? 'MET' : 'NOT MET'}{c.evidenceRef ? ` (Ref: ${c.evidenceRef})` : ' (no evidence)'}
                     </span>
                   </div>
                 ))}
@@ -1480,7 +1469,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                   }}
                   className="rounded-xl border border-white/[0.1] bg-white/[0.05] px-3 py-1 text-xs text-gray-200 hover:text-white"
                 >
-                  + Simulate Sensitive Action Request
+                  + Create demo approval (no file action)
                 </button>
               </div>
 

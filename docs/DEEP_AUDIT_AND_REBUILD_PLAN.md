@@ -68,3 +68,8 @@ No source code from these three repositories is copied by this audit changeset.
 ## Acceptance rule
 
 A task is verified only when the requested artifact/change exists and required checks have recorded real output and exit status. Model text, a green connection indicator, a timer, a preset counter, or an unimplemented tool label is not evidence of completion.
+
+
+## Additional visible-state audit (follow-up)
+
+The follow-up removes the remaining green “verified” completion banner and static all-green verification ladder from Hunter. The final UI must reflect actual evidence records and leave missing checks as “not run”; completion of model handoffs alone is not task verification. The Orchestrator preset runner is limited to supported checks and explicitly labels skipped tools.
