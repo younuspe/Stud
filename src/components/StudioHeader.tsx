@@ -59,6 +59,8 @@ interface StudioHeaderProps {
   // File & Chat Actions
   onNewChat: () => void;
   onNewFile: () => void;
+  onOpenWorkspaceFolder: () => void;
+  workspaceRoot?: string;
   onDownloadFile: () => void;
   onClearChat: () => void;
   // Persona & Settings
@@ -111,6 +113,8 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
   onResetWindowLayout,
   onNewChat,
   onNewFile,
+  onOpenWorkspaceFolder,
+  workspaceRoot,
   onDownloadFile,
   onClearChat,
   activePersona,
@@ -611,6 +615,21 @@ export const StudioHeader: React.FC<StudioHeaderProps> = ({
                 {/* 5. FILE */}
                 {menuTab === 'file' && (
                   <div className="space-y-0.5">
+                    <button
+                      onClick={() => handleAction(onOpenWorkspaceFolder)}
+                      className="flex w-full items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-2 text-left hover:bg-emerald-500/[0.12] text-gray-100"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <FolderTree size={14} className="shrink-0 text-emerald-400" />
+                        <span className="truncate">{workspaceRoot ? 'Change Project Folder' : 'Open Project Folder…'}</span>
+                      </div>
+                      <span className="text-[10px] text-gray-500">⌘O</span>
+                    </button>
+                    {workspaceRoot && (
+                      <div className="truncate px-2.5 pb-1 text-[10px] text-emerald-300/80" title={workspaceRoot}>
+                        Active project: {workspaceRoot}
+                      </div>
+                    )}
                     <button
                       onClick={() => handleAction(onNewChat)}
                       className="flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left hover:bg-white/[0.08] text-gray-200"
