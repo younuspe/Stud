@@ -648,15 +648,22 @@ export default function App() {
       }
 
       if (activeCustomModel) {
-        const isLocal = activeCustomModel.provider === 'ollama' || activeCustomModel.provider === 'lmstudio' || activeCustomModel.provider === 'custom';
+        const isOllama = activeCustomModel.provider === 'ollama';
+        const isLmStudio = activeCustomModel.provider === 'lmstudio';
+        const isLocal = isOllama || isLmStudio;
+        const fallbackEndpoint = isOllama
+          ? 'http://localhost:11434'
+          : isLmStudio
+            ? 'http://localhost:1234/v1'
+            : '';
         const modelRes = await fetch('/api/local-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           signal: abortControllerRef.current.signal,
           body: JSON.stringify({
             messages: [{ role: 'system', content: "Always write responses in English, even when the user speaks Malayalam. Understand the user's language, but do not answer in Malayalam unless the user explicitly asks for Malayalam output." }, ...updatedMessages.map((m) => ({ role: m.role, content: m.content }))],
-            provider: isLocal ? (activeCustomModel.provider === 'ollama' ? 'ollama_local' : 'lmstudio_local') : activeCustomModel.provider,
-            endpointUrl: activeCustomModel.endpointUrl || (activeCustomModel.provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234/v1'),
+            provider: isLocal ? (isOllama ? 'ollama_local' : 'lmstudio_local') : activeCustomModel.provider,
+            endpointUrl: activeCustomModel.endpointUrl || fallbackEndpoint,
             modelName: activeCustomModel.modelId,
             apiKey: activeCustomModel.apiKey,
             temperature: settings.temperature,
