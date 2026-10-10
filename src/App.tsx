@@ -440,21 +440,25 @@ export default function App() {
     const refreshProviderStatus = async () => {
       try {
         if (isTauri()) {
+          // The status indicator must test the exact profile used by chat, not the
+          // primary Gemini/local settings when a separate model profile is active.
+          const selectedConfig = resolveProviderConfig(localConfig, activeCustomModel);
           const data = await invoke<{ status: string; message: string; models: string[] }>(
             'test_provider_connection',
             {
-              provider: localConfig.provider,
-              endpointUrl: localConfig.endpointUrl,
-              modelName: localConfig.modelName,
-              apiKey: localConfig.apiKey || null,
+              provider: selectedConfig.provider,
+              endpointUrl: selectedConfig.endpointUrl,
+              modelName: selectedConfig.modelName,
+              apiKey: selectedConfig.apiKey,
             }
           );
           if (cancelled) return;
           setServerStatus((previous) => ({
             ...previous,
             status: data.status,
-            hasApiKey: Boolean(localConfig.apiKey),
-            model: localConfig.modelName,
+            hasApiKey: Boolean(selectedConfig.apiKey),
+            model: selectedConfig.modelName,
+            provider: selectedConfig.provider,
           }));
           setIsConnected(data.status === 'online');
           return;
@@ -475,7 +479,7 @@ export default function App() {
 
     void refreshProviderStatus();
     return () => { cancelled = true; };
-  }, [localConfig.provider, localConfig.endpointUrl, localConfig.modelName, localConfig.apiKey]);
+  }, [localConfig.provider, localConfig.endpointUrl, localConfig.modelName, localConfig.apiKey, activeCustomModel?.id, activeCustomModel?.provider, activeCustomModel?.endpointUrl, activeCustomModel?.modelId, activeCustomModel?.apiKey]);
 
   const activeThread = threads.find((t) => t.id === activeThreadId) || null;
   const activeMessages = activeThread?.messages || [];
