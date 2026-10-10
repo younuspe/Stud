@@ -146,20 +146,12 @@ export const AutonomousPipelineTab: React.FC<AutonomousPipelineTabProps> = ({
     try {
       if (!workspacePath.trim()) throw new Error('Set the project folder path in the Orchestrator header before running tools.');
       let result: { output: string; exitCode: number; durationMs: number };
-      if (isTauri()) {
-        result = await invoke<{ output: string; exitCode: number; durationMs: number }>(
-          'execute_terminal_command', { command, cwd: workspacePath.trim() }
-        );
-      } else {
-        const response = await fetch('/api/terminal/execute', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command, cwd: workspacePath.trim() }),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || `Execution service returned HTTP ${response.status}`);
-        result = data;
+      if (!isTauri()) {
+        throw new Error('Project tools are desktop-only and require the packaged Tauri app. No browser/server fallback is used.');
       }
+      result = await invoke<{ output: string; exitCode: number; durationMs: number }>(
+        'execute_sandboxed_command', { command, cwd: workspacePath.trim() }
+      );
       const exitCode = Number(result.exitCode);
       return {
         output: `$ ${command}\n${result.output || '(no output)'}\nExit code: ${exitCode}`,

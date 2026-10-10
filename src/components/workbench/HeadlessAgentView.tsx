@@ -46,7 +46,8 @@ import {
   HunterEvidence,
   HunterApprovalRequest,
   HunterJudgeVerdict,
-  EditorFile
+  EditorFile,
+  ExternalAIModelConfig
 } from '../../types/workbench';
 import {
   INITIAL_HUNTER_AGENTS,
@@ -57,9 +58,11 @@ import { HunterFloatingPill } from './hunter/HunterFloatingPill';
 import { HunterHumanApprovalModal } from './hunter/HunterHumanApprovalModal';
 import { HunterWorkbenchLayout } from './hunter/HunterWorkbenchLayout';
 import { soundFx } from '../../utils/audio';
+import { resolveProviderConfig } from '../../lib/providerRegistry';
 
 interface HeadlessAgentViewProps {
   localConfig: import('../../types/workbench').LocalHostConfig;
+  activeCustomModel?: ExternalAIModelConfig | null;
   onSendToChat: (report: string) => void;
   onOpenInEditor?: (fileName: string, content: string) => void;
   initialObjective?: string;
@@ -76,6 +79,7 @@ const PRESET_PIPELINE_OBJECTIVES = [
 
 export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   localConfig,
+  activeCustomModel,
   onSendToChat,
   onOpenInEditor,
   initialObjective,
@@ -183,10 +187,11 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
     setAgents((prev) => prev.map((item, i) => i === index ? { ...item, status: 'working' } : item));
     setTerminalLogs((prev) => [...prev, '[Model handoff ' + (index + 1) + '/' + agents.length + '] ' + agent.id + ' (' + agent.role + ') using configured model: ' + (localConfig.modelName || '(none selected)')]);
     try {
-      if (!isTauri()) throw new Error('Hunter model execution currently requires the packaged Tauri desktop app.');
-      if (localConfig.provider === 'offline_core') throw new Error('No chat model is configured for Offline Core. Select Ollama, LM Studio, or a cloud provider.');
-      if (!localConfig.modelName.trim()) throw new Error('Select a model in provider settings before running Hunter.');
-      const provider = localConfig.provider === 'gemini_cloud' ? 'gemini_cloud' : localConfig.provider === 'ollama_local' ? 'ollama' : localConfig.provider === 'lmstudio_local' ? 'lmstudio' : 'custom';
+      if (!isTauri()) throw new Error('Hunter model execution requires the packaged Tauri desktop app. No browser/server fallback is used.');
+      const selectedConfig = resolveProviderConfig(localConfig, activeCustomModel);
+      if (selectedConfig.provider === 'offline_core') throw new Error('No chat model is configured for Offline Core. Select Ollama, LM Studio, or a configured cloud/compatible provider.');
+      if (!selectedConfig.modelName.trim()) throw new Error('Select a model in Provider Settings before running Hunter.');
+      if (selectedConfig.provider === 'custom_local' && !selectedConfig.endpointUrl.trim()) throw new Error('Set the selected compatible provider base URL before running Hunter.');
       if (!workspacePath.trim()) throw new Error('Set the project folder path before starting Hunter.');
       let contextArtifacts = priorArtifacts;
       if (index === 0) {
@@ -277,7 +282,11 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
       }
       const prior = Object.values(contextArtifacts).map((artifact) => '[' + artifact.agentId + ']\n' + artifact.artifactContent).join('\n\n');
       const response = await invoke<string>('chat_completion', {
-        provider, endpointUrl: localConfig.endpointUrl, modelName: localConfig.modelName, apiKey: localConfig.apiKey || null, temperature: 0.2,
+        provider: selectedConfig.provider,
+        endpointUrl: selectedConfig.endpointUrl,
+        modelName: selectedConfig.modelName,
+        apiKey: selectedConfig.apiKey,
+        temperature: 0.2,
         messages: [
           { role: 'system', content: agent.id === 'coder' ? 'You are the Code Implementer in Supru Hunter. Return ONLY one valid JSON object with exactly these fields: path (relative path of one EXISTING file from the supplied workspace inventory), content (the COMPLETE replacement file content as a JSON string), reason (brief explanation). Do not use markdown fences or extra text. Never return a diff. Never claim that you wrote or tested the file. If a safe, useful edit cannot be proposed from the supplied context, return JSON with path empty and explain why in reason. Preserve unrelated code and conventions.' : 'You are the ' + agent.role + ' in Supru Hunter. Duties: ' + agent.duties.join('; ') + '. Boundaries: ' + agent.boundaries.join('; ') + '. You have no tools in this step. Do not claim to inspect files beyond the supplied workspace context, run commands, edit code, or verify tests. State what evidence/tools are still needed.' },
           { role: 'user', content: 'User objective:\n' + pipelineObjective + '\n\nPrior agent outputs:\n' + (prior || '(No prior outputs.)') + '\n\nProvide your actual ' + agent.role + ' response for this objective.' }

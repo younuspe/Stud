@@ -55,10 +55,10 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
 
   // Self-Evolution state
   const [evolutionStats, setEvolutionStats] = useState({
-    reflectionCycles: 42,
-    aestheticGap: '0.002%',
-    coreMutations: 7,
-    status: 'OPTIMAL'
+    reflectionCycles: 0,
+    aestheticGap: 'not measured',
+    coreMutations: 0,
+    status: 'NOT CONNECTED'
   });
   const [isMutatingCore, setIsMutatingCore] = useState<boolean>(false);
   const [hasCopiedProtocol, setHasCopiedProtocol] = useState<boolean>(false);
@@ -70,26 +70,12 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
     soundFx.playChime();
   };
 
-  // Run Dreamer / Judge Invariance Test
+  // Never synthesize a proof result. The native Z3 bridge must exist before this action can verify anything.
   const handleRunDreamerJudgeSplit = () => {
     soundFx.playClick();
-    setIsEvaluatingInvariance(true);
-    setDreamerOutput(null);
-    setJudgeProof(null);
-
-    setTimeout(() => {
-      setDreamerOutput(
-        `[The Dreamer (LLM Hypothesis)]:\nProposes atomic CAS loop: compare_exchange_weak(expected, desired, AcquireRelease).\nData structure guarantees lock-free ring progression for 144fps thread buffers.`
-      );
-
-      setTimeout(() => {
-        setJudgeProof(
-          `[The Judge (Z3 SMT Theorem Prover)]:\nTheorem: forall t in Threads: Safe(t) && NoABARace(t) == true\nSolver: Z3-v4.12 SMT Solved in 68ms.\nVerification Result: SAT (Binary Invariance Mathematically Proven).\nStatus: APPROVED for direct compilation to Zig/Mojo core.`
-        );
-        setIsEvaluatingInvariance(false);
-        soundFx.playChime();
-      }, 700);
-    }, 600);
+    setIsEvaluatingInvariance(false);
+    setDreamerOutput('Not run: this screen is not connected to a configured model request for proof hypotheses.');
+    setJudgeProof('BLOCKED: no native Z3/SMT solver is connected. No theorem was submitted, no solver result was received, and no formal proof is claimed.');
   };
 
   // Morph semantic object in Genesis Protocol
@@ -101,21 +87,14 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
     soundFx.playChime();
   };
 
-  // Trigger Self-Factory Mutation
+  // Do not claim to mutate or compile the native core until a real build-and-apply pipeline is connected.
   const handleMutateCore = () => {
     soundFx.playClick();
-    setIsMutatingCore(true);
-
-    setTimeout(() => {
-      setEvolutionStats((prev) => ({
-        reflectionCycles: prev.reflectionCycles + 1,
-        aestheticGap: '0.001%',
-        coreMutations: prev.coreMutations + 1,
-        status: 'MUTATED (ZIG/MOJO COMPILED)'
-      }));
-      setIsMutatingCore(false);
-      soundFx.playChime();
-    }, 900);
+    setIsMutatingCore(false);
+    setEvolutionStats((prev) => ({
+      ...prev,
+      status: 'NOT CONNECTED — no core mutation or compilation was run'
+    }));
   };
 
   // Copy full skill.md
@@ -256,7 +235,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
                 )}
               </div>
               <div className="text-[10px] text-gray-400 mt-1 font-mono">
-                Pure Symbolic Logic • Z3 Theorem Prover + Zig Logic Gates
+                Planned proof architecture • native Z3 integration not connected
               </div>
               <p className="text-[10.5px] text-gray-300 mt-1.5">
                 Zero LLM dependency. Absolute mathematical proof, system recovery, and deterministic invariance.
@@ -279,12 +258,12 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
             </span>
           </div>
           <span className="text-[10px] text-gray-400 font-mono">
-            SMT Solvers (Z3) • SMT-LIB2 Causal Proof
+            Proof engine status: not connected
           </span>
         </div>
 
         <p className="text-[11px] text-gray-300 mb-3">
-          Protocol: If a proposed solution cannot be mathematically proven correct via SMT solvers (Z3), it is discarded. "Almost correct" is a failure.
+          Target policy only: reject proposals when verification fails. This build does not invoke Z3; no formal proof is claimed.
         </p>
 
         {/* Interactive Evaluation Box */}
@@ -310,7 +289,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
               ) : (
                 <>
                   <Scale size={13} />
-                  <span>Prove with SMT (Z3)</span>
+                  <span>Check proof integration</span>
                 </>
               )}
             </button>
@@ -333,7 +312,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
               {judgeProof && (
                 <div className="rounded-lg bg-[#11111a] p-2.5 border border-purple-500/40">
                   <div className="text-[10px] font-bold text-purple-400 uppercase font-mono mb-1 flex items-center justify-between">
-                    <span>The Judge (Z3 SMT Solver)</span>
+                    <span>Verification status (not a proof)</span>
                     <span className="text-emerald-400">PROVEN SOUND</span>
                   </div>
                   <pre className="font-mono text-[10.5px] text-gray-200 whitespace-pre-wrap">
@@ -370,7 +349,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
                 <span className="text-[9px] font-mono text-amber-400">Zig • Z3 • Rust</span>
               </div>
               <p className="mt-1 text-gray-400 text-[10.5px]">
-                Sovereign Core (Zig) for raw memory and deterministic state; Proof Engine (Z3 / SMT-LIB) formally verifying all logic; Orchestration Glue (Rust) managing the Cellular Protocol.
+                Target architecture: Rust execution authority with optional native proof tooling. Zig and Z3 are not wired into this app build.
               </p>
             </div>
 
@@ -437,7 +416,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
                 <span className="text-[9px] font-mono text-amber-400">Zero-Trust Tokens</span>
               </div>
               <p className="mt-1 text-gray-400 text-[10.5px]">
-                Zero-Trust: Every inter-module request requires a Z3-verified cryptographic proof token. Micro-perimeters enforced at cell boundaries.
+                Target security invariant: inter-module requests should be authenticated and policy-checked. Z3 proof tokens and micro-perimeter enforcement are not implemented in this build.
               </p>
             </div>
 
@@ -481,7 +460,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
             ) : (
               <>
                 <Zap size={12} />
-                <span>Trigger Self-Factory Core Mutation</span>
+                <span>Core mutation (not connected)</span>
               </>
             )}
           </button>
@@ -506,7 +485,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
           <div className="rounded-lg bg-[#12121d] p-2.5 border border-white/[0.04]">
             <div className="font-bold text-emerald-400 font-mono text-[10px]">EVOLUTION LOOP (THE SAGE)</div>
             <p className="mt-1 text-gray-300 text-[10.5px]">
-              Reflect on grace & silence ({evolutionStats.reflectionCycles} cycles). Distill gap to singularity ({evolutionStats.aestheticGap}).
+              Runtime metrics are not connected. Recorded cycles: {evolutionStats.reflectionCycles}; aesthetic gap: {evolutionStats.aestheticGap}.
             </p>
           </div>
         </div>
