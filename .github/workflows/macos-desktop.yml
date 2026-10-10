@@ -114,7 +114,7 @@ jobs:
       - name: Build unsigned macOS DMG
         run: npm run tauri:build -- --bundles dmg
 
-      - name: Verify signature and smoke-test packaged app
+      - name: Verify available signature and smoke-test packaged app
         env:
           RUST_BACKTRACE: "1"
         run: |
@@ -130,8 +130,13 @@ jobs:
           trap cleanup EXIT
           APP_PATH="$(find "$MOUNT_DIR" -maxdepth 2 -name '*.app' -print -quit)"
           test -n "$APP_PATH"
-          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-          codesign -dv --verbose=2 "$APP_PATH" 2>&1
+          if codesign -dv --verbose=2 "$APP_PATH" > /tmp/supru-codesign-info.txt 2>&1; then
+            cat /tmp/supru-codesign-info.txt
+            codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          else
+            echo "Unsigned desktop bundle detected; this is expected for the no-signing-credentials build."
+            cat /tmp/supru-codesign-info.txt || true
+          fi
           APP_BIN="$APP_PATH/Contents/MacOS/supru"
           test -x "$APP_BIN"
           python3 - "$APP_BIN" <<'PY'
