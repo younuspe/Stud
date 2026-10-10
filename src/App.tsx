@@ -945,7 +945,7 @@ export default function App() {
         onToggleSound={() => setSettings((s) => ({ ...s, soundEffects: !s.soundEffects }))}
         onOpenConnectModel={() => setIsConnectModalOpen(true)}
         onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
-        activeModelName={activeCustomModel?.name || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'Gemini 3.8 Flash')}
+        activeModelName={activeCustomModel?.modelId || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'gemini-3.8-flash')}
         onOpenGetCode={() => setIsGetCodeModalOpen(true)}
         onOpenMacOSInstall={() => setIsMacOSModalOpen(true)}
       />
@@ -1080,7 +1080,7 @@ export default function App() {
                 onOpenConnectModel={() => setIsConnectModalOpen(true)}
                 onOpenGetCode={() => setIsGetCodeModalOpen(true)}
                 onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
-                activeModelName={activeCustomModel?.name || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'Gemini 3.8 Flash')}
+                activeModelName={activeCustomModel?.modelId || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'gemini-3.8-flash')}
                 activeCustomModel={activeCustomModel}
               />
             )}
@@ -1272,7 +1272,7 @@ export default function App() {
             setWorkspaceView('editor');
             setExternalEditorPrompt({ id: `build-prompt-${Date.now()}`, text });
           }}
-          activeModelName={activeCustomModel?.name || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'Gemini 3.8 Flash')}
+          activeModelName={activeCustomModel?.modelId || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'gemini-3.8-flash')}
         />
       )}
 
