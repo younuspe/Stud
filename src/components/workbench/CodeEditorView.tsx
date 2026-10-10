@@ -549,15 +549,21 @@ export class SupruPipeline {
       || /^(?:Dockerfile|Makefile|GNUmakefile|\.gitignore|\.dockerignore|\.editorconfig|\.npmrc|\.nvmrc|\.prettierrc|\.eslintrc|\.env(?:\..*)?)$/i.test(name);
   };
 
+  const isBuildableSourcePath = (path: string) =>
+    /\.(html?|[cm]?[jt]sx?|py|rs|go|css|sql|sh)$/i.test(path) &&
+    !/(^|\/)(README(?:\.[^/]*)?|package\.json|Cargo\.toml|tsconfig(?:\.[^/]*)?\.json|vite\.config\.[^/]+|\.eslintrc(?:\.[^/]*)?)$/i.test(path);
+
   const prioritizeProjectPaths = (paths: string[]) => paths
     .filter(isReadableProjectPath)
     .sort((a, b) => {
       const priority = (path: string) => {
-        if (/^README(?:\.[^/]*)?$/i.test(path)) return 0;
-        if (/^package\.json$/i.test(path)) return 1;
-        if (/^Cargo\.toml$/i.test(path)) return 2;
-        if (/^src\/App\.[jt]sx?$/i.test(path)) return 3;
-        if (/^src\/main\.rs$/i.test(path)) return 4;
+        if (/^(?:index|src\/App)\.[cm]?[jt]sx?$/i.test(path) || /^index\.html$/i.test(path)) return 0;
+        if (/^src\/(?:main|index)\.[cm]?[jt]sx?$/i.test(path)) return 1;
+        if (/^(?:app|main)\.(?:py|js|ts|tsx|jsx|html)$/i.test(path)) return 2;
+        if (/^src\/main\.rs$/i.test(path) || /^src\/lib\.rs$/i.test(path)) return 3;
+        if (/^package\.json$/i.test(path)) return 6;
+        if (/^Cargo\.toml$/i.test(path)) return 7;
+        if (/^README(?:\.[^/]*)?$/i.test(path)) return 9;
         return 10;
       };
       return priority(a) - priority(b) || a.localeCompare(b);
@@ -917,6 +923,12 @@ export class SupruPipeline {
   const handleGenerateByMessage = async (presetPrompt?: string, saveProjectFile = false) => {
     const promptToSend = presetPrompt || generatorPrompt.trim();
     if (!promptToSend || isGeneratingCode) return;
+    // Build-by-Chat must never overwrite a README or project manifest just because it was selected first.
+    const buildIntoNewFile = saveProjectFile && Boolean(workspaceRoot) &&
+      (!activeProjectPath || !isBuildableSourcePath(activeProjectPath));
+    const targetLanguage: SupportedLanguage = buildIntoNewFile ? 'html' : activeFile.language;
+    const targetFileName = buildIntoNewFile ? 'generated-app.html' : activeFile.name;
+    const targetSource = buildIntoNewFile ? '' : activeFile.content;
 
     if (isVoiceListening) {
       stopVoiceListening();
@@ -959,7 +971,7 @@ export class SupruPipeline {
           messages: [
             {
               role: 'system',
-              content: `You are Supru Code's app builder. Apply the user's requested changes to the current ${activeFile.language} file. Return the COMPLETE updated file inside one fenced code block, then give a short explanation. Do not claim changes were applied; the UI will apply the returned code only after receiving it. Current file: ${activeFile.name}.\n\nCurrent source starts below:\n${activeFile.content}\n\nCurrent source ends above.`,
+              content: `You are Supru Code's app builder. Apply the user's requested changes to the current ${targetLanguage} file. Return the COMPLETE updated file inside one fenced code block, then give a short explanation. Do not claim changes were applied; the UI will apply the returned code only after receiving it. Current file: ${targetFileName}.\n\nCurrent source starts below:\n${targetSource}\n\nCurrent source ends above.`,
             },
             { role: 'user', content: promptToSend },
           ],
@@ -974,8 +986,9 @@ export class SupruPipeline {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             prompt: promptToSend,
-            currentCode: activeFile.content,
-            language: activeFile.language,
+            currentCode: targetSource,
+            language: targetLanguage,
+            fileName: targetFileName,
             modelConfig: modelConfigPayload,
           }),
         });
@@ -987,7 +1000,7 @@ export class SupruPipeline {
         let persistenceNote = 'Updated the live preview buffer only. Select a project folder to save generated code to disk.';
         if (isTauri() && workspaceRoot) {
           const isWorkspaceFile = activeFileId.startsWith('workspace-file:') && Boolean(activeProjectPath);
-          if (isWorkspaceFile) {
+          if (isWorkspaceFile && !buildIntoNewFile) {
             if (saveProjectFile) {
               // Build-by-Chat is an explicit request to modify the selected project file.
               const saveResult = await invoke<string>('write_workspace_file', {
@@ -1008,7 +1021,7 @@ export class SupruPipeline {
             }
           } else {
             // Generating from a demo tab creates a new project file instead of overwriting a real file.
-            const extension = (activeFile.name.split('.').pop() || 'html').replace(/[^a-z0-9]/gi, '') || 'html';
+            const extension = buildIntoNewFile ? 'html' : (activeFile.name.split('.').pop() || 'html').replace(/[^a-z0-9]/gi, '') || 'html';
             const targetPath = `generated-app-${Date.now()}.${extension}`;
             const targetId = `workspace-file:${targetPath}`;
             const saveResult = await invoke<string>('write_workspace_file', {
