@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { 
   Code2, 
   Play, 
@@ -75,6 +76,75 @@ interface CodeEditorViewProps {
   activeCustomModel?: ExternalAIModelConfig | null;
   externalPrompt?: { id: string; text: string } | null;
   onClearExternalPrompt?: () => void;
+
+}
+
+function resolveNativeModelConfig(
+  localConfig: LocalHostConfig,
+  activeCustomModel?: ExternalAIModelConfig | null,
+): { provider: string; endpointUrl: string; modelName: string; apiKey: string | null } {
+  const providerMap: Record<string, string> = {
+    gemini_cloud: 'gemini_cloud',
+    gemini: 'gemini',
+    openai: 'openai',
+    anthropic: 'anthropic',
+    deepseek: 'deepseek',
+    groq: 'groq',
+    ollama: 'ollama_local',
+    ollama_local: 'ollama_local',
+    lmstudio: 'lmstudio_local',
+    lmstudio_local: 'lmstudio_local',
+    custom: 'custom_local',
+    custom_local: 'custom_local',
+    offline_core: 'offline_core',
+  };
+  const defaults: Record<string, string> = {
+    gemini_cloud: 'https://generativelanguage.googleapis.com',
+    gemini: 'https://generativelanguage.googleapis.com',
+    openai: 'https://api.openai.com/v1',
+    anthropic: 'https://api.anthropic.com/v1',
+    deepseek: 'https://api.deepseek.com/v1',
+    groq: 'https://api.groq.com/openai/v1',
+    ollama: 'http://127.0.0.1:11434',
+    ollama_local: 'http://127.0.0.1:11434',
+    lmstudio: 'http://127.0.0.1:1234/v1',
+    lmstudio_local: 'http://127.0.0.1:1234/v1',
+  };
+
+  if (activeCustomModel) {
+    const provider = providerMap[activeCustomModel.provider] || activeCustomModel.provider;
+    const endpointUrl = activeCustomModel.endpointUrl || (
+      activeCustomModel.provider === 'custom'
+        ? ''
+        : defaults[activeCustomModel.provider] || localConfig.endpointUrl
+    );
+    if (provider === 'custom_local' && !endpointUrl.trim()) {
+      throw new Error('Add the custom provider base URL before using Code Copilot.');
+    }
+    return {
+      provider,
+      endpointUrl,
+      modelName: activeCustomModel.modelId,
+      apiKey: activeCustomModel.apiKey || localConfig.apiKey || null,
+    };
+  }
+
+  return {
+    provider: providerMap[localConfig.provider] || localConfig.provider,
+    endpointUrl: localConfig.endpointUrl || defaults[localConfig.provider] || '',
+    modelName: localConfig.modelName,
+    apiKey: localConfig.apiKey || null,
+  };
+}
+
+function extractGeneratedCode(responseText: string): string | null {
+  const match = responseText.match(/```[^\\n`]*\\n([\\s\\S]*?)```/);
+  if (match?.[1]?.trim()) return match[1].trim();
+  const trimmed = responseText.trim();
+  if (/^<!doctype html/i.test(trimmed) || /^<html[\\s>]/i.test(trimmed) || /^import\\s/m.test(trimmed) || /^export\\s/m.test(trimmed)) {
+    return trimmed;
+  }
+  return null;
 }
 
 // Preset interactive showcase applications for instant 1-click loading
