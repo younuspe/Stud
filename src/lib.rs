@@ -755,10 +755,69 @@ async fn test_provider_connection(
 /// The React/Vite UI is loaded by Tauri. Native capabilities are deliberately
 /// registered here rather than relying on a browser page to access the OS.
 /// The macOS workflow validates this configuration and smoke-tests the packaged executable.
+
+#[tauri::command]
+fn store_secret(secret_id: String, secret_value: String) -> Result<(), String> {
+    let id = secret_id.trim();
+    if id.is_empty() || id.len() > 240 || secret_value.is_empty() {
+        return Err("A valid secret ID and non-empty secret are required.".to_string());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        security_framework::passwords::set_generic_password("com.supru.ai", id, secret_value.as_bytes())
+            .map_err(|e| format!("Could not store credential in macOS Keychain: {e}"))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = secret_value;
+        Err("Secure credential storage is currently implemented for macOS only.".to_string())
+    }
+}
+
+#[tauri::command]
+fn get_secret(secret_id: String) -> Result<Option<String>, String> {
+    let id = secret_id.trim();
+    if id.is_empty() || id.len() > 240 {
+        return Err("A valid secret ID is required.".to_string());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        match security_framework::passwords::get_generic_password("com.supru.ai", id) {
+            Ok(bytes) => String::from_utf8(bytes).map(Some).map_err(|_| "Stored credential is not valid UTF-8.".to_string()),
+            Err(error) if error.code() == -25300 => Ok(None),
+            Err(error) => Err(format!("Could not read credential from macOS Keychain: {error}")),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+fn delete_secret(secret_id: String) -> Result<(), String> {
+    let id = secret_id.trim();
+    if id.is_empty() || id.len() > 240 {
+        return Err("A valid secret ID is required.".to_string());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        match security_framework::passwords::delete_generic_password("com.supru.ai", id) {
+            Ok(()) => Ok(()),
+            Err(error) if error.code() == -25300 => Ok(()),
+            Err(error) => Err(format!("Could not delete credential from macOS Keychain: {error}")),
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![execute_terminal_command, execute_sandboxed_command, chat_completion, test_provider_connection, generate_image, choose_workspace_folder, list_workspace_files, read_workspace_file, write_workspace_file])
+        .invoke_handler(tauri::generate_handler![execute_terminal_command, execute_sandboxed_command, chat_completion, test_provider_connection, store_secret, get_secret, delete_secret, generate_image, choose_workspace_folder, list_workspace_files, read_workspace_file, write_workspace_file])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())

@@ -265,12 +265,69 @@ export default function App() {
     } catch {}
     return null;
   });
+  const [secretsReady, setSecretsReady] = useState(false);
 
-  const handleAddCustomModel = (model: ExternalAIModelConfig, makeActive = true) => {
+  // Migrate legacy plaintext credentials into macOS Keychain before allowing settings persistence.
+  useEffect(() => {
+    let cancelled = false;
+    const hydrateSecrets = async () => {
+      if (!isTauri()) {
+        setSecretsReady(true);
+        return;
+      }
+      try {
+        const initialConfig = { ...localConfig };
+        const initialModels = customModels.map((model) => ({ ...model }));
+        const initialActive = activeCustomModel ? { ...activeCustomModel } : null;
+        if (initialConfig.apiKey?.trim()) await invoke('store_secret', { secretId: 'primary-provider', secretValue: initialConfig.apiKey.trim() });
+        for (const model of initialModels) {
+          if (model.apiKey?.trim()) await invoke('store_secret', { secretId: `model:${model.id}`, secretValue: model.apiKey.trim() });
+        }
+        if (initialActive?.apiKey?.trim()) await invoke('store_secret', { secretId: `model:${initialActive.id}`, secretValue: initialActive.apiKey.trim() });
+        const readSecret = async (id: string, fallback?: string): Promise<string | undefined> => {
+          if (fallback?.trim()) return fallback;
+          return (await invoke<string | null>('get_secret', { secretId: id })) || undefined;
+        };
+        const nextConfig = { ...initialConfig, apiKey: await readSecret('primary-provider', initialConfig.apiKey) };
+        const nextModels = await Promise.all(initialModels.map(async (model) => ({
+          ...model,
+          apiKey: await readSecret(`model:${model.id}`, model.apiKey),
+        })));
+        const nextActive = initialActive
+          ? { ...initialActive, apiKey: await readSecret(`model:${initialActive.id}`, initialActive.apiKey) }
+          : null;
+        if (cancelled) return;
+        localStorage.setItem(STORAGE_KEY_LOCAL_CONFIG, JSON.stringify({ ...nextConfig, apiKey: undefined }));
+        localStorage.setItem('supru_custom_models', JSON.stringify(nextModels.map(({ apiKey, ...model }) => model)));
+        if (nextActive) {
+          const { apiKey: _activeKey, ...safeActive } = nextActive;
+          localStorage.setItem('supru_active_custom_model', JSON.stringify(safeActive));
+        }
+        setLocalConfig(nextConfig);
+        setCustomModels(nextModels);
+        setActiveCustomModel(nextActive);
+        setSecretsReady(true);
+      } catch (error) {
+        console.error('Credential migration to macOS Keychain failed; existing settings were left untouched.', error);
+      }
+    };
+    void hydrateSecrets();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleAddCustomModel = async (model: ExternalAIModelConfig, makeActive = true) => {
+    if (isTauri() && model.apiKey?.trim()) {
+      try {
+        await invoke('store_secret', { secretId: `model:${model.id}`, secretValue: model.apiKey.trim() });
+      } catch (error) {
+        window.alert(`Could not save this API key to macOS Keychain: ${String(error)}`);
+        return;
+      }
+    }
     setCustomModels((prev) => {
       const next = [model, ...prev.filter((m) => m.id !== model.id)];
       try {
-        localStorage.setItem('supru_custom_models', JSON.stringify(next));
+        localStorage.setItem('supru_custom_models', JSON.stringify(next.map(({ apiKey, ...safeModel }) => safeModel)));
       } catch {}
       return next;
     });
@@ -278,7 +335,7 @@ export default function App() {
     if (makeActive) {
       setActiveCustomModel(model);
       try {
-        localStorage.setItem('supru_active_custom_model', JSON.stringify(model));
+        localStorage.setItem('supru_active_custom_model', JSON.stringify((({ apiKey, ...safeModel }) => safeModel)(model)));
       } catch {}
 
       if (model.provider === 'ollama' || model.provider === 'lmstudio' || model.provider === 'custom') {
@@ -287,17 +344,18 @@ export default function App() {
           provider: model.provider === 'ollama' ? 'ollama_local' : model.provider === 'lmstudio' ? 'lmstudio_local' : 'custom_local',
           endpointUrl: model.endpointUrl || (model.provider === 'ollama' ? 'http://localhost:11434' : model.provider === 'lmstudio' ? 'http://localhost:1234/v1' : ''),
           modelName: model.modelId,
-          apiKey: model.apiKey,
+          apiKey: undefined,
         }));
       }
     }
   };
 
   const handleDeleteCustomModel = (id: string) => {
+    if (isTauri()) void invoke('delete_secret', { secretId: `model:${id}` }).catch(() => {});
     setCustomModels((prev) => {
       const next = prev.filter((m) => m.id !== id);
       try {
-        localStorage.setItem('supru_custom_models', JSON.stringify(next));
+        localStorage.setItem('supru_custom_models', JSON.stringify(next.map(({ apiKey, ...safeModel }) => safeModel)));
       } catch {}
       return next;
     });
@@ -419,12 +477,22 @@ export default function App() {
   }, [settings]);
 
   useEffect(() => {
+    if (!secretsReady) return;
     try {
-      localStorage.setItem(STORAGE_KEY_LOCAL_CONFIG, JSON.stringify(localConfig));
+      localStorage.setItem(STORAGE_KEY_LOCAL_CONFIG, JSON.stringify({ ...localConfig, apiKey: undefined }));
     } catch {
       // LocalStorage error
     }
-  }, [localConfig]);
+  }, [localConfig, secretsReady]);
+
+  useEffect(() => {
+    if (!isTauri() || !secretsReady) return;
+    const key = localConfig.apiKey?.trim();
+    const operation = key
+      ? invoke('store_secret', { secretId: 'primary-provider', secretValue: key })
+      : invoke('delete_secret', { secretId: 'primary-provider' });
+    void operation.catch((error) => console.error('Could not update primary provider credential in macOS Keychain.', error));
+  }, [localConfig.apiKey, secretsReady]);
 
   useEffect(() => {
     try {
