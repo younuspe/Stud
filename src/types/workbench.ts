@@ -36,7 +36,7 @@ export interface StratifiedStackState {
 
 export type CodingSpaceLayout = 'single' | 'split-terminal' | 'split-hunter' | 'split-github' | 'split-preview';
 
-export type AIProviderType = 'gemini_cloud' | 'ollama_local' | 'lmstudio_local' | 'custom_local' | 'offline_core';
+export type AIProviderType = 'gemini_cloud' | 'gemini' | 'openai' | 'anthropic' | 'deepseek' | 'groq' | 'ollama_local' | 'lmstudio_local' | 'custom_local' | 'offline_core';
 
 export interface ExternalAIModelConfig {
   id: string;
