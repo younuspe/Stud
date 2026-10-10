@@ -815,6 +815,8 @@ export class SupruPipeline {
       : {
           provider: 'gemini',
           modelId: 'gemini-3.8-flash',
+          apiKey: localConfig.apiKey,
+          endpointUrl: localConfig.endpointUrl,
         };
 
     try {
@@ -941,6 +943,8 @@ export class SupruPipeline {
       : {
           provider: 'gemini',
           modelId: 'gemini-3.8-flash',
+          apiKey: localConfig.apiKey,
+          endpointUrl: localConfig.endpointUrl,
         };
 
     try {
