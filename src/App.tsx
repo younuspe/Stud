@@ -320,6 +320,11 @@ export default function App() {
   // Keyboard shortcut: Ctrl+B / Cmd+B for collapsible left side panel tab
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') {
+        e.preventDefault();
+        void handleOpenWorkspaceFolder();
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         setIsSidebarCollapsed((prev) => !prev);
