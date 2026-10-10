@@ -909,26 +909,45 @@ export class SupruPipeline {
         };
 
     try {
-      const res = await fetch('/api/studio/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: nextMessages.map((m) => ({ role: m.role, content: m.text })),
-          currentCode: activeFile.content,
-          fileName: activeFile.name,
-          language: activeFile.language,
-          modelConfig: modelConfigPayload,
-        }),
-      });
+      let data: { reply?: string; code?: string | null; error?: string };
+      if (isTauri()) {
+        const nativeModel = resolveNativeModelConfig(localConfig, activeCustomModel);
+        const systemInstruction = `You are Supru Code Copilot, a careful pair programmer. The active file is ${activeFile.name} (${activeFile.language}). Analyze the user's latest request in the context of the conversation and the current source. Explain what should change. When a code change is requested, return the COMPLETE updated file in one fenced code block. Never claim code was applied; the editor applies it only when the user chooses Apply.\n\nCurrent source:\n${activeFile.content}`;
+        const responseText = await invoke<string>('chat_completion', {
+          provider: nativeModel.provider,
+          endpointUrl: nativeModel.endpointUrl,
+          modelName: nativeModel.modelName,
+          apiKey: nativeModel.apiKey,
+          temperature: 0.2,
+          messages: [
+            { role: 'system', content: systemInstruction },
+            ...nextMessages.map((m) => ({ role: m.role, content: m.text })),
+          ],
+        });
+        data = { reply: responseText, code: extractGeneratedCode(responseText) };
+      } else {
+        const res = await fetch('/api/studio/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: nextMessages.map((m) => ({ role: m.role, content: m.text })),
+            currentCode: activeFile.content,
+            fileName: activeFile.name,
+            language: activeFile.language,
+            modelConfig: modelConfigPayload,
+          }),
+        });
+        data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || `Copilot request failed (HTTP ${res.status})`);
+      }
 
-      const data = await res.json();
       const asstMsgId = `asst-${Date.now()}`;
       setCopilotMessages((prev) => [
         ...prev,
         {
           id: asstMsgId,
           role: 'assistant',
-          text: data.reply || 'Analysis completed.',
+          text: data.reply || 'The model returned no explanation.',
           codeSnippet: data.code || undefined,
           timestamp: Date.now(),
         },
