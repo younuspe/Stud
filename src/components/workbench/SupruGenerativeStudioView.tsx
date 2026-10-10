@@ -48,6 +48,32 @@ interface SupruGenerativeStudioViewProps {
 
 export type GenerativeMode = 'visual' | 'motion' | 'world3d' | 'atomic' | 'app' | 'audio';
 
+type AppBuildMessage = { id: string; role: 'user' | 'assistant'; text: string; timestamp: number };
+
+function readStudioStorage<T>(key: string, fallback: T): T {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : (JSON.parse(value) as T);
+  } catch {
+    return fallback;
+  }
+}
+
+function extractCompleteHtml(response: string): string {
+  const text = response.replace(/^\uFEFF/, '').trim();
+  const fencedBlocks = [...text.matchAll(/```(?:html|htm)?\s*([\s\S]*?)```/gi)]
+    .map((match) => (match[1] || '').trim());
+  const candidates = [...fencedBlocks, text];
+  for (const candidate of candidates) {
+    const start = candidate.search(/<!doctype\s+html|<html[\s>]/i);
+    if (start < 0) continue;
+    const html = candidate.slice(start).trim();
+    const closingTag = html.toLowerCase().lastIndexOf('</html>');
+    if (closingTag >= 0) return html.slice(0, closingTag + '</html>'.length).trim();
+  }
+  return '';
+}
+
 interface ManifestedArtifact {
   id: string;
   type: 'image' | 'video' | 'world-state' | 'component' | 'app' | 'audio';
@@ -95,8 +121,11 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   onOpenImageStudio,
   onOpenVeoStudio,
 }) => {
-  const [activeMode, setActiveMode] = useState<GenerativeMode>('visual');
-  const [prompt, setPrompt] = useState(PROMPT_SUGGESTIONS[0]);
+  const [activeMode, setActiveMode] = useState<GenerativeMode>(() => {
+    const saved = readStudioStorage<GenerativeMode>('supru_studio_mode_v1', 'visual');
+    return ['visual', 'motion', 'world3d', 'atomic', 'app', 'audio'].includes(saved) ? saved : 'visual';
+  });
+  const [prompt, setPrompt] = useState(() => readStudioStorage('supru_studio_prompt_v1', PROMPT_SUGGESTIONS[0]));
   const [selectedStyle, setSelectedStyle] = useState('sovereign-dark');
   const [selectedAspectRatio, setSelectedAspectRatio] = useState('16:9');
   const [isSynthesizing, setIsSynthesizing] = useState(false);
@@ -107,8 +136,9 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   const [seed, setSeed] = useState(42069);
   const [currentResultImage, setCurrentResultImage] = useState<string | null>(null);
   const [currentResultVideo, setCurrentResultVideo] = useState<string | null>(null);
-  const [currentResultApp, setCurrentResultApp] = useState<string | null>(null);
-  const [appGenerationSummary, setAppGenerationSummary] = useState<string | null>(null);
+  const [currentResultApp, setCurrentResultApp] = useState<string | null>(() => readStudioStorage<string | null>('supru_studio_app_source_v1', null));
+  const [appGenerationSummary, setAppGenerationSummary] = useState<string | null>(() => readStudioStorage<string | null>('supru_studio_app_summary_v1', null));
+  const [appBuildMessages, setAppBuildMessages] = useState<AppBuildMessage[]>(() => readStudioStorage<AppBuildMessage[]>('supru_studio_app_chat_v1', []));
   const [autoGenerateRequested, setAutoGenerateRequested] = useState(false);
   const [manifestedArtifacts, setManifestedArtifacts] = useState<ManifestedArtifact[]>([]);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -132,6 +162,30 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     voiceNotice,
     setVoiceNotice,
   } = useSpeechListener();
+
+  // Persist app-builder work independently of the mounted workspace tab.
+  // This prevents generated source and chat instructions disappearing when the user switches views.
+  useEffect(() => {
+    try { localStorage.setItem('supru_studio_mode_v1', JSON.stringify(activeMode)); } catch {}
+  }, [activeMode]);
+  useEffect(() => {
+    try { localStorage.setItem('supru_studio_prompt_v1', JSON.stringify(prompt)); } catch {}
+  }, [prompt]);
+  useEffect(() => {
+    try {
+      if (currentResultApp) localStorage.setItem('supru_studio_app_source_v1', JSON.stringify(currentResultApp));
+      else localStorage.removeItem('supru_studio_app_source_v1');
+    } catch {}
+  }, [currentResultApp]);
+  useEffect(() => {
+    try {
+      if (appGenerationSummary) localStorage.setItem('supru_studio_app_summary_v1', JSON.stringify(appGenerationSummary));
+      else localStorage.removeItem('supru_studio_app_summary_v1');
+    } catch {}
+  }, [appGenerationSummary]);
+  useEffect(() => {
+    try { localStorage.setItem('supru_studio_app_chat_v1', JSON.stringify(appBuildMessages.slice(-60))); } catch {}
+  }, [appBuildMessages]);
 
   // Floating-pill prompts should respect the mode the user is currently using.
   // Only auto-run when App Builder is already selected; never silently switch a
