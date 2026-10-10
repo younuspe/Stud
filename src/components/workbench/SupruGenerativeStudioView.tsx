@@ -163,6 +163,15 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     setVoiceNotice,
   } = useSpeechListener();
 
+  const activeProviderInfo = (() => {
+    try {
+      const resolved = resolveProviderConfig(localConfig, activeCustomModel);
+      return { model: resolved.modelName || 'No model selected', provider: resolved.provider, endpoint: resolved.endpointUrl };
+    } catch {
+      return { model: 'Provider setup needed', provider: 'unconfigured', endpoint: '' };
+    }
+  })();
+
   // Persist app-builder work independently of the mounted workspace tab.
   // This prevents generated source and chat instructions disappearing when the user switches views.
   useEffect(() => {
@@ -486,7 +495,6 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
         let generatedCode = '';
         let providerUsed = '';
         let modelUsed = '';
-        let explanation = 'Application source generated. It has not been tested automatically.';
         const userTurn: AppBuildMessage = { id: `user-${Date.now()}`, role: 'user', text: prompt.trim(), timestamp: Date.now() };
         setAppBuildMessages((previous) => [...previous, userTurn].slice(-60));
 
@@ -733,7 +741,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
             <div className="flex items-center justify-between text-xs font-bold text-gray-300">
               <span className="flex items-center gap-1.5">
                 <Wand2 size={13} className="text-pink-400" />
-                <span>Manifestation Intent</span>
+                <span>{activeMode === 'app' ? 'App Builder — Chat Instructions' : 'Manifestation Intent'}</span>
               </span>
               <button
                 type="button"
@@ -754,7 +762,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Describe the 4D world-state, scene lighting, material, emotion, and aesthetic..."
+                placeholder={activeMode === 'app' ? 'Describe the app to build, or comment on the next change to the existing app...' : 'Describe the 4D world-state, scene lighting, material, emotion, and aesthetic...'}
                 rows={3}
                 className="w-full rounded-2xl border border-white/[0.1] bg-black/50 p-3 text-xs text-white placeholder-gray-500 outline-none focus:border-pink-500/60 focus:ring-1 focus:ring-pink-500/30 transition-all font-sans resize-none"
               />
@@ -787,6 +795,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
             </div>
           </div>
 
+          {activeMode !== 'app' && (
           {/* Aesthetic Singularity Presets */}
           <div className="space-y-1.5">
             <span className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
@@ -906,6 +915,8 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
             </div>
           </div>
 
+          )}
+
           {/* MANIFEST REALITY BUTTON */}
           <button
             type="button"
@@ -925,7 +936,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
             ) : (
               <>
                 <Zap size={16} className="fill-white" />
-                <span>Manifest Reality</span>
+                <span>{activeMode === 'app' ? (currentResultApp ? 'Apply App Change' : 'Build Application') : 'Manifest Reality'}</span>
               </>
             )}
           </button>
@@ -1031,10 +1042,15 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
             {activeMode === 'app' && (
               <div className="w-full h-full min-h-[420px] flex flex-col gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-2">
-                  <div className="flex items-center gap-2 text-xs">
-                    <Monitor size={14} className="text-emerald-300" />
-                    <span className="font-bold text-white">Application Preview</span>
-                    <span className="text-gray-400">HTML / CSS / JavaScript</span>
+                  <div className="flex min-w-0 flex-col gap-1 text-xs">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Monitor size={14} className="text-emerald-300" />
+                      <span className="font-bold text-white">App Builder · Native AI</span>
+                      <span className="text-gray-400">HTML / CSS / JavaScript</span>
+                    </div>
+                    <span className="truncate text-[10px] text-emerald-200" title={activeProviderInfo.endpoint}>
+                      Model: {activeProviderInfo.model} · Provider: {activeProviderInfo.provider}
+                    </span>
                   </div>
                   <div className="flex gap-2">
                     {currentResultApp && (
@@ -1062,6 +1078,17 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                     )}
                   </div>
                 </div>
+                {appBuildMessages.length > 0 && (
+                  <div className="max-h-36 shrink-0 space-y-2 overflow-y-auto rounded-xl border border-white/[0.08] bg-black/25 p-3" aria-label="App builder conversation">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Build conversation · latest comments</div>
+                    {appBuildMessages.slice(-6).map((message) => (
+                      <div key={message.id} className={`rounded-lg px-2.5 py-2 text-xs ${message.role === 'user' ? 'ml-5 bg-white/[0.06] text-gray-200' : 'mr-5 border border-emerald-500/15 bg-emerald-500/[0.06] text-emerald-100'}`}>
+                        <div className="mb-1 text-[9px] font-bold uppercase tracking-wide opacity-60">{message.role === 'user' ? 'You · change request' : 'Supru · result'}</div>
+                        <p className="whitespace-pre-wrap break-words">{message.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {appGenerationSummary && (
                   <p className="text-xs text-gray-400">{appGenerationSummary} Generated code has not been tested automatically.</p>
                 )}
