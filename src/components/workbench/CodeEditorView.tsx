@@ -560,7 +560,7 @@ export class SupruPipeline {
 }
 `,
     }
-  ])];
+  ];
   });
   useEffect(() => {
     try { localStorage.setItem('supru_code_editor_files_v1', JSON.stringify(files)); } catch {}
