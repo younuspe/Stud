@@ -1,15 +1,15 @@
 name: macOS desktop build
 
-# Manual verification is preferred. Push builds remain limited to explicit Rust entry-point changes.
+# Build on product-contract, provider, UI, Rust, and packaging changes so regressions are caught before merging.
 on:
   workflow_dispatch:
   push:
     branches:
+      - rebuild/native-generative-studio
       - rebuild/native-coding-core
       - fix/desktop-app-launch
       - fix/macos-app-bundle-signature
       - fix/functional-implementation-audit
-      - rebuild/native-coding-core
     paths:
       - src/lib.rs
       - tauri.conf.json
@@ -20,6 +20,12 @@ on:
       - server.ts
       - build.rs
       - .github/workflows/macos-desktop.yml
+      - PRODUCT_SPEC.md
+      - ROADMAP.md
+      - SKILL.md
+      - CLAUDE.md
+      - README.md
+      - AUDIT_REPORT.md
       - src/**/*.tsx
       - src/**/*.ts
 
