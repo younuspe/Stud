@@ -125,7 +125,7 @@ function resolveNativeModelConfig(
       provider,
       endpointUrl,
       modelName: activeCustomModel.modelId,
-      apiKey: activeCustomModel.apiKey || localConfig.apiKey || null,
+      apiKey: activeCustomModel.apiKey || (activeCustomModel.provider === 'gemini' ? localConfig.apiKey || null : null),
     };
   }
 
