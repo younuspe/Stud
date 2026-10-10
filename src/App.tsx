@@ -111,6 +111,26 @@ export default function App() {
     return DEFAULT_LOCAL_CONFIG;
   });
 
+  // Active project folder is shared by Code, CLI, Hunter, and generation tabs.
+  const [workspaceRoot, setWorkspaceRoot] = useState<string>(() => {
+    try { return localStorage.getItem('supru_workspace_root_v1') || ''; } catch { return ''; }
+  });
+  const handleOpenWorkspaceFolder = async () => {
+    if (!isTauri()) {
+      window.alert('Open Project Folder is available in the installed Supru desktop app, not browser mode.');
+      return;
+    }
+    try {
+      const selected = await invoke<string | null>('choose_workspace_folder');
+      if (!selected) return;
+      setWorkspaceRoot(selected);
+      try { localStorage.setItem('supru_workspace_root_v1', selected); } catch {}
+      setWorkspaceView((current) => current === 'chat' ? 'editor' : current);
+    } catch (error) {
+      window.alert(`Could not open project folder: ${String(error)}`);
+    }
+  };
+
   // Active Workspace View (Supru Chat, Supru Code, Supru CLI, Supru Hunter, Supru Git)
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('chat');
 
@@ -927,6 +947,8 @@ export default function App() {
         onNewFile={() => {
           setWorkspaceView('editor');
         }}
+        onOpenWorkspaceFolder={handleOpenWorkspaceFolder}
+        workspaceRoot={workspaceRoot}
         onDownloadFile={handleDownloadFile}
         onClearChat={handleClearCurrentChat}
         activePersona={settings.persona}
@@ -1072,6 +1094,7 @@ export default function App() {
                 onOpenLocalSettings={() => setIsLocalModalOpen(true)}
                 onTriggerAgent={handleTriggerAgent}
                 activeFileBuffer={activeFileBuffer}
+                workspaceRoot={workspaceRoot}
                 windows={studioWindows}
                 onToggleWindow={handleToggleWindow}
                 onToggleUndockWindow={handleToggleUndockWindow}
@@ -1089,6 +1112,7 @@ export default function App() {
             {workspaceView === 'terminal' && (
               <TerminalView
                 localConfig={localConfig}
+                workspaceRoot={workspaceRoot}
                 onOpenLocalSettings={() => setIsLocalModalOpen(true)}
                 onOpenEditorWithFile={handleOpenInEditor}
                 onTriggerAgent={handleTriggerAgent}
@@ -1099,6 +1123,7 @@ export default function App() {
             {workspaceView === 'agent' && (
               <HeadlessAgentView
                 localConfig={localConfig}
+                workspaceRoot={workspaceRoot}
                 initialObjective={agentInitialObjective}
                 initialWorkspacePath={agentInitialWorkspacePath}
                 onSendToChat={(report) => {
