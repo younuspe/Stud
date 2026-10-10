@@ -484,83 +484,61 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           prompt,
         ].join('\n');
         let generatedCode = '';
-        let providerUsed: string = localConfig.provider;
-        let modelUsed = localConfig.modelName;
+        let providerUsed = '';
+        let modelUsed = '';
         let explanation = 'Application source generated. It has not been tested automatically.';
-        if (isTauri()) {
-          const selectedConfig = resolveProviderConfig(localConfig, activeCustomModel);
-          const { provider: selectedProvider, endpointUrl: selectedEndpoint, modelName: selectedModel, apiKey: selectedKey } = selectedConfig;
-          providerUsed = selectedProvider;
-          modelUsed = selectedModel;
+        const userTurn: AppBuildMessage = { id: `user-${Date.now()}`, role: 'user', text: prompt.trim(), timestamp: Date.now() };
+        setAppBuildMessages((previous) => [...previous, userTurn].slice(-60));
 
-          if (selectedProvider === 'offline_core') {
-            throw new Error('Offline Core has no generation model yet. Select Ollama, LM Studio, or a configured cloud provider in Provider Settings.');
-          }
-          if (!selectedModel.trim()) {
-            throw new Error('Select a model in Provider Settings before generating an application.');
-          }
-          if (selectedProvider === 'custom_local' && !selectedEndpoint.trim()) {
-            throw new Error('Add the compatible provider base URL before generating an application.');
-          }
-          const response = await invoke<string>('chat_completion', {
-            provider: selectedProvider,
-            endpointUrl: selectedEndpoint,
-            modelName: selectedModel,
-            apiKey: selectedKey,
-            temperature: 0.3,
-            messages: [
-              {
-                role: 'system',
-                content: 'You are Supru Generative Studio App Builder. Return only a complete self-contained HTML5 document with embedded CSS and JavaScript. Implement real interactions from the user specification, accessible responsive layout, validation, and useful empty/error states. No placeholder buttons, fake success states, external dependencies, or secret credentials. Do not claim the app was executed or tested. If revising existing source, return the complete updated document, not a diff.'
-              },
-              {
-                role: 'user',
-                content: appPrompt + (currentResultApp ? '\n\nExisting source to improve:\n' + currentResultApp : '')
-              }
-            ]
-          });
-          generatedCode = response.trim();
-        } else {
-          const controller = new AbortController();
-          const timeout = window.setTimeout(() => controller.abort(), 90000);
-          try {
-            const res = await fetch('/api/studio/generate', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              signal: controller.signal,
-              body: JSON.stringify({
-                prompt: appPrompt,
-                currentCode: currentResultApp || '',
-                language: 'html',
-                settings: {
-                  systemInstruction: 'You are Supru Generative Studio App Builder. Generate complete, functional, self-contained HTML/CSS/JavaScript applications. Output source code only, preferably a full HTML document. Never claim execution or tests occurred. Do not include secret credentials. Implement actual UI behavior rather than placeholders.',
-                  temperature: 0.3,
-                  maxOutputTokens: 4096,
-                },
-              }),
-            });
-            if (!res.ok) {
-              const message = await res.text().catch(() => '');
-              throw new Error(`App generation failed (${res.status}). ${message.slice(0, 240)}`.trim());
+        if (!isTauri()) {
+          throw new Error('App Builder requires the installed Supru desktop app so it can call the selected provider through the native Rust bridge. Browser/server mode is intentionally not used.');
+        }
+
+        const selectedConfig = resolveProviderConfig(localConfig, activeCustomModel);
+        const { provider: selectedProvider, endpointUrl: selectedEndpoint, modelName: selectedModel, apiKey: selectedKey } = selectedConfig;
+        providerUsed = selectedProvider;
+        modelUsed = selectedModel;
+
+        if (selectedProvider === 'offline_core') {
+          throw new Error('Offline Core has no generation model yet. Select Ollama, LM Studio, or a configured cloud provider in Provider Settings.');
+        }
+        if (!selectedModel.trim()) {
+          throw new Error('Select and activate a model in Provider Settings before generating an application.');
+        }
+        if (selectedProvider === 'custom_local' && !selectedEndpoint.trim()) {
+          throw new Error('Add the compatible provider base URL before generating an application.');
+        }
+
+        const response = await invoke<string>('chat_completion', {
+          provider: selectedProvider,
+          endpointUrl: selectedEndpoint,
+          modelName: selectedModel,
+          apiKey: selectedKey,
+          temperature: 0.3,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are Supru Generative Studio App Builder. Return one complete, self-contained HTML5 document. Output raw HTML only, not Markdown fences or commentary. Implement real interactions, accessible responsive layout, validation, and useful empty/error states. No placeholder buttons, fake success states, external dependencies, or secret credentials. Treat the latest user message as a requested change to the existing app when source is provided. Preserve working features unless the user asks to change them. Never claim the code was executed or tested.'
+            },
+            {
+              role: 'user',
+              content: appPrompt + (currentResultApp ? '\n\nExisting source to improve:\n' + currentResultApp : '')
             }
-            const data = await res.json();
-            generatedCode = typeof data.code === 'string' ? data.code.trim() : '';
-            providerUsed = data.provider || providerUsed;
-            modelUsed = data.model || modelUsed;
-            explanation = typeof data.explanation === 'string' ? data.explanation : explanation;
-          } finally {
-            window.clearTimeout(timeout);
-          }
-        }
-        generatedCode = generatedCode.replace(/^\uFEFF/, '').replace(/^\`\`\`(?:html)?\s*/i, '').replace(/\s*\`\`\`$/, '').trim();
-        if (!generatedCode || generatedCode === currentResultApp) {
-          throw new Error('The configured model did not return new application source code. Try a more specific request or a different model.');
-        }
-        if (!/<!doctype\s+html|<html[\s>]/i.test(generatedCode)) {
-          throw new Error('The model response was not a complete HTML document. Nothing was added to the artifacts gallery.');
+          ]
+        });
+        generatedCode = extractCompleteHtml(response);
+        if (!generatedCode) {
+          throw new Error('The selected model did not return a complete HTML document. The previous app source was preserved. Try asking for the complete HTML document only.');
         }
         setCurrentResultApp(generatedCode);
-        setAppGenerationSummary(explanation);
+        const buildSummary = `Updated by ${modelUsed} via ${providerUsed}. Source is saved locally; runtime testing has not been performed.`;
+        setAppGenerationSummary(buildSummary);
+        setAppBuildMessages((previous) => [...previous, {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          text: `Generated and saved the updated HTML source using ${modelUsed} (${providerUsed}). Use Preview to inspect it, or Open source in editor to continue editing. It has not been automatically tested.`,
+          timestamp: Date.now(),
+        }].slice(-60));
         setManifestedArtifacts((prev) => [{
           id: `app-${Date.now()}`,
           type: 'app',
@@ -576,6 +554,14 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       setGenerationError(`Generation failed: ${message}`);
+      if (activeMode === 'app') {
+        setAppBuildMessages((previous) => [...previous, {
+          id: `assistant-error-${Date.now()}`,
+          role: 'assistant',
+          text: `No new code was applied. ${message}`,
+          timestamp: Date.now(),
+        }].slice(-60));
+      }
       console.error('Genesis Manifestation error:', err);
     } finally {
       setIsSynthesizing(false);
