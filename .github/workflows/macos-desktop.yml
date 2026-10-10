@@ -8,6 +8,7 @@ on:
       - fix/desktop-app-launch
       - fix/macos-app-bundle-signature
       - fix/functional-implementation-audit
+      - rebuild/native-coding-core
     paths:
       - src/lib.rs
       - tauri.conf.json
