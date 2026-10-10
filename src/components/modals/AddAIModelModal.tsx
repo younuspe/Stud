@@ -151,6 +151,9 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
     } else if (newProvider === 'lmstudio') {
       setEndpointUrl('http://localhost:1234/v1');
       setAuthMode('without_key');
+    } else if (newProvider === 'openai') {
+      setEndpointUrl('https://api.openai.com/v1');
+      setAuthMode('with_key');
     } else if (newProvider === 'groq') {
       setEndpointUrl('https://api.groq.com/openai/v1');
       setAuthMode('with_key');
@@ -161,6 +164,10 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
       setEndpointUrl('https://api.anthropic.com/v1');
       setAuthMode('with_key');
     } else if (newProvider === 'gemini') {
+      setEndpointUrl('');
+      setAuthMode('with_key');
+    } else if (newProvider === 'custom') {
+      // A generic provider must supply its own endpoint; never silently point it at Ollama.
       setEndpointUrl('');
       setAuthMode('with_key');
     }
