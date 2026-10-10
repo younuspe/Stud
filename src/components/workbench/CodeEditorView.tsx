@@ -471,7 +471,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
     return [{
       id: 'copilot-init',
       role: 'assistant',
-      text: "👋 **Supru Code Copilot** is active.\n\nI have real-time context of **index.html**. Ask questions about your code, request features, or tell me to inspect, refactor, or fix bugs! (All chats stay right here inside Supru Code).",
+      text: "👋 **Supru App Builder** is ready. Describe what you want to build, or ask me to improve or fix the current app. Use **Build App** to generate changes and review them in the live preview before saving.",
       timestamp: Date.now(),
     }];
   });
@@ -495,33 +495,35 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
         }
       }
     } catch {}
-    return [
-    PRESET_TEMPLATES[0].file,
-    {
-      id: 'f-pipe',
-      name: 'supru_pipeline.ts',
-      language: 'typescript',
-      content: `// 🐾 Supru Code - Enterprise Architecture Pipeline
-export interface AgentTask {
-  id: string;
-  objective: string;
-  status: 'idle' | 'running' | 'completed';
-  confidence: number;
-}
-
-export class SupruPipeline {
-  private persona: string = 'supru_cat';
-
-  constructor(private readonly endpoint: string = 'http://localhost:11434') {}
-
-  public async evaluateObjective(task: AgentTask): Promise<string> {
-    console.log(\`[Supru Code] Synthesizing: \${task.objective}\`);
-    return \`Autonomous delivery pipeline synthesized for: \${task.id}\`;
-  }
-}
-`,
-    }
-  ];
+    return [{
+      id: 'scratch-index-html',
+      name: 'index.html',
+      language: 'html',
+      content: `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My App</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; background: #0b0b12; color: #f3f4f6; }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 2rem; }
+    main { max-width: 42rem; text-align: center; }
+    h1 { margin: 0 0 .75rem; font-size: clamp(2rem, 5vw, 3.5rem); letter-spacing: -.04em; }
+    p { margin: 0; color: #a1a1aa; line-height: 1.7; }
+    .hint { margin-top: 1.5rem; border: 1px solid #3f3f46; border-radius: .75rem; padding: .8rem 1rem; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Your app starts here.</h1>
+    <p>Describe what you want in the Build App panel. Generated code will appear here for editing and live preview.</p>
+    <p class="hint">Scratch preview · Open a project folder when you want to save files directly to disk.</p>
+  </main>
+</body>
+</html>`,
+    }];
   });
   useEffect(() => {
     try { localStorage.setItem('supru_code_editor_files_v1', JSON.stringify(files)); } catch {}
