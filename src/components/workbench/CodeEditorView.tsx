@@ -540,6 +540,7 @@ export class SupruPipeline {
   const [projectPaths, setProjectPaths] = useState<string[]>([]);
   const [activeProjectPath, setActiveProjectPath] = useState<string | null>(null);
   const [isProjectFileLoading, setIsProjectFileLoading] = useState(false);
+  const [hasLoadedWorkspace, setHasLoadedWorkspace] = useState(false);
   const [projectFileNotice, setProjectFileNotice] = useState<string | null>(null);
 
   const isReadableProjectPath = (path: string) => {
@@ -617,8 +618,10 @@ export class SupruPipeline {
       setProjectPaths([]);
       setActiveProjectPath(null);
       setProjectFileNotice(null);
+      setHasLoadedWorkspace(true);
       return;
     }
+    setHasLoadedWorkspace(false);
     setIsProjectFileLoading(true);
     setProjectFileNotice(null);
     setActiveProjectPath(null);
@@ -649,7 +652,10 @@ export class SupruPipeline {
         if (!cancelled) setProjectFileNotice(`Could not read project folder: ${String(error)}`);
       })
       .finally(() => {
-        if (!cancelled) setIsProjectFileLoading(false);
+        if (!cancelled) {
+          setIsProjectFileLoading(false);
+          setHasLoadedWorkspace(true);
+        }
       });
     return () => { cancelled = true; };
   // Loading is intentionally triggered only when the selected root changes.
@@ -1057,7 +1063,7 @@ export class SupruPipeline {
     if (!externalPrompt?.text?.trim()) return;
 
     if (externalPrompt.id.startsWith('build-prompt-')) {
-      if (!workspaceRoot || isProjectFileLoading) return;
+      if (!workspaceRoot || isProjectFileLoading || !hasLoadedWorkspace) return;
       if (projectPaths.length > 0 && (!activeProjectPath || !activeFileId.startsWith('workspace-file:'))) return;
 
       if (!windows.generator?.isOpen) onToggleWindow?.('generator');
@@ -1073,7 +1079,7 @@ export class SupruPipeline {
     setActiveAiTab('copilot');
     handleSendCopilotMessage(externalPrompt.text.trim());
     onClearExternalPrompt?.();
-  }, [externalPrompt, workspaceRoot, isProjectFileLoading, projectPaths.length, activeProjectPath, activeFileId]);
+  }, [externalPrompt, workspaceRoot, isProjectFileLoading, hasLoadedWorkspace, projectPaths.length, activeProjectPath, activeFileId]);
 
   // Auto-scroll Copilot messages to bottom
   useEffect(() => {
