@@ -64,6 +64,7 @@ interface HeadlessAgentViewProps {
   onOpenInEditor?: (fileName: string, content: string) => void;
   initialObjective?: string;
   initialWorkspacePath?: string;
+  workspaceRoot?: string;
 }
 
 const PRESET_PIPELINE_OBJECTIVES = [
@@ -79,6 +80,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   onOpenInEditor,
   initialObjective,
   initialWorkspacePath,
+  workspaceRoot = '',
 }) => {
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<'workbench' | 'pipeline' | 'evidence' | 'judge' | 'approval' | 'audit'>('pipeline');
@@ -87,7 +89,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   const [pipelineObjective, setPipelineObjective] = useState<string>(
     initialObjective || ''
   );
-  const [workspacePath, setWorkspacePath] = useState<string>(initialWorkspacePath || '');
+  const [workspacePath, setWorkspacePath] = useState<string>(initialWorkspacePath || workspaceRoot || '');
 
   // Supru Hunter Master State
   const [agents, setAgents] = useState<HunterAgentDefinition[]>(INITIAL_HUNTER_AGENTS);
@@ -162,7 +164,8 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
   useEffect(() => {
     if (initialWorkspacePath) setWorkspacePath(initialWorkspacePath);
-  }, [initialWorkspacePath]);
+    else if (workspaceRoot) setWorkspacePath(workspaceRoot);
+  }, [initialWorkspacePath, workspaceRoot]);
 
   // Each handoff calls the configured provider. No fabricated tool results or verification.
   const executeAgentStep = async (index: number, priorArtifacts: Record<string, HunterAgentArtifact> = agentArtifacts): Promise<void> => {
