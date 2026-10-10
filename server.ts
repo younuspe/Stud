@@ -1455,131 +1455,52 @@ app.post('/api/keys/test', async (req, res) => {
 
 // Google AI Studio style prompt to code generator ("Generate by Message")
 app.post('/api/studio/generate', async (req, res) => {
-  const {
-    prompt,
-    currentCode = '',
-    language = 'html',
-    modelConfig = {},
-    settings = {},
-    messages = []
-  } = req.body;
-
-  if (!prompt || typeof prompt !== 'string') {
-    return res.status(400).json({ error: 'Prompt message is required' });
+  const { prompt, currentCode = '', language = 'html', modelConfig = {}, settings = {}, messages = [] } = req.body || {};
+  if (typeof prompt !== 'string' || !prompt.trim()) {
+    return res.status(400).json({ error: 'Prompt message is required.' });
   }
 
-  const modelId = modelConfig.modelId || 'gemini-3.8-flash';
-  const provider = modelConfig.provider || 'gemini';
-  const customKey = modelConfig.apiKey;
-  const systemInstruction = (settings.systemInstruction ||
-    `You are the Supru AI Studio code generation engine. Build or modify code as requested.
-Return complete, working code in a markdown code block using ${language}, followed by a concise summary.
-For HTML, return a self-contained HTML5 document with CSS and JavaScript suitable for iframe preview.`) +
-    '\\n\\nLanguage policy: Understand Malayalam and English input, but write all explanations, generated text, labels, and code comments in English unless the user explicitly requests another output language.';
+  const modelId = String(modelConfig.modelId || 'gemini-3.8-flash');
+  const provider = String(modelConfig.provider || 'gemini');
+  const systemInstruction = String(settings.systemInstruction ||
+    `You are the Supru AI Studio app builder. Make the requested change to the current file. Return the COMPLETE updated file in one fenced code block, followed by a concise explanation. Do not claim the UI applied the code. Use ${language} and keep generated text and code comments in English unless another language is explicitly requested.`);
 
-  // 1. Try Google Gemini API if provider is gemini and key exists
-  if (provider === 'gemini') {
-    const activeKey = customKey || apiKey;
-    if (activeKey && activeKey !== 'MY_GEMINI_API_KEY') {
-      try {
-        const client = new GoogleGenAI({
-          apiKey: activeKey,
-          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-        });
+  const history: ProviderChatMessage[] = Array.isArray(messages)
+    ? messages.filter((message: any) => message && typeof message.content === 'string' && ['user', 'assistant', 'system'].includes(message.role))
+        .map((message: any) => ({ role: message.role, content: message.content }))
+    : [];
+  const generationRequest = `User request: ${prompt.trim()}\n\nCurrent file: ${String(req.body?.fileName || 'active file')} (${language})\nCurrent source begins:\n${String(currentCode)}\nCurrent source ends.`;
+  history.push({ role: 'user', content: generationRequest });
 
-        const contentsPayload = [
-          {
-            text: `User Directive: ${prompt}\n\nCurrent Code In Editor:\n\`\`\`${language}\n${currentCode}\n\`\`\`\n\nGenerate the complete updated code and provide a 2-sentence summary.`
-          }
-        ];
-
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Model generation timeout (9s)')), 9000)
-        );
-
-        const apiPromise = client.models.generateContent({
-          model: modelId.startsWith('gemini') ? modelId : 'gemini-3.8-flash',
-          contents: contentsPayload,
-          config: {
-            systemInstruction,
-            temperature: typeof settings.temperature === 'number' ? settings.temperature : 0.7,
-            maxOutputTokens: typeof settings.maxOutputTokens === 'number' ? settings.maxOutputTokens : 4096,
-          },
-        });
-
-        const response = await Promise.race([apiPromise, timeoutPromise]);
-
-        const responseText = response.text || '';
-        const extracted = extractCodeFromMarkdown(responseText, language);
-
-        return res.json({
-          code: extracted.code || currentCode,
-          explanation: extracted.explanation || 'Code synthesized successfully with Google Gemini.',
-          model: modelId,
-          provider: 'gemini',
-        });
-      } catch (err: any) {
-        console.warn('Gemini studio generation error, using smart synthesis engine:', err.message);
-      }
-    }
+  try {
+    const responseText = await requestProviderText({
+      provider,
+      modelId,
+      endpointUrl: modelConfig.endpointUrl,
+      apiKey: modelConfig.apiKey,
+      messages: history,
+      systemInstruction,
+      temperature: settings.temperature,
+      maxOutputTokens: settings.maxOutputTokens,
+    });
+    const extracted = extractCodeFromMarkdown(responseText, language);
+    return res.json({
+      code: extracted.code || null,
+      explanation: extracted.explanation || (extracted.code ? 'Updated source generated by the selected model.' : responseText),
+      model: modelId,
+      provider,
+    });
+  } catch (error: any) {
+    const credentialsConfigured = Boolean(modelConfig.apiKey || apiKey) && (modelConfig.apiKey || apiKey) !== 'MY_GEMINI_API_KEY';
+    return res.status(credentialsConfigured ? 502 : 503).json({
+      error: error.message || 'The selected provider failed to generate code. No code was applied.',
+      provider,
+      model: modelId,
+    });
   }
-
-  // 2. Try External Provider if customKey provided (OpenAI, DeepSeek, Groq)
-  if ((provider === 'openai' || provider === 'deepseek' || provider === 'groq') && customKey) {
-    try {
-      const defaultEndpoints: Record<string, string> = {
-        openai: 'https://api.openai.com/v1',
-        deepseek: 'https://api.deepseek.com/v1',
-        groq: 'https://api.groq.com/openai/v1',
-      };
-      const url = (modelConfig.endpointUrl || defaultEndpoints[provider] || 'https://api.openai.com/v1').replace(/\/$/, '');
-
-      const extRes = await fetch(`${url}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${customKey}`,
-        },
-        body: JSON.stringify({
-          model: modelId,
-          messages: [
-            { role: 'system', content: systemInstruction },
-            {
-              role: 'user',
-              content: `User Request: ${prompt}\n\nCurrent Code In Editor:\n\`\`\`${language}\n${currentCode}\n\`\`\``
-            }
-          ],
-          temperature: typeof settings.temperature === 'number' ? settings.temperature : 0.7,
-        }),
-      });
-
-      if (extRes.ok) {
-        const data = await extRes.json();
-        const responseText = data.choices?.[0]?.message?.content || '';
-        const extracted = extractCodeFromMarkdown(responseText, language);
-        return res.json({
-          code: extracted.code || currentCode,
-          explanation: extracted.explanation || `Synthesized via ${provider.toUpperCase()} (${modelId})`,
-          model: modelId,
-          provider,
-        });
-      }
-    } catch (extErr: any) {
-      console.warn('External provider error, falling back:', extErr.message);
-    }
-  }
-
-  const credentialsConfigured = Boolean(customKey || apiKey) && (customKey || apiKey) !== 'MY_GEMINI_API_KEY';
-  return res.status(credentialsConfigured ? 502 : 503).json({
-    error: credentialsConfigured
-      ? 'The selected provider failed to generate code. Check the provider response and connection.'
-      : 'No AI provider credentials are configured. Connect a model before generating code.',
-    provider,
-    model: modelId,
-  });
 });
 
-// Supru Code AI Copilot Chat Endpoint (Conversational IDE intelligence for active code)
+// // Supru Code AI Copilot Chat Endpoint (Conversational IDE intelligence for active code)
 app.post('/api/studio/chat', async (req, res) => {
   const {
     messages = [],
