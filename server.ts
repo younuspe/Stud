@@ -897,17 +897,45 @@ app.post('/api/provider/test', async (req, res) => {
   }
 });
 
-// Proxy to local host or custom models
+// Normalize OpenAI-compatible endpoints accepted by the UI.
+// Supports a base URL, /v1 URL, /models URL, or full /chat/completions URL.
+function normalizeOpenAICompatibleChatUrl(endpoint: string): string {
+  const value = endpoint.trim().replace(/\/+$/, '');
+  if (!value) throw new Error('Provider endpoint URL is required.');
+  if (/\/chat\/completions$/i.test(value)) return value;
+  if (/\/models$/i.test(value)) return value.replace(/\/models$/i, '/chat/completions');
+  if (/\/v1$/i.test(value)) return value + '/chat/completions';
+  return value + '/v1/chat/completions';
+}
+
+function providerErrorDetail(body: string): string {
+  try {
+    const parsed = JSON.parse(body);
+    const detail = parsed?.error?.message || parsed?.error?.type || parsed?.message;
+    if (typeof detail === 'string' && detail.trim()) return detail.trim().slice(0, 700);
+  } catch {}
+  return body.trim().slice(0, 700) || 'The provider returned an empty error response.';
+}
+
+// Proxy to local host or OpenAI-compatible providers (including OpenRouter, NVIDIA NIM, and custom vendors).
 app.post('/api/local-chat', async (req, res) => {
-  const { messages, provider, endpointUrl, modelName = 'llama3', temperature = 0.7, apiKey: customKey } = req.body;
+  const { messages, provider, endpointUrl, modelName = 'llama3', temperature = 0.7, apiKey: customKey } = req.body || {};
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: 'At least one chat message is required.' });
+  }
+  if (!String(modelName || '').trim()) {
+    return res.status(400).json({ error: 'Select a model before sending a message.' });
+  }
 
   try {
     if (provider === 'ollama_local' || provider === 'ollama') {
-      const targetUrl = endpointUrl || 'http://localhost:11434';
-      const ollamaUrl = `${targetUrl.replace(/\/$/, '')}/api/chat`;
+      const targetUrl = String(endpointUrl || 'http://localhost:11434').trim().replace(/\/+$/, '');
+      const ollamaUrl = /\/api\/chat$/i.test(targetUrl) ? targetUrl : `${targetUrl}/api/chat`;
       const ollamaRes = await fetch(ollamaUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(120000),
         body: JSON.stringify({
           model: modelName,
           messages: messages.map((m: any) => ({
@@ -918,89 +946,105 @@ app.post('/api/local-chat', async (req, res) => {
           options: { temperature },
         }),
       });
-
-      if (ollamaRes.ok) {
-        const data = await ollamaRes.json();
-        return res.json({ reply: data.message?.content || 'No response from local Ollama model.' });
+      const body = await ollamaRes.text();
+      if (!ollamaRes.ok) {
+        return res.status(502).json({ error: `Ollama returned HTTP ${ollamaRes.status}: ${providerErrorDetail(body)}` });
       }
-    } else if (
-      provider === 'lmstudio_local' || 
-      provider === 'lmstudio' || 
-      provider === 'custom_local' || 
-      provider === 'custom' ||
-      provider === 'openai' ||
-      provider === 'groq' ||
-      provider === 'deepseek'
-    ) {
-      const defaultUrls: Record<string, string> = {
-        lmstudio: 'http://localhost:1234/v1',
-        lmstudio_local: 'http://localhost:1234/v1',
-        groq: 'https://api.groq.com/openai/v1',
-        deepseek: 'https://api.deepseek.com/v1',
-        openai: 'https://api.openai.com/v1',
-        custom_local: 'http://localhost:1234/v1',
-        custom: 'http://localhost:1234/v1',
-      };
-      const baseUrl = endpointUrl || defaultUrls[provider] || 'http://localhost:1234/v1';
-      const openaiUrl = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (customKey) {
-        headers['Authorization'] = `Bearer ${customKey}`;
+      let data: any;
+      try { data = JSON.parse(body); } catch { return res.status(502).json({ error: 'Ollama returned invalid JSON.' }); }
+      const reply = data.message?.content;
+      if (typeof reply !== 'string' || !reply.trim()) {
+        return res.status(502).json({ error: 'Ollama returned no message content.' });
       }
-
-      const lmRes = await fetch(openaiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: modelName,
-          messages: messages.map((m: any) => ({
-            role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.content,
-          })),
-          temperature,
-        }),
-      });
-
-      if (lmRes.ok) {
-        const data = await lmRes.json();
-        return res.json({ reply: data.choices?.[0]?.message?.content || 'No response from model endpoint.' });
-      }
-    } else if (provider === 'anthropic') {
-      if (customKey) {
-        const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': customKey,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: modelName || 'claude-3-7-sonnet-20250219',
-            max_tokens: 2048,
-            system: messages.filter((m: any) => m.role === 'system').map((m: any) => m.content).join('\n\n'),
-            messages: messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
-              role: m.role === 'assistant' ? 'assistant' : 'user',
-              content: m.content,
-            })),
-          }),
-        });
-
-        if (claudeRes.ok) {
-          const data = await claudeRes.json();
-          const reply = data.content?.[0]?.text || 'No response from Claude.';
-          return res.json({ reply });
-        }
-      }
+      return res.json({ reply });
     }
 
-    return res.status(502).json({
-      error: `No response from the selected model provider (${provider || 'unknown provider'}).`,
+    if (provider === 'anthropic') {
+      if (!customKey) return res.status(400).json({ error: 'Anthropic API key is missing.' });
+      const base = String(endpointUrl || 'https://api.anthropic.com').trim().replace(/\/+$/, '');
+      const url = /\/v1$/i.test(base) ? `${base}/messages` : `${base}/v1/messages`;
+      const claudeRes = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': customKey,
+          'anthropic-version': '2023-06-01',
+        },
+        signal: AbortSignal.timeout(120000),
+        body: JSON.stringify({
+          model: modelName,
+          max_tokens: 2048,
+          temperature,
+          system: messages.filter((m: any) => m.role === 'system').map((m: any) => m.content).join('\n\n'),
+          messages: messages.filter((m: any) => m.role !== 'system').map((m: any) => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: m.content,
+          })),
+        }),
+      });
+      const body = await claudeRes.text();
+      if (!claudeRes.ok) {
+        return res.status(502).json({ error: `Anthropic returned HTTP ${claudeRes.status}: ${providerErrorDetail(body)}` });
+      }
+      let data: any;
+      try { data = JSON.parse(body); } catch { return res.status(502).json({ error: 'Anthropic returned invalid JSON.' }); }
+      const reply = data.content?.find((part: any) => part.type === 'text')?.text;
+      if (typeof reply !== 'string' || !reply.trim()) {
+        return res.status(502).json({ error: 'Anthropic returned no text content.' });
+      }
+      return res.json({ reply });
+    }
+
+    const defaultUrls: Record<string, string> = {
+      lmstudio: 'http://localhost:1234/v1',
+      lmstudio_local: 'http://localhost:1234/v1',
+      groq: 'https://api.groq.com/openai/v1',
+      deepseek: 'https://api.deepseek.com/v1',
+      openai: 'https://api.openai.com/v1',
+      custom_local: 'http://localhost:1234/v1',
+      custom: 'http://localhost:1234/v1',
+    };
+    const endpoint = String(endpointUrl || defaultUrls[provider] || '').trim();
+    if (!endpoint) {
+      return res.status(400).json({ error: 'Provider endpoint URL is required for this compatible API.' });
+    }
+    const chatUrl = normalizeOpenAICompatibleChatUrl(endpoint);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (customKey) headers.Authorization = `Bearer ${customKey}`;
+
+    const providerRes = await fetch(chatUrl, {
+      method: 'POST',
+      headers,
+      signal: AbortSignal.timeout(120000),
+      body: JSON.stringify({
+        model: modelName,
+        messages: messages.map((m: any) => ({
+          role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content,
+        })),
+        temperature,
+        stream: false,
+      }),
     });
+    const body = await providerRes.text();
+    if (!providerRes.ok) {
+      return res.status(502).json({
+        error: `Compatible provider returned HTTP ${providerRes.status} at ${chatUrl}: ${providerErrorDetail(body)}`,
+      });
+    }
+    let data: any;
+    try { data = JSON.parse(body); } catch { return res.status(502).json({ error: 'Compatible provider returned invalid JSON.' }); }
+    const reply = data.choices?.[0]?.message?.content;
+    if (typeof reply !== 'string' || !reply.trim()) {
+      return res.status(502).json({ error: 'Compatible provider returned no choices[0].message.content text.' });
+    }
+    return res.json({ reply });
   } catch (err: any) {
-    console.error('Local model request failed:', err);
-    return res.status(502).json({
-      error: err.message || 'The selected model provider request failed.',
-    });
+    const message = err?.name === 'TimeoutError'
+      ? 'The provider request timed out after 120 seconds.'
+      : err.message || 'The selected model provider request failed.';
+    console.error('Provider chat request failed:', message);
+    return res.status(502).json({ error: message });
   }
 });
 
