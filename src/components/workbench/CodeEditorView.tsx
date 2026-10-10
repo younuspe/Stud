@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { resolveProviderConfig } from '../../lib/providerRegistry';
 import { 
   Code2, 
   Play, 
@@ -78,64 +79,6 @@ interface CodeEditorViewProps {
   externalPrompt?: { id: string; text: string } | null;
   onClearExternalPrompt?: () => void;
 
-}
-
-function resolveNativeModelConfig(
-  localConfig: LocalHostConfig,
-  activeCustomModel?: ExternalAIModelConfig | null,
-): { provider: string; endpointUrl: string; modelName: string; apiKey: string | null } {
-  const providerMap: Record<string, string> = {
-    gemini_cloud: 'gemini_cloud',
-    gemini: 'gemini',
-    openai: 'openai',
-    anthropic: 'anthropic',
-    deepseek: 'deepseek',
-    groq: 'groq',
-    ollama: 'ollama_local',
-    ollama_local: 'ollama_local',
-    lmstudio: 'lmstudio_local',
-    lmstudio_local: 'lmstudio_local',
-    custom: 'custom_local',
-    custom_local: 'custom_local',
-    offline_core: 'offline_core',
-  };
-  const defaults: Record<string, string> = {
-    gemini_cloud: 'https://generativelanguage.googleapis.com',
-    gemini: 'https://generativelanguage.googleapis.com',
-    openai: 'https://api.openai.com/v1',
-    anthropic: 'https://api.anthropic.com/v1',
-    deepseek: 'https://api.deepseek.com/v1',
-    groq: 'https://api.groq.com/openai/v1',
-    ollama: 'http://127.0.0.1:11434',
-    ollama_local: 'http://127.0.0.1:11434',
-    lmstudio: 'http://127.0.0.1:1234/v1',
-    lmstudio_local: 'http://127.0.0.1:1234/v1',
-  };
-
-  if (activeCustomModel) {
-    const provider = providerMap[activeCustomModel.provider] || activeCustomModel.provider;
-    const endpointUrl = activeCustomModel.endpointUrl || (
-      activeCustomModel.provider === 'custom'
-        ? ''
-        : defaults[activeCustomModel.provider] || localConfig.endpointUrl
-    );
-    if (provider === 'custom_local' && !endpointUrl.trim()) {
-      throw new Error('Add the custom provider base URL before using Code Copilot.');
-    }
-    return {
-      provider,
-      endpointUrl,
-      modelName: activeCustomModel.modelId,
-      apiKey: activeCustomModel.apiKey || (activeCustomModel.provider === 'gemini' ? localConfig.apiKey || null : null),
-    };
-  }
-
-  return {
-    provider: providerMap[localConfig.provider] || localConfig.provider,
-    endpointUrl: localConfig.endpointUrl || defaults[localConfig.provider] || '',
-    modelName: localConfig.modelName,
-    apiKey: localConfig.apiKey || null,
-  };
 }
 
 function extractGeneratedCode(responseText: string): string | null {
@@ -978,7 +921,7 @@ export class SupruPipeline {
     try {
       let data: { code?: string; explanation?: string; error?: string };
       if (isTauri()) {
-        const nativeModel = resolveNativeModelConfig(localConfig, activeCustomModel);
+        const nativeModel = resolveProviderConfig(localConfig, activeCustomModel);
         const responseText = await invoke<string>('chat_completion', {
           provider: nativeModel.provider,
           endpointUrl: nativeModel.endpointUrl,
@@ -1106,7 +1049,7 @@ export class SupruPipeline {
     try {
       let data: { reply?: string; code?: string | null; error?: string };
       if (isTauri()) {
-        const nativeModel = resolveNativeModelConfig(localConfig, activeCustomModel);
+        const nativeModel = resolveProviderConfig(localConfig, activeCustomModel);
         const systemInstruction = `You are Supru Code Copilot and chat-driven app builder inside the installed Supru desktop app. The selected model is ${nativeModel.modelName} via ${nativeModel.provider}. The active file is ${activeFile.name} (${activeFile.language}).\n\nWork first, explain second. When the user asks to build, create, improve, or fix an app, do not reply with a checklist asking them to attach a repository or describe the architecture. Use the active source and the user's requirements to produce the best concrete implementation you can. Return the COMPLETE updated active file in exactly one fenced code block, followed by a concise summary and any important limitation. Do not claim to have inspected files that were not supplied, and do not invent hidden project APIs or provider integrations. If the request needs unseen files, still make useful progress in the active file and identify the exact missing integration point briefly instead of stopping. Never claim code was applied; the editor applies it only when the user chooses Apply.\n\nCurrent active file source:\n${activeFile.content}`;
         const responseText = await invoke<string>('chat_completion', {
           provider: nativeModel.provider,

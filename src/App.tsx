@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { resolveProviderConfig } from './lib/providerRegistry';
 import { Sidebar } from './components/Sidebar';
 import { StudioHeader } from './components/StudioHeader';
 import { HeroLanding } from './components/HeroLanding';
@@ -609,34 +610,8 @@ export default function App() {
 
     try {
       if (isTauri()) {
-        const providerMap: Record<string, string> = {
-          gemini: 'gemini',
-          openai: 'openai',
-          anthropic: 'anthropic',
-          deepseek: 'deepseek',
-          groq: 'groq',
-          ollama: 'ollama_local',
-          lmstudio: 'lmstudio_local',
-          custom: 'custom_local',
-        };
-        const selectedProvider = activeCustomModel
-          ? providerMap[activeCustomModel.provider] || activeCustomModel.provider
-          : localConfig.provider;
-        const customEndpointDefaults: Record<string, string> = {
-          gemini: 'https://generativelanguage.googleapis.com',
-          openai: 'https://api.openai.com/v1',
-          anthropic: 'https://api.anthropic.com',
-          deepseek: 'https://api.deepseek.com/v1',
-          groq: 'https://api.groq.com/openai/v1',
-          ollama: 'http://127.0.0.1:11434',
-          lmstudio: 'http://127.0.0.1:1234/v1',
-          custom: 'http://127.0.0.1:1234/v1',
-        };
-        const selectedEndpoint = activeCustomModel
-          ? activeCustomModel.endpointUrl || (activeCustomModel.provider === 'custom' ? '' : customEndpointDefaults[activeCustomModel.provider] || localConfig.endpointUrl)
-          : localConfig.endpointUrl;
-        const selectedModel = activeCustomModel?.modelId || localConfig.modelName;
-        const selectedKey = activeCustomModel ? (activeCustomModel.apiKey || (activeCustomModel.provider === 'gemini' ? localConfig.apiKey : undefined)) : localConfig.apiKey;
+        const selectedConfig = resolveProviderConfig(localConfig, activeCustomModel);
+        const { provider: selectedProvider, endpointUrl: selectedEndpoint, modelName: selectedModel, apiKey: selectedKey } = selectedConfig;
         const chatMessages = [
           { role: 'system', content: "You are Supru AI. Be accurate, useful, and direct. Always answer in English unless the user explicitly requests another language." },
           ...updatedMessages.map((m) => ({ role: m.role, content: m.content })),
