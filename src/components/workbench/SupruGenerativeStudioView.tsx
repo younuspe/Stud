@@ -108,6 +108,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   const [currentResultVideo, setCurrentResultVideo] = useState<string | null>(null);
   const [currentResultApp, setCurrentResultApp] = useState<string | null>(null);
   const [appGenerationSummary, setAppGenerationSummary] = useState<string | null>(null);
+  const [autoGenerateRequested, setAutoGenerateRequested] = useState(false);
   const [manifestedArtifacts, setManifestedArtifacts] = useState<ManifestedArtifact[]>([]);
   const [copiedCode, setCopiedCode] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -131,11 +132,16 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     setVoiceNotice,
   } = useSpeechListener();
 
-  // Keep the floating pill connected to this studio without navigating away.
+  // A comment sent from the floating pill is an actual App Builder request,
+  // not just text inserted into the prompt field.
   useEffect(() => {
     const handleWorkspacePrompt = (event: Event) => {
       const detail = (event as CustomEvent<{ text?: string }>).detail;
-      if (detail?.text) setPrompt(detail.text);
+      if (!detail?.text?.trim()) return;
+      setPrompt(detail.text.trim());
+      setGenerationError(null);
+      setActiveMode('app');
+      setAutoGenerateRequested(true);
     };
     window.addEventListener('supru-generative-prompt', handleWorkspacePrompt);
     return () => window.removeEventListener('supru-generative-prompt', handleWorkspacePrompt);
@@ -552,6 +558,13 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
       setIsSynthesizing(false);
     }
   };
+
+  // Start the app-generation request after the prompt and App mode have rendered.
+  useEffect(() => {
+    if (!autoGenerateRequested || activeMode !== 'app') return;
+    setAutoGenerateRequested(false);
+    void handleManifest();
+  }, [autoGenerateRequested, activeMode]);
 
   // Atomic Manipulator Semantic Object Example
   const currentAtomicComponent = `<!-- 🐾 Sovereign Synthesized Component: ${prompt.slice(0, 24)} -->
