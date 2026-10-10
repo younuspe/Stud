@@ -852,7 +852,7 @@ export default function App() {
                     ? {
                         ...m,
                         isStreaming: false,
-                        provider: activeCustomModel?.name || localConfig.provider,
+                        provider: activeCustomModel?.badge || activeCustomModel?.provider || localConfig.provider,
                         model: activeCustomModel?.modelId || localConfig.modelName,
                       }
                     : m
