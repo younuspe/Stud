@@ -461,6 +461,8 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           const selectedKey = activeCustomModel
             ? activeCustomModel.apiKey || (activeCustomModel.provider === 'gemini' ? localConfig.apiKey || null : null)
             : localConfig.apiKey || null;
+          providerUsed = selectedProvider;
+          modelUsed = selectedModel;
 
           if (selectedProvider === 'offline_core') {
             throw new Error('Offline Core has no generation model yet. Select Ollama, LM Studio, or a configured cloud provider in Provider Settings.');
