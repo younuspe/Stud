@@ -107,3 +107,10 @@ The assistant message header was hard-coded to display “Gemini 3.8 Core” reg
 
 The macOS workflow's npm install reported **34 dependency advisories (including 2 critical and 5 high)** on the audited dependency set. This is an npm audit summary, not yet a reviewed list of affected production paths. Do not run `npm audit fix --force` blindly; capture the full audit JSON, separate production from development dependencies, identify the vulnerable dependency paths, and update with lockfile-backed tests before release.
 
+### Rebuild branch progress (not a release claim)
+
+- **Implemented, awaiting workflow #144:** the desktop connection test now resolves and tests the same selected provider profile as chat; assistant messages display response-level model/provider metadata instead of a fixed Gemini label.
+- **Implemented, awaiting workflow #144:** generated Studio apps are given unique project filenames when opened in Monaco. Code generation on a real project file stages the edit for explicit Save; generation from a demo tab creates a separate file in the selected workspace rather than overwriting an existing project file.
+- **CI scope:** workflow #144 is the first workflow configured to build this rebuild branch. Its result must be checked before treating these edits as build-verified.
+- **Not yet implemented:** the Quests app-builder source and Pi agent runtime have been selected for evaluation, but no upstream orchestration/runtime has been integrated yet. Multi-file autonomous planning, durable sessions, keychain migration, permission-gated writes, rollback, and full app-level end-to-end tests remain open milestones.
+
