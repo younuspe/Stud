@@ -1225,56 +1225,48 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
 
   // Generate sandboxed HTML with injected console logger
   const sandboxHtml = useMemo(() => {
+    const escapeHtml = (value: string) => value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
     if (activeFile.language !== 'html') {
-      return `<!DOCTYPE html>
-<html>
-<head>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>body { background: #0b0b12; color: #f1f2f6; font-family: monospace; padding: 24px; }</style>
-</head>
-<body>
-  <div class="max-w-xl mx-auto border border-gray-800 rounded-xl bg-[#12121a] p-5 shadow-xl">
-    <div class="flex items-center gap-2 mb-3 text-amber-400 font-bold text-xs uppercase">
-      <span>📄</span>
-      <span>${activeFile.name} (${activeFile.language.toUpperCase()})</span>
-    </div>
-    <p class="text-xs text-gray-400 mb-4">
-      Non-HTML file active. You can run it via Supru CLI or switch to an HTML file to see real-time UI previews.
-    </p>
-    <pre class="bg-black/60 p-4 rounded-lg text-xs text-amber-200 overflow-x-auto whitespace-pre leading-relaxed">${activeFile.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
-  </div>
-</body>
-</html>`;
+      return '<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Source preview</title>' +
+        '<style>body{margin:0;padding:24px;background:#0b0b12;color:#f1f2f6;font:13px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace}main{max-width:1000px;margin:0 auto}h1{color:#fbbf24;font-size:13px;text-transform:uppercase}pre{overflow:auto;padding:16px;border:1px solid #27272a;border-radius:10px;background:#111118;white-space:pre-wrap;overflow-wrap:anywhere}p{color:#a1a1aa}</style>' +
+        '</head><body><main><h1>' + escapeHtml(activeFile.name) + ' (' + escapeHtml(activeFile.language.toUpperCase()) + ')</h1>' +
+        '<p>Live UI preview is available for HTML files. This is a safe, read-only source preview.</p><pre>' +
+        escapeHtml(activeFile.content) + '</pre></main></body></html>';
     }
 
-    const interceptor = `
-      <script>
-        (function() {
-          const sendLog = (level, args) => {
-            try {
-              const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-              window.parent.postMessage({ source: 'supru-sandbox', type: 'log', level, message: msg }, '*');
-            } catch(e) {}
-          };
-          const origLog = console.log;
-          const origInfo = console.info;
-          const origWarn = console.warn;
-          const origError = console.error;
-          console.log = (...args) => { origLog(...args); sendLog('log', args); };
-          console.info = (...args) => { origInfo(...args); sendLog('info', args); };
-          console.warn = (...args) => { origWarn(...args); sendLog('warn', args); };
-          console.error = (...args) => { origError(...args); sendLog('error', args); };
-          window.onerror = function(msg, url, line) {
-            window.parent.postMessage({ source: 'supru-sandbox', type: 'error', message: msg + ' (Line ' + line + ')' }, '*');
-            return false;
-          };
-        })();
-      </script>
-    `;
+    const interceptor = [
+      '<script>',
+      '(function(){',
+      '  const sendLog = (level, args) => {',
+      '    try {',
+      '      const msg = args.map(a => { if (typeof a === "string") return a; try { return JSON.stringify(a); } catch (_) { return String(a); } }).join(" ");',
+      '      window.parent.postMessage({ source: "supru-sandbox", type: "log", level, message: msg }, "*");',
+      '    } catch(e) {}',
+      '  };',
+      '  const origLog = console.log, origInfo = console.info, origWarn = console.warn, origError = console.error;',
+      '  console.log = (...args) => { origLog(...args); sendLog("log", args); };',
+      '  console.info = (...args) => { origInfo(...args); sendLog("info", args); };',
+      '  console.warn = (...args) => { origWarn(...args); sendLog("warn", args); };',
+      '  console.error = (...args) => { origError(...args); sendLog("error", args); };',
+      '  window.onerror = function(msg, url, line) { window.parent.postMessage({ source: "supru-sandbox", type: "error", message: msg + " (Line " + line + ")" }, "*"); return false; };',
+      '  window.onunhandledrejection = function(event) { const reason = event.reason && event.reason.message ? event.reason.message : String(event.reason); window.parent.postMessage({ source: "supru-sandbox", type: "error", message: "Unhandled promise rejection: " + reason }, "*"); };',
+      '})();',
+      '</script>'
+    ].join('\n');
 
-    return activeFile.content.includes('<head>')
-      ? activeFile.content.replace('<head>', `<head>${interceptor}`)
-      : `${interceptor}${activeFile.content}`;
+    const source = activeFile.content.trim();
+    const headTag = /<head(?:\s[^>]*)?>/i;
+    const htmlTag = /<html(?:\s[^>]*)?>/i;
+    if (headTag.test(source)) return source.replace(headTag, (tag) => tag + interceptor);
+    if (htmlTag.test(source)) return source.replace(htmlTag, (tag) => tag + '<head>' + interceptor + '</head>');
+    if (/<body(?:\s[^>]*)?>/i.test(source)) return '<!doctype html><html><head>' + interceptor + '</head>' + source + '</html>';
+    return '<!doctype html><html><head>' + interceptor + '</head><body>' + source + '</body></html>';
   }, [activeFile.content, activeFile.language, activeFile.name]);
 
 
