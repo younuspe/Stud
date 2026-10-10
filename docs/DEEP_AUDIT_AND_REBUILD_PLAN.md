@@ -78,3 +78,28 @@ The follow-up removes the remaining green “verified” completion banner and s
 ### P2 — Orchestrator templates displayed invented project telemetry
 
 The project dashboard was seeded with nonzero token usage, token-saved totals, completed tasks, and model assignments that had not occurred in the current session. These are now initialized as pending templates with zero usage; the UI states that model-role labels do not yet route separate providers and fallback models are not configured.
+
+## Rebuild source selection — desktop-first, not a browser migration
+
+The implementation branch is `rebuild/native-coding-core`. Keep the current Tauri v2 shell, Rust authority layer, Monaco editor, and sandboxed live preview. Do not replace the app with a browser-hosted Google AI Studio clone.
+
+### Selected upstreams for selective porting
+
+- **Quests** (`quests-org/quests`, Apache-2.0): use its workspace/app-builder implementation as the primary source for multi-file project editing, file tools, previews, project/session lifecycle, and targeted edits. Port only modules that can be separated from its Electron shell and private workspace package graph. Preserve Apache-2.0 notices for any copied or adapted source. Upstream: https://github.com/quests-org/quests
+- **Pi agent runtime** (`@mariozechner/pi-agent-core` / `@mariozechner/pi-ai`, MIT): evaluate as the orchestration/runtime source for tool-call loops, streaming events, and provider abstraction. Do not add a dependency until its exact version, license, dependency graph, and lockfile are reviewed and CI can reproduce the lockfile. Upstream project: https://github.com/badlogic/pi-mono
+- **SRInternet-Studio/AIStudio** (Apache-2.0): not the product base. Its stated goal is a self-hosted recreation of Google AI Studio, not a native project-editing coding agent. Reuse only an isolated, useful component after source and dependency review. Upstream: https://github.com/SRInternet-Studio/AIStudio
+- **MindWorkAI/AI-Studio**: do not copy into Supru's competing product while its current FSL-1.1-MIT license restricts competing use. Its provider and desktop UX can be studied, not transplanted under that restriction. Upstream: https://github.com/MindWorkAI/AI-Studio
+
+### Required integration boundaries
+
+1. One selected-provider contract must drive chat, Code Copilot, app generation, Hunter, orchestration, connection status, and response attribution. The UI must display the model/provider actually selected for that response; no hard-coded Gemini identity.
+2. All AI calls in the installed app go through the native Tauri/Rust bridge. Browser-only fallback routes must not silently switch the provider or become the production execution path.
+3. Rust owns workspace path validation, file reads/writes, command execution, permission checks, and audit records. The renderer may present plans/diffs and request approval, but cannot bypass Rust policy.
+4. App building must operate on a real project directory with multiple files, not only a single in-memory HTML string. Keep the isolated preview, but add explicit file creation/editing, diff review, save/checkpoint, rollback, and verification output.
+5. Orchestration must be a real tool-call state machine with durable task/session state, cancellation, explicit approval gates, and recorded command/test results. A role label or model handoff is not evidence that a tool ran.
+6. Keep the app small: do not transplant a full Electron shell, unrelated services, or a monorepo wholesale into the Tauri build. Port only dependency-audited modules and test each boundary before the next milestone.
+
+### Newly confirmed UI defect
+
+The assistant message header was hard-coded to display “Gemini 3.8 Core” regardless of which model actually generated the reply. That label was false for NVIDIA/OpenRouter and made routing impossible to verify from the conversation. The rebuild branch replaces it with response-level provider/model metadata and makes desktop connection status test the selected profile. These are UI/diagnostic corrections; they do not by themselves prove the whole coding workflow is complete.
+
