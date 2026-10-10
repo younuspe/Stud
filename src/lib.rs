@@ -287,6 +287,24 @@ async fn write_workspace_file(workspace_root: String, relative_path: String, con
 
 
 #[tauri::command]
+async fn choose_workspace_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let Some(selected) = app.dialog().file().blocking_pick_folder() else {
+        return Ok(None);
+    };
+    let path = selected
+        .into_path()
+        .map_err(|error| format!("Could not resolve selected folder: {error}"))?;
+    let canonical = path
+        .canonicalize()
+        .map_err(|error| format!("Selected folder is unavailable: {error}"))?;
+    if !canonical.is_dir() {
+        return Err("Selected workspace is not a directory.".into());
+    }
+    Ok(Some(canonical.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
 async fn generate_image(prompt: String, aspect_ratio: String, api_key: Option<String>) -> Result<String, String> {
     let prompt = prompt.trim();
     let key = api_key.as_deref().unwrap_or("").trim();
@@ -740,7 +758,7 @@ async fn test_provider_connection(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![execute_terminal_command, execute_sandboxed_command, chat_completion, test_provider_connection, generate_image, list_workspace_files, read_workspace_file, write_workspace_file])
+        .invoke_handler(tauri::generate_handler![execute_terminal_command, execute_sandboxed_command, chat_completion, test_provider_connection, generate_image, choose_workspace_folder, list_workspace_files, read_workspace_file, write_workspace_file])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
