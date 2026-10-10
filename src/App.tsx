@@ -897,8 +897,21 @@ export default function App() {
     setWorkspaceView('agent');
   };
 
-  const handleOpenInEditor = (fileName: string, content: string) => {
-    setActiveFileBuffer({ name: fileName, content });
+  const handleOpenInEditor = async (fileName: string, content: string) => {
+    let editorFileName = fileName;
+    if (isTauri() && workspaceRoot && /^generated-app-\d+\.html$/i.test(fileName)) {
+      try {
+        await invoke<string>('write_workspace_file', {
+          workspaceRoot,
+          relativePath: fileName,
+          content,
+        });
+      } catch (error) {
+        window.alert(`Could not save the generated app into the selected project: ${String(error)}`);
+        editorFileName = `unsaved-${fileName}`;
+      }
+    }
+    setActiveFileBuffer({ name: editorFileName, content });
     setWorkspaceView('editor');
   };
 
