@@ -364,7 +364,10 @@ fn openai_compatible_models_url(endpoint: &str) -> String {
     if base.ends_with("/models") {
         return base;
     }
-    format!("{base}/models")
+    if base.ends_with("/v1") {
+        return format!("{base}/models");
+    }
+    format!("{base}/v1/models")
 }
 
 #[derive(serde::Deserialize)]
