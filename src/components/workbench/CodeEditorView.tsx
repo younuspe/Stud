@@ -956,7 +956,7 @@ export class SupruPipeline {
           temperature: 0.2,
           messages: [
             { role: 'system', content: systemInstruction },
-            ...nextMessages.map((m) => ({ role: m.role, content: m.text })),
+            ...nextMessages.filter((m) => m.id !== 'copilot-init').map((m) => ({ role: m.role, content: m.text })),
           ],
         });
         data = { reply: responseText, code: extractGeneratedCode(responseText) };
@@ -965,7 +965,7 @@ export class SupruPipeline {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            messages: nextMessages.map((m) => ({ role: m.role, content: m.text })),
+            messages: nextMessages.filter((m) => m.id !== 'copilot-init').map((m) => ({ role: m.role, content: m.text })),
             currentCode: activeFile.content,
             fileName: activeFile.name,
             language: activeFile.language,
