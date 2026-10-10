@@ -1187,139 +1187,89 @@ app.post('/api/agent/step', handleAgentStep);
 // GOOGLE AI STUDIO / EXTERNAL MODEL CONNECTIONS
 // ==========================================
 
-// Test connection to any external AI provider or model
+// Test connection to any external AI provider or model using a real upstream request.
+function normalizeOpenAICompatibleModelsUrl(endpoint: string): string {
+  const value = endpoint.trim().replace(/\\/+$/, '');
+  if (!value) throw new Error('Provider endpoint URL is required.');
+  if (/\\/models$/i.test(value)) return value;
+  if (/\\/chat\\/completions$/i.test(value)) return value.replace(/\\/chat\\/completions$/i, '/models');
+  if (/\\/v1$/i.test(value)) return value + '/models';
+  return value + '/v1/models';
+}
+
 app.post('/api/studio/test-connection', async (req, res) => {
-  const { provider, modelId, apiKey: customKey, endpointUrl } = req.body;
+  const { provider, modelId, apiKey: customKey, endpointUrl } = req.body || {};
   const startTime = Date.now();
+  const latency = () => Date.now() - startTime;
 
   try {
     if (provider === 'gemini') {
       const activeKey = customKey || apiKey;
       if (!activeKey || activeKey === 'MY_GEMINI_API_KEY') {
-        return res.json({
-          status: 'online',
-          latencyMs: 38,
-          message: 'Gemini Cloud connection ready (Standard Engine mode).',
-        });
+        return res.json({ status: 'offline', latencyMs: latency(), message: 'Gemini API key is missing. Add a real key to test the connection.' });
       }
-
-      const client = new GoogleGenAI({
-        apiKey: activeKey,
-        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-      });
-
-      const response = await client.models.generateContent({
-        model: modelId || 'gemini-3.8-flash',
-        contents: 'ping',
-        config: { maxOutputTokens: 5 },
-      });
-
-      const latencyMs = Date.now() - startTime;
-      return res.json({
-        status: 'online',
-        latencyMs,
-        message: `Successfully connected to Google Gemini (${modelId || 'gemini-3.8-flash'}) in ${latencyMs}ms!`,
-      });
+      const client = new GoogleGenAI({ apiKey: activeKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
+      await client.models.generateContent({ model: modelId || 'gemini-3.8-flash', contents: 'ping', config: { maxOutputTokens: 5 } });
+      return res.json({ status: 'online', latencyMs: latency(), message: `Live Gemini request succeeded for ${modelId || 'gemini-3.8-flash'}.` });
     }
 
-    if (provider === 'openai' || provider === 'deepseek' || provider === 'groq') {
-      const defaultEndpoints: Record<string, string> = {
-        openai: 'https://api.openai.com/v1',
-        deepseek: 'https://api.deepseek.com/v1',
-        groq: 'https://api.groq.com/openai/v1',
-      };
-      const url = (endpointUrl || defaultEndpoints[provider] || 'https://api.openai.com/v1').replace(/\/$/, '');
-
-      if (!customKey) {
-        return res.json({
-          status: 'online',
-          latencyMs: 45,
-          message: `${provider.toUpperCase()} simulation ready. Enter custom API key for direct cloud queries.`,
-        });
-      }
-
-      const testRes = await fetch(`${url}/models`, {
-        headers: { Authorization: `Bearer ${customKey}` },
-        signal: AbortSignal.timeout(5000),
-      });
-
-      const latencyMs = Date.now() - startTime;
-      if (testRes.ok) {
-        return res.json({
-          status: 'online',
-          latencyMs,
-          message: `Connected to ${provider.toUpperCase()} API (${modelId}) in ${latencyMs}ms!`,
-        });
-      } else {
-        return res.json({
-          status: 'offline',
-          latencyMs,
-          message: `${provider.toUpperCase()} responded with status ${testRes.status}: ${testRes.statusText}`,
-        });
-      }
+    if (provider === 'ollama') {
+      const base = String(endpointUrl || 'http://localhost:11434').trim().replace(/\\/+$/, '');
+      const url = /\\/api\\/tags$/i.test(base) ? base : `${base}/api/tags`;
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      const body = await response.text();
+      if (!response.ok) return res.json({ status: 'offline', latencyMs: latency(), message: `Ollama returned HTTP ${response.status}: ${providerErrorDetail(body)}` });
+      const data = JSON.parse(body);
+      const models = (data.models || []).map((m: any) => m.name).filter(Boolean);
+      const found = !modelId || models.includes(modelId);
+      return res.json({ status: 'online', latencyMs: latency(), message: found ? 'Connected to Ollama; selected model is available.' : `Connected to Ollama, but model '${modelId}' is not in its local model list.` });
     }
 
     if (provider === 'anthropic') {
-      if (!customKey) {
-        return res.json({
-          status: 'online',
-          latencyMs: 40,
-          message: 'Anthropic Claude simulator ready. Enter custom x-api-key for live cloud dispatch.',
-        });
-      }
-
-      const testRes = await fetch('https://api.anthropic.com/v1/models', {
-        headers: {
-          'x-api-key': customKey,
-          'anthropic-version': '2023-06-01',
-        },
-        signal: AbortSignal.timeout(5000),
-      });
-
-      const latencyMs = Date.now() - startTime;
-      return res.json({
-        status: testRes.ok ? 'online' : 'offline',
-        latencyMs,
-        message: testRes.ok ? `Connected to Anthropic Claude in ${latencyMs}ms!` : `Anthropic API error: ${testRes.statusText}`,
-      });
+      if (!customKey) return res.json({ status: 'offline', latencyMs: latency(), message: 'Anthropic API key is missing.' });
+      const base = String(endpointUrl || 'https://api.anthropic.com').trim().replace(/\\/+$/, '');
+      const url = /\\/v1$/i.test(base) ? `${base}/models` : `${base}/v1/models`;
+      const response = await fetch(url, { headers: { 'x-api-key': customKey, 'anthropic-version': '2023-06-01' }, signal: AbortSignal.timeout(7000) });
+      const body = await response.text();
+      if (!response.ok) return res.json({ status: 'offline', latencyMs: latency(), message: `Anthropic returned HTTP ${response.status}: ${providerErrorDetail(body)}` });
+      const data = JSON.parse(body);
+      const models = (data.data || []).map((m: any) => m.id).filter(Boolean);
+      return res.json({ status: 'online', latencyMs: latency(), message: models.length && modelId && !models.includes(modelId) ? `Connected, but model '${modelId}' was not found in the model list.` : 'Live Anthropic model-list request succeeded.' });
     }
 
-    if (provider === 'ollama' || provider === 'lmstudio' || provider === 'custom') {
-      const url = endpointUrl || (provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234/v1');
-      const pingUrl = provider === 'ollama' ? `${url.replace(/\/$/, '')}/api/tags` : `${url.replace(/\/$/, '')}/models`;
+    const defaults: Record<string, string> = {
+      openai: 'https://api.openai.com/v1',
+      deepseek: 'https://api.deepseek.com/v1',
+      groq: 'https://api.groq.com/openai/v1',
+      lmstudio: 'http://localhost:1234/v1',
+      custom: 'http://localhost:1234/v1',
+    };
+    const endpoint = String(endpointUrl || defaults[provider] || '').trim();
+    if (!endpoint) return res.json({ status: 'offline', latencyMs: latency(), message: 'Enter the provider base URL or full /chat/completions URL.' });
 
-      try {
-        const pingRes = await fetch(pingUrl, { signal: AbortSignal.timeout(3500) });
-        const latencyMs = Date.now() - startTime;
-        if (pingRes.ok) {
-          return res.json({
-            status: 'online',
-            latencyMs,
-            message: `Connected to local server at ${url} in ${latencyMs}ms!`,
-          });
-        }
-      } catch (err: any) {
-        // Fall through to offline notice
-      }
-
-      return res.json({
-        status: 'offline',
-        latencyMs: Date.now() - startTime,
-        message: `Could not reach ${url}. Ensure server is running or CORS is permitted.`,
-      });
+    const url = normalizeOpenAICompatibleModelsUrl(endpoint);
+    const headers: Record<string, string> = {};
+    if (customKey) headers.Authorization = `Bearer ${customKey}`;
+    const response = await fetch(url, { headers, signal: AbortSignal.timeout(7000) });
+    const body = await response.text();
+    if (!response.ok) {
+      return res.json({ status: 'offline', latencyMs: latency(), message: `Provider returned HTTP ${response.status} at ${url}: ${providerErrorDetail(body)}` });
     }
 
-    return res.json({
-      status: 'online',
-      latencyMs: 25,
-      message: 'Connection verified.',
-    });
+    let data: any;
+    try { data = JSON.parse(body); } catch {
+      return res.json({ status: 'offline', latencyMs: latency(), message: 'Provider model-list endpoint returned invalid JSON.' });
+    }
+    const models = (data.data || data.models || []).map((m: any) => m.id || m.name).filter((m: any) => typeof m === 'string');
+    const modelFound = !modelId || !models.length || models.some((id: string) => id === modelId || id.endsWith('/' + modelId));
+    const message = !models.length
+      ? 'Endpoint responded successfully, but did not provide a readable model list; test a real chat request to confirm generation.'
+      : modelFound
+        ? `Connected; model '${modelId || '(none selected)'}' is listed by the provider.`
+        : `Connected, but model '${modelId}' was not found in the returned list. The model ID may still be accepted for generation by this provider.`;
+    return res.json({ status: 'online', latencyMs: latency(), message });
   } catch (error: any) {
-    return res.json({
-      status: 'offline',
-      latencyMs: Date.now() - startTime,
-      message: error.message || 'Connection failed',
-    });
+    return res.json({ status: 'offline', latencyMs: latency(), message: error.message || 'Connection failed.' });
   }
 });
 
