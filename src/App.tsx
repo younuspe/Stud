@@ -174,7 +174,16 @@ export default function App() {
   const [studioWindows, setStudioWindows] = useState<Record<StudioWindowId, StudioWindowState>>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_STUDIO_WINDOWS);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<Record<StudioWindowId, StudioWindowState>>;
+        return {
+          ...DEFAULT_STUDIO_WINDOWS,
+          ...parsed,
+          editor: { ...DEFAULT_STUDIO_WINDOWS.editor, ...parsed.editor, isOpen: true, isUndocked: false },
+          preview: { ...DEFAULT_STUDIO_WINDOWS.preview, ...parsed.preview, isOpen: true, isUndocked: false },
+          generator: { ...DEFAULT_STUDIO_WINDOWS.generator, ...parsed.generator, isOpen: true, isUndocked: false },
+        };
+      }
     } catch {}
     return DEFAULT_STUDIO_WINDOWS;
   });
