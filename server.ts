@@ -908,6 +908,144 @@ function normalizeOpenAICompatibleChatUrl(endpoint: string): string {
   return value + '/v1/chat/completions';
 }
 
+type ProviderChatMessage = { role: string; content: string };
+
+async function requestProviderText(options: {
+  provider: string;
+  modelId: string;
+  endpointUrl?: string;
+  apiKey?: string;
+  messages: ProviderChatMessage[];
+  systemInstruction?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+}): Promise<string> {
+  const provider = String(options.provider || '').toLowerCase();
+  const model = String(options.modelId || '').trim();
+  const key = String(options.apiKey || '').trim();
+  const temperature = typeof options.temperature === 'number' ? Math.max(0, Math.min(2, options.temperature)) : 0.2;
+  const maxOutputTokens = typeof options.maxOutputTokens === 'number' ? Math.max(1, Math.min(8192, options.maxOutputTokens)) : 2048;
+  if (!model) throw new Error('Select a model before sending a request.');
+  if (provider === 'offline_core') throw new Error('Offline Core has no model runtime configured. Select Ollama or a compatible provider.');
+
+  const systemMessages = options.messages.filter((message) => message.role === 'system').map((message) => message.content);
+  const systemInstruction = [options.systemInstruction, ...systemMessages].filter(Boolean).join('\n\n');
+  const chatMessages = options.messages.filter((message) => message.role !== 'system');
+  const normalizedMessages = [
+    ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+    ...chatMessages.map((message) => ({
+      role: message.role === 'assistant' ? 'assistant' : 'user',
+      content: String(message.content || ''),
+    })),
+  ];
+  const endpoint = String(options.endpointUrl || '').trim();
+
+  if (provider === 'gemini' || provider === 'gemini_cloud') {
+    const activeKey = key || apiKey;
+    if (!activeKey || activeKey === 'MY_GEMINI_API_KEY') throw new Error('Gemini API key is missing.');
+    const client = new GoogleGenAI({ apiKey: activeKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
+    const contents = chatMessages.map((message) => ({
+      role: message.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: String(message.content || '') }],
+    }));
+    if (!contents.length) contents.push({ role: 'user', parts: [{ text: 'Reply with OK.' }] });
+    const response = await client.models.generateContent({
+      model,
+      contents: contents as any,
+      config: {
+        systemInstruction: systemInstruction || undefined,
+        temperature,
+        maxOutputTokens,
+      },
+    });
+    const text = response.text || '';
+    if (!text.trim()) throw new Error('Gemini returned no text content.');
+    return text;
+  }
+
+  if (provider === 'ollama' || provider === 'ollama_local') {
+    const base = (endpoint || 'http://127.0.0.1:11434').replace(/\/+$/, '');
+    const url = base.endsWith('/api/chat') ? base : base.endsWith('/api/tags') ? base.slice(0, -'/api/tags'.length) + '/api/chat' : base + '/api/chat';
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(120000),
+      body: JSON.stringify({
+        model,
+        messages: [
+          ...(systemInstruction ? [{ role: 'system', content: systemInstruction }] : []),
+          ...chatMessages.map((message) => ({ role: message.role === 'assistant' ? 'assistant' : 'user', content: String(message.content || '') })),
+        ],
+        stream: false,
+        options: { temperature },
+      }),
+    });
+    const body = await response.text();
+    if (!response.ok) throw new Error(`Ollama returned HTTP ${response.status}: ${providerErrorDetail(body)}`);
+    const data = JSON.parse(body);
+    const text = data.message?.content;
+    if (typeof text !== 'string' || !text.trim()) throw new Error('Ollama returned no generated text.');
+    return text;
+  }
+
+  if (provider === 'anthropic') {
+    if (!key) throw new Error('Anthropic API key is missing.');
+    const base = (endpoint || 'https://api.anthropic.com').replace(/\/+$/, '');
+    const url = base.endsWith('/v1/messages') ? base : base.endsWith('/v1') ? base + '/messages' : base + '/v1/messages';
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+      signal: AbortSignal.timeout(30000),
+      body: JSON.stringify({
+        model,
+        max_tokens: maxOutputTokens,
+        temperature,
+        ...(systemInstruction ? { system: systemInstruction } : {}),
+        messages: chatMessages.map((message) => ({ role: message.role === 'assistant' ? 'assistant' : 'user', content: String(message.content || '') })),
+      }),
+    });
+    const body = await response.text();
+    if (!response.ok) throw new Error(`Anthropic returned HTTP ${response.status}: ${providerErrorDetail(body)}`);
+    const data = JSON.parse(body);
+    const text = Array.isArray(data.content) ? data.content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('\n') : '';
+    if (!text.trim()) throw new Error('Anthropic returned no generated text.');
+    return text;
+  }
+
+  const defaults: Record<string, string> = {
+    openai: 'https://api.openai.com/v1',
+    deepseek: 'https://api.deepseek.com/v1',
+    groq: 'https://api.groq.com/openai/v1',
+    lmstudio: 'http://127.0.0.1:1234/v1',
+    lmstudio_local: 'http://127.0.0.1:1234/v1',
+  };
+  const base = endpoint || defaults[provider] || '';
+  if (!base) throw new Error('Custom compatible providers require an explicit base URL or full /chat/completions URL.');
+  if (['openai', 'deepseek', 'groq'].includes(provider) && !key) throw new Error(`${provider.toUpperCase()} API key is missing.`);
+  const url = normalizeOpenAICompatibleChatUrl(base);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (key) headers.Authorization = `Bearer ${key}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    signal: AbortSignal.timeout(30000),
+    body: JSON.stringify({
+      model,
+      messages: normalizedMessages.length ? normalizedMessages : [{ role: 'user', content: 'Reply with OK.' }],
+      temperature,
+      max_tokens: maxOutputTokens,
+      stream: false,
+    }),
+  });
+  const body = await response.text();
+  if (!response.ok) throw new Error(`Provider returned HTTP ${response.status} at ${url}: ${providerErrorDetail(body)}`);
+  const data = JSON.parse(body);
+  const raw = data.choices?.[0]?.message?.content;
+  const text = typeof raw === 'string' ? raw : Array.isArray(raw) ? raw.map((part: any) => part.text || '').join('\n') : '';
+  if (!text.trim()) throw new Error('Compatible provider returned no choices[0].message.content text.');
+  return text;
+}
+
 function providerErrorDetail(body: string): string {
   try {
     const parsed = JSON.parse(body);
