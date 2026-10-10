@@ -39,6 +39,7 @@ interface FloatingChatPillProps {
   onOpenImageStudio?: (image?: string) => void;
   onOpenVeoStudio?: (image?: string) => void;
   onOpenAddModels?: () => void;
+  onBuildRequest?: (text: string) => void;
   activeModelName?: string;
 }
 
@@ -51,9 +52,11 @@ export const FloatingChatPill: React.FC<FloatingChatPillProps> = ({
   onOpenImageStudio,
   onOpenVeoStudio,
   onOpenAddModels,
+  onBuildRequest,
   activeModelName = 'Gemini 3.8 Flash',
 }) => {
   const [input, setInput] = useState('');
+  const [isBuildMode, setIsBuildMode] = useState(false);
   const [voiceLanguage, setVoiceLanguage] = useState<'en-US' | 'ml-IN'>('en-US');
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [showMenu, setShowMenu] = useState(false);
@@ -98,7 +101,14 @@ export const FloatingChatPill: React.FC<FloatingChatPillProps> = ({
   const handleSend = () => {
     if ((!input.trim() && !attachment) || isGenerating) return;
     soundFx.playChime();
-    onSendMessage(input.trim(), attachment || undefined);
+    if (isBuildMode && input.trim() && !attachment && onBuildRequest) {
+      onBuildRequest(input.trim());
+    } else {
+      if (isBuildMode && attachment) {
+        setVoiceNotice('Build mode accepts text prompts only; the attachment was sent to regular chat.');
+      }
+      onSendMessage(input.trim(), attachment || undefined);
+    }
     setInput('');
     setAttachment(null);
   };
@@ -484,6 +494,21 @@ export const FloatingChatPill: React.FC<FloatingChatPillProps> = ({
           )}
         </div>
 
+        {/* Chat-driven app builder mode */}
+        <button
+          type="button"
+          onClick={() => {
+            soundFx.playClick();
+            setIsBuildMode((current) => !current);
+          }}
+          aria-pressed={isBuildMode}
+          title={isBuildMode ? 'Turn off Build by Chat mode' : 'Build or modify an app by describing changes in chat'}
+          className={`flex shrink-0 items-center gap-1 rounded-xl border px-2 py-1.5 text-[10px] font-bold transition-colors ${isBuildMode ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-300' : 'border-white/10 bg-white/[0.03] text-gray-400 hover:border-emerald-400/40 hover:text-emerald-300'}`}
+        >
+          <Code2 size={13} />
+          <span className="hidden sm:inline">{isBuildMode ? 'Build ON' : 'Build'}</span>
+        </button>
+
         {/* Context Badge for current workspace */}
         <div className="flex items-center gap-1.5 shrink-0">
           {activeWorkspaceView === 'editor' && (
@@ -507,7 +532,9 @@ export const FloatingChatPill: React.FC<FloatingChatPillProps> = ({
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={
-            activeWorkspaceView === 'generative'
+            isBuildMode
+              ? 'Describe an app or change; Supru Code will generate an editable preview...'
+              : activeWorkspaceView === 'generative'
               ? 'Describe 4D scene, world-state, or visual intent for Generative Studio...'
               : activeWorkspaceView === 'editor'
               ? 'Ask Supru Code Copilot about this code, generate, or refactor (Stays in IDE)...'
