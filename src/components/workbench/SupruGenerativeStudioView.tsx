@@ -37,6 +37,7 @@ import { useSpeechListener } from '../../utils/useSpeechListener';
 
 interface SupruGenerativeStudioViewProps {
   localConfig: import('../../types/workbench').LocalHostConfig;
+  activeCustomModel?: import('../../types/workbench').ExternalAIModelConfig | null;
   onSendToChat?: (content: string, imageUrl?: string) => void;
   onOpenInEditor?: (fileName: string, content: string) => void;
   onRunInTerminal?: (cmd: string) => void;
@@ -86,6 +87,7 @@ const PROMPT_SUGGESTIONS = [
 
 export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps> = ({
   localConfig,
+  activeCustomModel = null,
   onSendToChat,
   onOpenInEditor,
   onRunInTerminal,
@@ -422,24 +424,58 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
         let modelUsed = localConfig.modelName;
         let explanation = 'Application source generated. It has not been tested automatically.';
         if (isTauri()) {
-          if (localConfig.provider === 'offline_core') {
+          const providerMap: Record<string, string> = {
+            gemini_cloud: 'gemini_cloud',
+            gemini: 'gemini',
+            openai: 'openai',
+            anthropic: 'anthropic',
+            deepseek: 'deepseek',
+            groq: 'groq',
+            ollama: 'ollama_local',
+            ollama_local: 'ollama_local',
+            lmstudio: 'lmstudio_local',
+            lmstudio_local: 'lmstudio_local',
+            custom: 'custom_local',
+            custom_local: 'custom_local',
+            offline_core: 'offline_core',
+          };
+          const endpointDefaults: Record<string, string> = {
+            gemini_cloud: 'https://generativelanguage.googleapis.com',
+            gemini: 'https://generativelanguage.googleapis.com',
+            openai: 'https://api.openai.com/v1',
+            anthropic: 'https://api.anthropic.com/v1',
+            deepseek: 'https://api.deepseek.com/v1',
+            groq: 'https://api.groq.com/openai/v1',
+            ollama: 'http://127.0.0.1:11434',
+            ollama_local: 'http://127.0.0.1:11434',
+            lmstudio: 'http://127.0.0.1:1234/v1',
+            lmstudio_local: 'http://127.0.0.1:1234/v1',
+          };
+          const selectedProvider = activeCustomModel
+            ? providerMap[activeCustomModel.provider] || activeCustomModel.provider
+            : providerMap[localConfig.provider] || localConfig.provider;
+          const selectedModel = activeCustomModel?.modelId || localConfig.modelName;
+          const selectedEndpoint = activeCustomModel
+            ? activeCustomModel.endpointUrl || (activeCustomModel.provider === 'custom' ? '' : endpointDefaults[activeCustomModel.provider] || localConfig.endpointUrl)
+            : localConfig.endpointUrl || endpointDefaults[localConfig.provider] || '';
+          const selectedKey = activeCustomModel
+            ? activeCustomModel.apiKey || (activeCustomModel.provider === 'gemini' ? localConfig.apiKey || null : null)
+            : localConfig.apiKey || null;
+
+          if (selectedProvider === 'offline_core') {
             throw new Error('Offline Core has no generation model yet. Select Ollama, LM Studio, or a configured cloud provider in Provider Settings.');
           }
-          if (!localConfig.modelName.trim()) {
+          if (!selectedModel.trim()) {
             throw new Error('Select a model in Provider Settings before generating an application.');
           }
-          const provider = localConfig.provider === 'gemini_cloud'
-            ? 'gemini_cloud'
-            : localConfig.provider === 'ollama_local'
-              ? 'ollama'
-              : localConfig.provider === 'lmstudio_local'
-                ? 'lmstudio'
-                : 'custom';
+          if ((selectedProvider === 'custom_local' || selectedProvider === 'custom') && !selectedEndpoint.trim()) {
+            throw new Error('Add the compatible provider base URL before generating an application.');
+          }
           const response = await invoke<string>('chat_completion', {
-            provider,
-            endpointUrl: localConfig.endpointUrl,
-            modelName: localConfig.modelName,
-            apiKey: localConfig.apiKey || null,
+            provider: selectedProvider,
+            endpointUrl: selectedEndpoint,
+            modelName: selectedModel,
+            apiKey: selectedKey,
             temperature: 0.3,
             messages: [
               {
