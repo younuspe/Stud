@@ -390,12 +390,13 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
               </label>
               <input
                 type="text"
-                placeholder="e.g. deepseek-r1:8b or llama3.3"
+                placeholder="Exact API ID, e.g. provider/model:free"
                 value={modelId}
                 onChange={(e) => setModelId(e.target.value)}
                 required
                 className="w-full rounded-xl border border-white/[0.1] bg-[#161622] px-3 py-2 text-xs text-white font-mono placeholder-gray-500 outline-none focus:border-amber-400 transition-colors"
               />
+              <p className="mt-1 text-[10px] leading-relaxed text-gray-500">Use the exact model ID from the provider catalog, not its display name. The app verifies it with a real generation request.</p>
             </div>
           </div>
 
