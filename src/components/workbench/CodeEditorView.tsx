@@ -823,7 +823,7 @@ export class SupruPipeline {
     }
   };
 
-  const handleCreateFile = () => {
+  const handleCreateFile = async () => {
     soundFx.playClick();
     const newId = `f-${Date.now()}`;
     const newFile: EditorFile = {
@@ -844,8 +844,26 @@ export class SupruPipeline {
 </html>`,
       isModified: true,
     };
+    if (workspaceRoot) {
+      const availableName = `app_${Date.now()}.html`;
+      try {
+        await invoke<string>('write_workspace_file', {
+          workspaceRoot,
+          relativePath: availableName,
+          content: newFile.content,
+        });
+        newFile.id = `workspace-file:${availableName}`;
+        newFile.name = availableName;
+        setProjectPaths((prev) => [...prev, availableName].sort());
+        setActiveProjectPath(availableName);
+        setProjectFileNotice(`Created ${availableName} in the selected project.`);
+      } catch (error) {
+        setProjectFileNotice(`Could not create file in project: ${String(error)}`);
+        return;
+      }
+    }
     setFiles((prev) => [...prev, newFile]);
-    setActiveFileId(newId);
+    setActiveFileId(newFile.id);
   };
 
   const handleCloseFile = (id: string, e: React.MouseEvent) => {
