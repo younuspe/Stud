@@ -238,7 +238,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
                 Planned proof architecture • native Z3 integration not connected
               </div>
               <p className="text-[10.5px] text-gray-300 mt-1.5">
-                Zero LLM dependency. Absolute mathematical proof, system recovery, and deterministic invariance.
+                Target goal: independent deterministic verification. No native proof engine is connected in this build.
               </p>
             </button>
           </div>
@@ -313,7 +313,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
                 <div className="rounded-lg bg-[#11111a] p-2.5 border border-purple-500/40">
                   <div className="text-[10px] font-bold text-purple-400 uppercase font-mono mb-1 flex items-center justify-between">
                     <span>Verification status (not a proof)</span>
-                    <span className="text-emerald-400">PROVEN SOUND</span>
+                    <span className="text-amber-300">NOT VERIFIED</span>
                   </div>
                   <pre className="font-mono text-[10.5px] text-gray-200 whitespace-pre-wrap">
                     {judgeProof}

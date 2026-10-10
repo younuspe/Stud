@@ -1127,6 +1127,7 @@ export default function App() {
             {workspaceView === 'orchestrator' && (
               <OrchestratorView
                 localConfig={localConfig}
+                activeCustomModel={activeCustomModel}
                 onOpenLocalSettings={() => setIsLocalModalOpen(true)}
                 onOpenInEditor={handleOpenInEditor}
                 onTriggerHunter={handleTriggerAgent}

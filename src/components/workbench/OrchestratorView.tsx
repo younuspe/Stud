@@ -32,7 +32,8 @@ import {
   OrchestratorToolName, 
   OrchestratorToolCall, 
   OrchestratorBug, 
-  LocalHostConfig 
+  LocalHostConfig,
+  ExternalAIModelConfig
 } from '../../types/workbench';
 import { soundFx } from '../../utils/audio';
 import { AutonomousPipelineTab } from './orchestrator/AutonomousPipelineTab';
@@ -40,6 +41,7 @@ import { SovereignProtocolTab } from './orchestrator/SovereignProtocolTab';
 
 interface OrchestratorViewProps {
   localConfig: LocalHostConfig;
+  activeCustomModel?: ExternalAIModelConfig | null;
   onOpenLocalSettings: () => void;
   onOpenInEditor?: (fileName: string, content: string) => void;
   onTriggerHunter?: (objective: string, workspacePath?: string) => void;
@@ -54,15 +56,15 @@ const PRESET_PROJECTS: OrchestratorProject[] = [
     complexity: 'complex',
     description: 'High-throughput microservices managing model switching, token rearrangement, and local Ollama routing.',
     tokenBudget: 16384,
-    tokensUsed: 6240,
-    tokensSaved: 12480,
-    activeModel: 'Gemini 2.5 Pro (Deep Reasoning)',
-    fallbackModel: 'Ollama Llama-3-8B (Local Triage)',
+    tokensUsed: 0,
+    tokensSaved: 0,
+    activeModel: 'Selected provider',
+    fallbackModel: 'Not configured',
     tasks: [
-      { id: 't-1', title: 'Parse OpenAPI schemas & validate contracts', stage: 'plan', status: 'completed', assignedModel: 'Gemini 2.5 Flash' },
-      { id: 't-2', title: 'Implement dynamic AST token pruner', stage: 'code', status: 'in_progress', assignedModel: 'Gemini 2.5 Pro' },
-      { id: 't-3', title: 'Execute regression test suite with mock endpoints', stage: 'test', status: 'pending', assignedModel: 'Ollama Llama-3-8B' },
-      { id: 't-4', title: 'Bug triage: Handle unexpected buffer overflow in CLI parser', stage: 'bugfix', status: 'pending', assignedModel: 'Gemini 2.5 Pro' },
+      { id: 't-1', title: 'Parse OpenAPI schemas & validate contracts', stage: 'plan', status: 'pending', assignedModel: 'Selected provider' },
+      { id: 't-2', title: 'Implement dynamic AST token pruner', stage: 'code', status: 'pending', assignedModel: 'Selected provider' },
+      { id: 't-3', title: 'Execute regression test suite with mock endpoints', stage: 'test', status: 'pending', assignedModel: 'Selected provider' },
+      { id: 't-4', title: 'Bug triage: Handle unexpected buffer overflow in CLI parser', stage: 'bugfix', status: 'pending', assignedModel: 'Selected provider' },
     ]
   },
   {
@@ -71,13 +73,13 @@ const PRESET_PROJECTS: OrchestratorProject[] = [
     complexity: 'small',
     description: 'Lightweight utility for data sanitization, schema migration, and fast CLI benchmarking.',
     tokenBudget: 4096,
-    tokensUsed: 1120,
-    tokensSaved: 3840,
-    activeModel: 'Gemini 2.5 Flash',
-    fallbackModel: 'Local Mistral 7B',
+    tokensUsed: 0,
+    tokensSaved: 0,
+    activeModel: 'Selected provider',
+    fallbackModel: 'Not configured',
     tasks: [
       { id: 't-5', title: 'Scaffold CLI argument parser', stage: 'code', status: 'completed', assignedModel: 'Gemini 2.5 Flash' },
-      { id: 't-6', title: 'Verify exit codes and signal trapping', stage: 'test', status: 'completed', assignedModel: 'Local Mistral 7B' },
+      { id: 't-6', title: 'Verify exit codes and signal trapping', stage: 'test', status: 'pending', assignedModel: 'Selected provider' },
     ]
   },
   {
@@ -86,27 +88,36 @@ const PRESET_PROJECTS: OrchestratorProject[] = [
     complexity: 'multi_service',
     description: 'Multi-complex full-stack deployment across Docker clusters, PostgreSQL persistence, and distributed worker queues.',
     tokenBudget: 32768,
-    tokensUsed: 14800,
-    tokensSaved: 36200,
-    activeModel: 'Gemini 2.5 Pro',
-    fallbackModel: 'Claude 3.7 / Local Qwen2.5',
+    tokensUsed: 0,
+    tokensSaved: 0,
+    activeModel: 'Selected provider',
+    fallbackModel: 'Not configured',
     tasks: [
-      { id: 't-7', title: 'Cluster service discovery & orchestrator daemon', stage: 'plan', status: 'completed', assignedModel: 'Gemini 2.5 Pro' },
-      { id: 't-8', title: 'Type-safe RPC boundary verification', stage: 'code', status: 'in_progress', assignedModel: 'Gemini 2.5 Pro' },
-      { id: 't-9', title: 'Automated fuzz testing for packet race conditions', stage: 'test', status: 'pending', assignedModel: 'Local Qwen2.5' },
+      { id: 't-7', title: 'Cluster service discovery & orchestrator daemon', stage: 'plan', status: 'pending', assignedModel: 'Selected provider' },
+      { id: 't-8', title: 'Type-safe RPC boundary verification', stage: 'code', status: 'pending', assignedModel: 'Selected provider' },
+      { id: 't-9', title: 'Automated fuzz testing for packet race conditions', stage: 'test', status: 'pending', assignedModel: 'Selected provider' },
     ]
   }
 ];
 
 export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   localConfig,
+  activeCustomModel,
   onOpenLocalSettings,
   onOpenInEditor,
   onTriggerHunter,
   onSendToChat,
   onChangeWorkspaceView
 }) => {
-  const [projects, setProjects] = useState<OrchestratorProject[]>(PRESET_PROJECTS);
+  const currentModelName = activeCustomModel?.modelId || localConfig.modelName || 'No model selected';
+  const [projects, setProjects] = useState<OrchestratorProject[]>(() => PRESET_PROJECTS.map((project) => ({
+    ...project,
+    tokensUsed: 0,
+    tokensSaved: 0,
+    activeModel: currentModelName,
+    fallbackModel: 'Not configured',
+    tasks: project.tasks.map((task) => ({ ...task, status: 'pending' as const, assignedModel: currentModelName })),
+  })));
   const [activeProjectId, setActiveProjectId] = useState<string>(PRESET_PROJECTS[0].id);
   const [bugs, setBugs] = useState<OrchestratorBug[]>([]);
   const [activeTab, setActiveTab] = useState<'pipeline' | 'protocol' | 'overview' | 'tools' | 'tokens' | 'bugs'>('pipeline');
@@ -127,8 +138,8 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   
   // Token size rearrangement state
   const [tokenChunkSize, setTokenChunkSize] = useState<number>(8192);
-  const [selectedTriageModel, setSelectedTriageModel] = useState<string>('Gemini 2.5 Flash');
-  const [selectedReasoningModel, setSelectedReasoningModel] = useState<string>('Gemini 2.5 Pro');
+  const [selectedTriageModel, setSelectedTriageModel] = useState<string>(currentModelName);
+  const [selectedReasoningModel, setSelectedReasoningModel] = useState<string>(currentModelName);
   const [pruningStrategy, setPruningStrategy] = useState<'ast' | 'sliding' | 'strict'>('ast');
 
   // Tool calling facility state
@@ -137,6 +148,17 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
   const [isCallingTool, setIsCallingTool] = useState<boolean>(false);
   const [activeTool, setActiveTool] = useState<OrchestratorToolName>('test_runner');
   const [workspacePath, setWorkspacePath] = useState<string>('');
+
+  useEffect(() => {
+    setProjects((previous) => previous.map((project) => ({
+      ...project,
+      activeModel: currentModelName,
+      fallbackModel: 'Not configured',
+      tasks: project.tasks.map((task) => ({ ...task, assignedModel: currentModelName })),
+    })));
+    setSelectedTriageModel(currentModelName);
+    setSelectedReasoningModel(currentModelName);
+  }, [currentModelName]);
 
   const activeProject = projects.find(p => p.id === activeProjectId) || projects[0];
 
@@ -208,10 +230,10 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
 
   const handleResolveBugWithModel = (bug: OrchestratorBug) => {
     soundFx.playClick();
-    setSelectedReasoningModel(bug.recommendedModel);
+    setSelectedReasoningModel(currentModelName);
     setBugs(prev => prev.map(b => b.id === bug.id ? { ...b, status: 'investigating' } : b));
     onSendToChat?.(
-      `Investigate this reported issue using ${bug.recommendedModel}. Do not claim it is fixed without editing the actual file and running verification.\n\nIssue: ${bug.title}\nFile: ${bug.file}\nDetails: ${bug.errorDetails}\n\nProposed change for review (not yet applied):\n${bug.solutionDiff || 'No patch proposal available.'}`
+      `Investigate this reported issue using the currently selected model (${currentModelName}). Model-role labels do not switch providers in this build. Do not claim it is fixed without editing the actual file and running verification.\n\nIssue: ${bug.title}\nFile: ${bug.file}\nDetails: ${bug.errorDetails}\n\nProposed change for review (not yet applied):\n${bug.solutionDiff || 'No patch proposal available.'}`
     );
   };
 
@@ -229,6 +251,9 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
     <div className="flex h-full w-full flex-col bg-[#08080d] text-gray-200 overflow-hidden font-sans text-xs">
       {/* Top Banner Header */}
       <div className="border-b border-[#1b1b28] bg-[#0d0d16] p-3 sm:p-4">
+        <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 text-[11px] text-amber-100/80">
+          The project cards are example templates, not detected repositories. Task statuses start pending, token metrics stay at zero until real usage accounting exists, and fallback models are not configured. Model-role labels do not route separate providers yet.
+        </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 shadow-md">
@@ -438,11 +463,11 @@ export const OrchestratorView: React.FC<OrchestratorViewProps> = ({
                       tokenBudget: 8192,
                       tokensUsed: 0,
                       tokensSaved: 0,
-                      activeModel: selectedReasoningModel,
-                      fallbackModel: selectedTriageModel,
+                      activeModel: currentModelName,
+                      fallbackModel: 'Not configured',
                       tasks: [
-                        { id: `t-${Date.now()}-1`, title: 'Define interface contracts', stage: 'plan', status: 'pending', assignedModel: selectedReasoningModel },
-                        { id: `t-${Date.now()}-2`, title: 'Execute code generation & unit verification', stage: 'code', status: 'pending', assignedModel: selectedTriageModel }
+                        { id: `t-${Date.now()}-1`, title: 'Define interface contracts', stage: 'plan', status: 'pending', assignedModel: currentModelName },
+                        { id: `t-${Date.now()}-2`, title: 'Execute code generation & unit verification', stage: 'code', status: 'pending', assignedModel: currentModelName }
                       ]
                     };
                     setProjects(prev => [...prev, newProj]);

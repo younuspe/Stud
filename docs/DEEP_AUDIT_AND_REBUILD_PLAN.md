@@ -73,3 +73,8 @@ A task is verified only when the requested artifact/change exists and required c
 ## Additional visible-state audit (follow-up)
 
 The follow-up removes the remaining green “verified” completion banner and static all-green verification ladder from Hunter. The final UI must reflect actual evidence records and leave missing checks as “not run”; completion of model handoffs alone is not task verification. The Orchestrator preset runner is limited to supported checks and explicitly labels skipped tools.
+
+
+### P2 — Orchestrator templates displayed invented project telemetry
+
+The project dashboard was seeded with nonzero token usage, token-saved totals, completed tasks, and model assignments that had not occurred in the current session. These are now initialized as pending templates with zero usage; the UI states that model-role labels do not yet route separate providers and fallback models are not configured.
