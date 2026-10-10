@@ -339,6 +339,34 @@ async fn generate_image(prompt: String, aspect_ratio: String, api_key: Option<St
     })
 }
 
+// Normalize endpoint URLs for providers that implement the OpenAI-compatible API.
+// Users may paste a base URL, a /v1 URL, a model-list URL, or the full chat endpoint.
+fn openai_compatible_chat_url(endpoint: &str) -> String {
+    let mut base = endpoint.trim().trim_end_matches('/').to_string();
+    if base.ends_with("/chat/completions") {
+        return base;
+    }
+    if base.ends_with("/models") {
+        base.truncate(base.len() - "/models".len());
+    }
+    if base.ends_with("/v1") {
+        format!("{base}/chat/completions")
+    } else {
+        format!("{base}/v1/chat/completions")
+    }
+}
+
+fn openai_compatible_models_url(endpoint: &str) -> String {
+    let mut base = endpoint.trim().trim_end_matches('/').to_string();
+    if base.ends_with("/chat/completions") {
+        base.truncate(base.len() - "/chat/completions".len());
+    }
+    if base.ends_with("/models") {
+        return base;
+    }
+    format!("{base}/models")
+}
+
 #[derive(serde::Deserialize)]
 struct ChatMessageInput {
     role: String,
@@ -421,19 +449,17 @@ async fn chat_completion(
             serde_json::json!({"role": if m.role == "assistant" { "assistant" } else { "user" }, "content": m.content})
         }).collect::<Vec<_>>();
         (
-            format!("{}/v1/messages", base.trim_end_matches('/')),
+            if base.trim_end_matches('/').ends_with("/v1") {
+                format!("{}/messages", base.trim_end_matches('/'))
+            } else {
+                format!("{}/v1/messages", base.trim_end_matches('/'))
+            },
             serde_json::json!({"model": model, "max_tokens": 4096, "temperature": temp, "system": system, "messages": history}),
             "anthropic"
         )
     } else {
         let base = if endpoint.is_empty() { "https://api.openai.com/v1" } else { endpoint };
-        let url = if base.ends_with("/chat/completions") {
-            base.to_string()
-        } else if base.ends_with("/v1") {
-            format!("{base}/chat/completions")
-        } else {
-            format!("{base}/v1/chat/completions")
-        };
+        let url = openai_compatible_chat_url(base);
         if key.is_empty() && (provider_lower == "openai" || provider_lower == "deepseek" || provider_lower == "groq") {
             return Err(format!("{} API key is missing. Add it in provider settings.", provider));
         }
@@ -538,7 +564,7 @@ async fn test_provider_connection(
     } else if kind == "anthropic" {
         (format!("{}/v1/models", base), "anthropic")
     } else {
-        let url = if base.ends_with("/models") { base.to_string() } else { format!("{}/models", base) };
+        let url = openai_compatible_models_url(base);
         (url, "bearer")
     };
 
