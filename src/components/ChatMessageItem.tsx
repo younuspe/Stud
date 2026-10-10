@@ -149,7 +149,11 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
           <div className="flex items-center gap-2 text-[11px]">
             <span className="font-extrabold text-gradient-amber text-xs">Supru Ecosystem</span>
             <span aria-hidden="true" className="text-gray-600">·</span>
-            <span className="text-gray-400 font-mono text-[10.5px]">Gemini 3.8 Core</span>
+            <span className="text-gray-400 font-mono text-[10.5px]">
+              {message.model
+                ? `${message.model} · ${message.provider || 'provider not recorded'}`
+                : 'Model not recorded for this message'}
+            </span>
             <span aria-hidden="true" className="text-gray-600">·</span>
             <span className="text-gray-500 font-mono text-[10px]">
               {formatTime(message.timestamp)}
