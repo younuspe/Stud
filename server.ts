@@ -1445,12 +1445,30 @@ app.delete('/api/keys/:provider', (req, res) => {
 });
 
 app.post('/api/keys/test', async (req, res) => {
-  const { provider, key } = req.body;
-  return res.json({
-    status: 'online',
-    message: `Provider ${provider || 'AI'} credentials verified.`,
-    latencyMs: 18,
-  });
+  const { provider = 'gemini', key, modelId, endpointUrl } = req.body || {};
+  const startedAt = Date.now();
+  try {
+    const reply = await requestProviderText({
+      provider: String(provider),
+      modelId: String(modelId || (provider === 'gemini' ? 'gemini-3.8-flash' : '')),
+      endpointUrl: typeof endpointUrl === 'string' ? endpointUrl : undefined,
+      apiKey: typeof key === 'string' ? key : undefined,
+      messages: [{ role: 'user', content: 'Reply with OK.' }],
+      temperature: 0,
+      maxOutputTokens: 8,
+    });
+    return res.json({
+      status: reply.trim() ? 'online' : 'offline',
+      message: reply.trim() ? `Live ${provider} model request succeeded.` : 'The provider returned no text.',
+      latencyMs: Date.now() - startedAt,
+    });
+  } catch (error: any) {
+    return res.json({
+      status: 'offline',
+      message: error.message || 'Provider credential test failed.',
+      latencyMs: Date.now() - startedAt,
+    });
+  }
 });
 
 // Google AI Studio style prompt to code generator ("Generate by Message")
