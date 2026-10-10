@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Supru AI",
+  "productName": "Supru App Builder",
   "version": "0.1.0",
   "identifier": "com.supru.ai",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Supru AI Studio",
+        "title": "Supru App Builder",
         "width": 1440,
         "height": 900,
         "minWidth": 1024,
