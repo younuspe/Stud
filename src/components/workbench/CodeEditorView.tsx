@@ -497,14 +497,26 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
     text: string;
     codeSnippet?: string;
     timestamp: number;
-  }>>([
-    {
+  }>>(() => {
+    try {
+      const saved = localStorage.getItem('supru_code_copilot_messages_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.every((message) => message && typeof message.id === 'string' && (message.role === 'user' || message.role === 'assistant') && typeof message.text === 'string')) {
+          return parsed.slice(-40);
+        }
+      }
+    } catch {}
+    return [{
       id: 'copilot-init',
       role: 'assistant',
       text: "👋 **Supru Code Copilot** is active.\n\nI have real-time context of **index.html**. Ask questions about your code, request features, or tell me to inspect, refactor, or fix bugs! (All chats stay right here inside Supru Code).",
       timestamp: Date.now(),
-    }
-  ]);
+    }];
+  });
+  useEffect(() => {
+    try { localStorage.setItem('supru_code_copilot_messages_v1', JSON.stringify(copilotMessages.slice(-40))); } catch {}
+  }, [copilotMessages]);
   const [copilotInput, setCopilotInput] = useState('');
   const [isCopilotThinking, setIsCopilotThinking] = useState(false);
   const [appliedNotice, setAppliedNotice] = useState<string | null>(null);
@@ -512,7 +524,17 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
   const copilotScrollRef = useRef<HTMLDivElement>(null);
 
   // Files in the editor
-  const [files, setFiles] = useState<EditorFile[]>([
+  const [files, setFiles] = useState<EditorFile[]>(() => {
+    try {
+      const saved = localStorage.getItem('supru_code_editor_files_v1');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed.every((file) => file && typeof file.id === 'string' && typeof file.name === 'string' && typeof file.content === 'string' && typeof file.language === 'string')) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return [
     PRESET_TEMPLATES[0].file,
     {
       id: 'f-pipe',
@@ -538,8 +560,21 @@ export class SupruPipeline {
 }
 `,
     }
-  ]);
-  const [activeFileId, setActiveFileId] = useState<string>(files[0].id);
+  ])];
+  });
+  useEffect(() => {
+    try { localStorage.setItem('supru_code_editor_files_v1', JSON.stringify(files)); } catch {}
+  }, [files]);
+  const [activeFileId, setActiveFileId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('supru_code_editor_active_file_v1');
+      if (saved && files.some((file) => file.id === saved)) return saved;
+    } catch {}
+    return files[0].id;
+  });
+  useEffect(() => {
+    try { localStorage.setItem('supru_code_editor_active_file_v1', activeFileId); } catch {}
+  }, [activeFileId]);
   const [copied, setCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
