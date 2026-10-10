@@ -1,6 +1,23 @@
-import * as assert from 'node:assert/strict';
 import type { ExternalAIModelConfig, LocalHostConfig } from '../types/workbench';
 import { resolveProviderConfig } from './providerRegistry';
+
+function assertEqual(actual: unknown, expected: unknown, label: string): void {
+  if (actual !== expected) {
+    throw new Error(`${label}: expected ${String(expected)}, received ${String(actual)}`);
+  }
+}
+
+function assertThrows(action: () => unknown, expectedMessage: string): void {
+  let thrown: unknown;
+  try {
+    action();
+  } catch (error) {
+    thrown = error;
+  }
+  if (!(thrown instanceof Error) || !thrown.message.includes(expectedMessage)) {
+    throw new Error(`Expected an error containing "${expectedMessage}".`);
+  }
+}
 
 const primaryConfig: LocalHostConfig = {
   provider: 'gemini_cloud',
@@ -26,11 +43,11 @@ function externalModel(overrides: Partial<ExternalAIModelConfig> = {}): External
 }
 
 const openRouter = resolveProviderConfig(primaryConfig, externalModel());
-assert.equal(openRouter.provider, 'custom_local');
-assert.equal(openRouter.endpointUrl, 'https://openrouter.ai/api/v1/chat/completions');
-assert.equal(openRouter.modelName, 'google/gemma-4-31b-it:free');
-assert.equal(openRouter.apiKey, 'openrouter-secret');
-assert.notEqual(openRouter.apiKey, primaryConfig.apiKey);
+assertEqual(openRouter.provider, 'custom_local', 'OpenRouter runtime provider');
+assertEqual(openRouter.endpointUrl, 'https://openrouter.ai/api/v1/chat/completions', 'OpenRouter endpoint');
+assertEqual(openRouter.modelName, 'google/gemma-4-31b-it:free', 'OpenRouter model ID');
+assertEqual(openRouter.apiKey, 'openrouter-secret', 'OpenRouter credential isolation');
+if (openRouter.apiKey === primaryConfig.apiKey) throw new Error('OpenRouter must not inherit the primary Gemini credential.');
 
 const nvidia = resolveProviderConfig(primaryConfig, externalModel({
   id: 'model-nvidia-test',
@@ -38,27 +55,27 @@ const nvidia = resolveProviderConfig(primaryConfig, externalModel({
   endpointUrl: 'https://integrate.api.nvidia.com/v1',
   apiKey: 'nvidia-secret',
 }));
-assert.equal(nvidia.provider, 'custom_local');
-assert.equal(nvidia.endpointUrl, 'https://integrate.api.nvidia.com/v1');
-assert.equal(nvidia.apiKey, 'nvidia-secret');
+assertEqual(nvidia.provider, 'custom_local', 'NVIDIA runtime provider');
+assertEqual(nvidia.endpointUrl, 'https://integrate.api.nvidia.com/v1', 'NVIDIA endpoint');
+assertEqual(nvidia.apiKey, 'nvidia-secret', 'NVIDIA credential');
 
 const openAI = resolveProviderConfig(primaryConfig, externalModel({
   provider: 'openai',
   endpointUrl: '',
   apiKey: 'openai-secret',
 }));
-assert.equal(openAI.provider, 'openai');
-assert.equal(openAI.endpointUrl, 'https://api.openai.com/v1');
-assert.equal(openAI.apiKey, 'openai-secret');
+assertEqual(openAI.provider, 'openai', 'OpenAI runtime provider');
+assertEqual(openAI.endpointUrl, 'https://api.openai.com/v1', 'OpenAI default endpoint');
+assertEqual(openAI.apiKey, 'openai-secret', 'OpenAI credential');
 
 const gemini = resolveProviderConfig(primaryConfig, externalModel({
   provider: 'gemini',
   endpointUrl: '',
   apiKey: '',
 }));
-assert.equal(gemini.provider, 'gemini');
-assert.equal(gemini.endpointUrl, 'https://generativelanguage.googleapis.com');
-assert.equal(gemini.apiKey, 'primary-gemini-secret');
+assertEqual(gemini.provider, 'gemini', 'Gemini runtime provider');
+assertEqual(gemini.endpointUrl, 'https://generativelanguage.googleapis.com', 'Gemini default endpoint');
+assertEqual(gemini.apiKey, 'primary-gemini-secret', 'Gemini primary credential fallback');
 
 const ollama = resolveProviderConfig({
   ...primaryConfig,
@@ -67,13 +84,13 @@ const ollama = resolveProviderConfig({
   modelName: 'qwen2.5-coder:7b',
   apiKey: undefined,
 });
-assert.equal(ollama.provider, 'ollama_local');
-assert.equal(ollama.endpointUrl, 'http://127.0.0.1:11434');
-assert.equal(ollama.apiKey, null);
+assertEqual(ollama.provider, 'ollama_local', 'Ollama runtime provider');
+assertEqual(ollama.endpointUrl, 'http://127.0.0.1:11434', 'Ollama default endpoint');
+assertEqual(ollama.apiKey, null, 'Ollama must not inherit a cloud credential');
 
-assert.throws(
+assertThrows(
   () => resolveProviderConfig(primaryConfig, externalModel({ endpointUrl: '' })),
-  /base URL/,
+  'base URL',
 );
 
-console.log('Provider registry tests passed: OpenRouter, NVIDIA, OpenAI, Gemini, Ollama, and missing custom endpoint.');
+console.log('Provider registry tests passed: OpenRouter, NVIDIA, OpenAI, Gemini, Ollama, missing endpoint, and credential isolation.');

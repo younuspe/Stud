@@ -707,6 +707,7 @@ export class SupruPipeline {
   const directivesRef = useRef<HTMLDivElement>(null);
 
   const activeFile = files.find((f) => f.id === activeFileId) || files[0];
+  const lineCount = activeFile.content.split('\n').length;
 
   // If a file was sent from GitHub or CLI
   useEffect(() => {
@@ -2273,7 +2274,7 @@ export class SupruPipeline {
         <div className="flex items-center gap-2">
           <span>File: <strong className="text-gray-300 font-mono">{activeFile.name}</strong></span>
           <span>•</span>
-          <span>{lines.length} lines</span>
+          <span>{lineCount} lines</span>
           <span>•</span>
           <span className="uppercase text-amber-400 font-mono">{activeFile.language}</span>
         </div>
