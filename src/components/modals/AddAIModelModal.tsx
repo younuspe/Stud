@@ -240,8 +240,8 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
       description: description.trim() || (authMode === 'without_key' ? 'Local / Open Model' : 'Cloud Authenticated Model'),
       badge: badge.trim() || (authMode === 'without_key' ? 'No-Key' : 'API-Key'),
       isExternal: true,
-      status: testResult?.status || 'online',
-      latencyMs: testResult?.latencyMs || 35,
+      status: testResult?.status || 'untested',
+      latencyMs: testResult?.latencyMs,
     };
 
     onAddModel(newModel, true);
