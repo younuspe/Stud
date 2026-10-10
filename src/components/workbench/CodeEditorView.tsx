@@ -597,6 +597,10 @@ export class SupruPipeline {
 
   const openProjectFile = async (relativePath: string) => {
     if (!workspaceRoot) return;
+    if (activeFile?.isModified && activeProjectPath && activeProjectPath !== relativePath) {
+      const proceed = window.confirm(`Save ${activeProjectPath} before opening another file? Unsaved edits will otherwise remain only in the editor buffer.`);
+      if (!proceed) return;
+    }
     setIsProjectFileLoading(true);
     setProjectFileNotice(null);
     try {
@@ -639,6 +643,8 @@ export class SupruPipeline {
     }
     setIsProjectFileLoading(true);
     setProjectFileNotice(null);
+    setActiveProjectPath(null);
+    setFiles((current) => current.filter((item) => !item.id.startsWith('workspace-file:')));
     invoke<string[]>('list_workspace_files', { workspaceRoot, relativeDir: null })
       .then(async (paths) => {
         if (cancelled) return;
@@ -1422,6 +1428,11 @@ export class SupruPipeline {
           </button>
         </div>
       </div>
+      {projectFileNotice && (
+        <div role="status" className="shrink-0 border-b border-white/[0.06] bg-[#0c1015] px-3 py-1 text-[10px] text-gray-400">
+          {projectFileNotice}
+        </div>
+      )}
 
       {/* Code Textarea & Gutter */}
       <div className="relative flex flex-1 overflow-hidden bg-[#09090f]">
