@@ -86,7 +86,7 @@ The implementation branch is `rebuild/native-coding-core`. Keep the current Taur
 ### Selected upstreams for selective porting
 
 - **Quests** (`quests-org/quests`, Apache-2.0): use its workspace/app-builder implementation as the primary source for multi-file project editing, file tools, previews, project/session lifecycle, and targeted edits. Port only modules that can be separated from its Electron shell and private workspace package graph. Preserve Apache-2.0 notices for any copied or adapted source. Upstream: https://github.com/quests-org/quests
-- **Pi agent runtime** (`@mariozechner/pi-agent-core` / `@mariozechner/pi-ai`, MIT): evaluate as the orchestration/runtime source for tool-call loops, streaming events, and provider abstraction. Do not add a dependency until its exact version, license, dependency graph, and lockfile are reviewed and CI can reproduce the lockfile. Upstream project: https://github.com/badlogic/pi-mono
+- **Pi agent runtime** (`@earendil-works/pi-agent-core` / `@earendil-works/pi-ai`, MIT): evaluate as the orchestration/runtime source for tool-call loops, streaming events, and provider abstraction. The old `@mariozechner/*` package names are deprecated; the maintained project is https://github.com/earendil-works/pi. Do not add a dependency until its exact version, license, dependency graph, and lockfile are reviewed and CI can reproduce the lockfile.
 - **SRInternet-Studio/AIStudio** (Apache-2.0): not the product base. Its stated goal is a self-hosted recreation of Google AI Studio, not a native project-editing coding agent. Reuse only an isolated, useful component after source and dependency review. Upstream: https://github.com/SRInternet-Studio/AIStudio
 - **MindWorkAI/AI-Studio**: do not copy into Supru's competing product while its current FSL-1.1-MIT license restricts competing use. Its provider and desktop UX can be studied, not transplanted under that restriction. Upstream: https://github.com/MindWorkAI/AI-Studio
 
@@ -102,4 +102,8 @@ The implementation branch is `rebuild/native-coding-core`. Keep the current Taur
 ### Newly confirmed UI defect
 
 The assistant message header was hard-coded to display “Gemini 3.8 Core” regardless of which model actually generated the reply. That label was false for NVIDIA/OpenRouter and made routing impossible to verify from the conversation. The rebuild branch replaces it with response-level provider/model metadata and makes desktop connection status test the selected profile. These are UI/diagnostic corrections; they do not by themselves prove the whole coding workflow is complete.
+
+### Dependency security observation
+
+The macOS workflow's npm install reported **34 dependency advisories (including 2 critical and 5 high)** on the audited dependency set. This is an npm audit summary, not yet a reviewed list of affected production paths. Do not run `npm audit fix --force` blindly; capture the full audit JSON, separate production from development dependencies, identify the vulnerable dependency paths, and update with lockfile-backed tests before release.
 
