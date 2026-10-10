@@ -584,6 +584,26 @@ export class SupruPipeline {
   const [projectFileNotice, setProjectFileNotice] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const isReadableProjectPath = (path: string) => {
+    const name = path.split('/').pop() || path;
+    return /\.(?:[cm]?[jt]sx?|py|rs|go|html?|css|jsonc?|mdx?|txt|toml|ya?ml|xml|sql|sh|zsh|bash|env|ini|cfg|conf|lock|properties|swift|kt|java|c|h|cc|cpp|hpp|rb|php|vue|svelte|astro|gradle)$/i.test(name)
+      || /^(?:Dockerfile|Makefile|GNUmakefile|\.gitignore|\.dockerignore|\.editorconfig|\.npmrc|\.nvmrc|\.prettierrc|\.eslintrc|\.env(?:\..*)?)$/i.test(name);
+  };
+
+  const prioritizeProjectPaths = (paths: string[]) => paths
+    .filter(isReadableProjectPath)
+    .sort((a, b) => {
+      const priority = (path: string) => {
+        if (/^README(?:\.[^/]*)?$/i.test(path)) return 0;
+        if (/^package\.json$/i.test(path)) return 1;
+        if (/^Cargo\.toml$/i.test(path)) return 2;
+        if (/^src\/App\.[jt]sx?$/i.test(path)) return 3;
+        if (/^src\/main\.rs$/i.test(path)) return 4;
+        return 10;
+      };
+      return priority(a) - priority(b) || a.localeCompare(b);
+    });
+
   const languageForPath = (path: string): SupportedLanguage => {
     const extension = path.split('.').pop()?.toLowerCase() || '';
     const languages: Record<string, SupportedLanguage> = {
@@ -597,8 +617,8 @@ export class SupruPipeline {
 
   const openProjectFile = async (relativePath: string) => {
     if (!workspaceRoot) return;
-    if (activeFile?.isModified && activeProjectPath && activeProjectPath !== relativePath) {
-      const proceed = window.confirm(`Save ${activeProjectPath} before opening another file? Unsaved edits will otherwise remain only in the editor buffer.`);
+    if (activeFile?.isModified && activeFileId === `workspace-file:${activeProjectPath}`) {
+      const proceed = window.confirm(`Discard unsaved edits to ${activeProjectPath}? Choose Cancel to keep editing.`);
       if (!proceed) return;
     }
     setIsProjectFileLoading(true);
@@ -648,12 +668,13 @@ export class SupruPipeline {
     invoke<string[]>('list_workspace_files', { workspaceRoot, relativeDir: null })
       .then(async (paths) => {
         if (cancelled) return;
-        setProjectPaths(paths);
-        if (paths.length === 0) {
-          setProjectFileNotice('This folder has no readable files yet. Create a file or choose another project folder.');
+        const readablePaths = prioritizeProjectPaths(paths);
+        setProjectPaths(readablePaths);
+        if (readablePaths.length === 0) {
+          setProjectFileNotice('No supported text/code files were found in this folder. Binary assets are not opened in the code editor.');
           return;
         }
-        const currentPath = activeProjectPath && paths.includes(activeProjectPath) ? activeProjectPath : paths[0];
+        const currentPath = activeProjectPath && readablePaths.includes(activeProjectPath) ? activeProjectPath : readablePaths[0];
         const source = await invoke<string>('read_workspace_file', { workspaceRoot, relativePath: currentPath });
         if (cancelled) return;
         const id = `workspace-file:${currentPath}`;
@@ -664,7 +685,7 @@ export class SupruPipeline {
         });
         setActiveFileId(id);
         setActiveProjectPath(currentPath);
-        setProjectFileNotice(`Project loaded: ${paths.length} files found.`);
+        setProjectFileNotice(`Project loaded: ${readablePaths.length} readable files found.`);
       })
       .catch((error) => {
         if (!cancelled) setProjectFileNotice(`Could not read project folder: ${String(error)}`);
@@ -812,8 +833,8 @@ export class SupruPipeline {
   };
 
   const handleSaveProjectFile = async () => {
-    if (!workspaceRoot || !activeProjectPath || !activeFile) {
-      setProjectFileNotice('Open a project folder and select one of its files before saving.');
+    if (!workspaceRoot || !activeProjectPath || !activeFile || activeFileId !== `workspace-file:${activeProjectPath}`) {
+      setProjectFileNotice('Select a file from the Project File list before saving; demo tabs are not project files.');
       return;
     }
     try {
