@@ -73,12 +73,6 @@ jobs:
       - name: Type-check frontend
         run: npm run lint
 
-      - name: Run Rust provider URL regression tests
-        run: cargo test --locked
-
-      - name: Build frontend bundle
-        run: npm run build
-
       - name: Convert cat icon to RGBA PNG for Tauri
         run: |
           python3 -m venv .venv-icon
@@ -94,6 +88,12 @@ jobs:
               raise SystemExit(f"Expected RGBA icon, got {check.mode}")
           print(f"Verified icons/icon.png: mode={check.mode}, size={check.size}")
           PY
+
+      - name: Run Rust provider URL regression tests
+        run: cargo test --locked
+
+      - name: Build frontend bundle
+        run: npm run build
 
       - name: Build unsigned macOS DMG
         run: npm run tauri:build -- --bundles dmg
