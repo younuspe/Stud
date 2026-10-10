@@ -42,5 +42,6 @@ export interface ServerStatus {
   status: string;
   hasApiKey: boolean;
   model: string;
+  provider?: string;
   version: string;
 }
