@@ -451,7 +451,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
   } = useSpeechListener();
 
   // Supru Code AI Copilot Chat state
-  const [activeAiTab, setActiveAiTab] = useState<'copilot' | 'synthesizer'>('copilot');
+  const [activeAiTab, setActiveAiTab] = useState<'copilot' | 'synthesizer'>('synthesizer');
   const [copilotMessages, setCopilotMessages] = useState<Array<{
     id: string;
     role: 'user' | 'assistant';
@@ -1381,7 +1381,7 @@ export class SupruPipeline {
               <button type="button" onClick={() => void handleSaveProjectFile()} disabled={!activeProjectPath || isProjectFileLoading} className="rounded-md border border-emerald-500/30 px-2 py-1 text-[10px] text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40">Save to Project</button>
             </>
           ) : (
-            <span className="px-1 text-[10px] text-amber-300/80">Demo workspace — choose File → Open Project Folder to edit a real project</span>
+            <span className="px-1 text-[10px] text-amber-300/80">Scratch app — use Open Project above to edit and save a real project</span>
           )}
         </div>
         {/* File Tabs */}
@@ -1726,10 +1726,10 @@ export class SupruPipeline {
                 ? 'bg-amber-500 text-neutral-950 shadow-[0_0_12px_rgba(245,158,11,0.4)]'
                 : 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
             }`}
-            title="Chat conversation with Supru Code Copilot (Stays in IDE)"
+            title="Chat with the selected AI model about the current app"
           >
             <MessageSquare size={12} />
-            <span>Copilot Chat</span>
+            <span>Chat</span>
             <span className="text-[9.5px] px-1 py-0.2 rounded bg-black/40 text-amber-200 font-mono hidden sm:inline">
               {activeFile.name}
             </span>
@@ -1749,7 +1749,7 @@ export class SupruPipeline {
             title="Direct prompt-to-code full-file generator"
           >
             <Zap size={12} />
-            <span>Direct Synthesizer</span>
+            <span>Build App</span>
           </button>
         </div>
 
@@ -1842,7 +1842,7 @@ export class SupruPipeline {
           <button
             onClick={() => onToggleWindow?.('generator')}
             className="rounded p-1 text-gray-400 hover:bg-rose-500/20 hover:text-rose-400 transition-colors"
-            title="Close Copilot (Reopen from Windows menu)"
+            title="Close build panel (reopen from the panel controls)"
           >
             <X size={12} />
           </button>
@@ -2207,7 +2207,7 @@ export class SupruPipeline {
             </div>
             <h3 className="font-bold text-white text-base">All Studio Windows Closed</h3>
             <p className="text-xs text-gray-400 max-w-sm">
-              Use the <strong className="text-amber-300">Windows ▾</strong> menu above to open Code Editor, Live Preview Sandbox, AI Generator, or Terminal.
+              Use the Open Project button above to choose a real project folder, or continue in the scratch app and export your file.
             </p>
             <button
               onClick={onResetWindowLayout}
