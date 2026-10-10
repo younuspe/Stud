@@ -73,6 +73,9 @@ jobs:
       - name: Type-check frontend
         run: npm run lint
 
+      - name: Run Rust provider URL regression tests
+        run: cargo test --locked
+
       - name: Build frontend bundle
         run: npm run build
 
