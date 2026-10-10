@@ -67,7 +67,13 @@ jobs:
           minimum = config.get("bundle", {}).get("macOS", {}).get("minimumSystemVersion")
           if not minimum or tuple(map(int, minimum.split("."))) < (11, 0):
               raise SystemExit(f"Apple Silicon build must declare macOS 11.0 or newer; found {minimum!r}")
-          print(f"Validated {path}: plugins.fs={fs}, macOS minimum={minimum}")
+          csp = config.get("app", {}).get("security", {}).get("csp", "")
+          if "worker-src 'self' blob:" not in csp or "child-src 'self' blob:" not in csp:
+              raise SystemExit("Desktop CSP must explicitly allow bundled Monaco workers.")
+          monaco_setup = Path("src/monacoSetup.ts").read_text()
+          if "loader.config({ monaco })" not in monaco_setup or "?worker" not in monaco_setup:
+              raise SystemExit("Monaco must use the bundled npm package and Vite worker bundles, not the CDN loader.")
+          print(f"Validated {path}: plugins.fs={fs}, macOS minimum={minimum}, local Monaco workers configured")
           PY
 
       - name: Install frontend dependencies from lockfile
