@@ -63,6 +63,7 @@ interface CodeEditorViewProps {
   onOpenLocalSettings: () => void;
   onTriggerAgent: (objective: string) => void;
   activeFileBuffer?: { name: string; content: string } | null;
+  workspaceRoot?: string;
   // Window management props
   windows?: Record<StudioWindowId, StudioWindowState>;
   onToggleWindow?: (id: StudioWindowId) => void;
@@ -457,6 +458,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
   onOpenLocalSettings,
   onTriggerAgent,
   activeFileBuffer,
+  workspaceRoot = '',
   windows = {
     editor: { id: 'editor', title: 'Code Editor', isOpen: true, isUndocked: false },
     preview: { id: 'preview', title: 'Live Preview Sandbox', isOpen: true, isUndocked: false },
@@ -576,7 +578,98 @@ export class SupruPipeline {
     try { localStorage.setItem('supru_code_editor_active_file_v1', activeFileId); } catch {}
   }, [activeFileId]);
   const [copied, setCopied] = useState(false);
+  const [projectPaths, setProjectPaths] = useState<string[]>([]);
+  const [activeProjectPath, setActiveProjectPath] = useState<string | null>(null);
+  const [isProjectFileLoading, setIsProjectFileLoading] = useState(false);
+  const [projectFileNotice, setProjectFileNotice] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const languageForPath = (path: string): SupportedLanguage => {
+    const extension = path.split('.').pop()?.toLowerCase() || '';
+    const languages: Record<string, SupportedLanguage> = {
+      ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
+      py: 'python', rs: 'rust', go: 'go', html: 'html', htm: 'html',
+      css: 'css', json: 'json', md: 'markdown', mdx: 'markdown',
+      sql: 'sql', sh: 'bash', zsh: 'bash',
+    };
+    return languages[extension] || 'markdown';
+  };
+
+  const openProjectFile = async (relativePath: string) => {
+    if (!workspaceRoot) return;
+    setIsProjectFileLoading(true);
+    setProjectFileNotice(null);
+    try {
+      const source = await invoke<string>('read_workspace_file', {
+        workspaceRoot,
+        relativePath,
+      });
+      const id = `workspace-file:${relativePath}`;
+      const nextFile: EditorFile = {
+        id,
+        name: relativePath,
+        language: languageForPath(relativePath),
+        content: source,
+      };
+      setFiles((current) => {
+        const projectFiles = current.filter((item) => item.id.startsWith('workspace-file:'));
+        const others = current.filter((item) => !item.id.startsWith('workspace-file:'));
+        const existing = projectFiles.some((item) => item.id === id);
+        return existing
+          ? [...others, ...projectFiles.map((item) => item.id === id ? nextFile : item)]
+          : [...others, ...projectFiles, nextFile];
+      });
+      setActiveFileId(id);
+      setActiveProjectPath(relativePath);
+      setProjectFileNotice(`Opened ${relativePath}`);
+    } catch (error) {
+      setProjectFileNotice(`Could not open ${relativePath}: ${String(error)}`);
+    } finally {
+      setIsProjectFileLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!workspaceRoot) {
+      setProjectPaths([]);
+      setActiveProjectPath(null);
+      setProjectFileNotice(null);
+      return;
+    }
+    setIsProjectFileLoading(true);
+    setProjectFileNotice(null);
+    invoke<string[]>('list_workspace_files', { workspaceRoot, relativeDir: null })
+      .then(async (paths) => {
+        if (cancelled) return;
+        setProjectPaths(paths);
+        if (paths.length === 0) {
+          setProjectFileNotice('This folder has no readable files yet. Create a file or choose another project folder.');
+          return;
+        }
+        const currentPath = activeProjectPath && paths.includes(activeProjectPath) ? activeProjectPath : paths[0];
+        const source = await invoke<string>('read_workspace_file', { workspaceRoot, relativePath: currentPath });
+        if (cancelled) return;
+        const id = `workspace-file:${currentPath}`;
+        const nextFile: EditorFile = { id, name: currentPath, language: languageForPath(currentPath), content: source };
+        setFiles((current) => {
+          const others = current.filter((item) => !item.id.startsWith('workspace-file:'));
+          return [...others, nextFile];
+        });
+        setActiveFileId(id);
+        setActiveProjectPath(currentPath);
+        setProjectFileNotice(`Project loaded: ${paths.length} files found.`);
+      })
+      .catch((error) => {
+        if (!cancelled) setProjectFileNotice(`Could not read project folder: ${String(error)}`);
+      })
+      .finally(() => {
+        if (!cancelled) setIsProjectFileLoading(false);
+      });
+    return () => { cancelled = true; };
+  // Loading is intentionally triggered only when the selected root changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceRoot]);
 
   // Split Ratio between Code Editor (left) and Live Preview (right)
   const [splitRatio, setSplitRatio] = useState<number>(() => {
@@ -710,6 +803,24 @@ export class SupruPipeline {
         f.id === activeFileId ? { ...f, content: newContent, isModified: true } : f
       )
     );
+  };
+
+  const handleSaveProjectFile = async () => {
+    if (!workspaceRoot || !activeProjectPath || !activeFile) {
+      setProjectFileNotice('Open a project folder and select one of its files before saving.');
+      return;
+    }
+    try {
+      const result = await invoke<string>('write_workspace_file', {
+        workspaceRoot,
+        relativePath: activeProjectPath,
+        content: activeFile.content,
+      });
+      setFiles((current) => current.map((item) => item.id === activeFileId ? { ...item, isModified: false } : item));
+      setProjectFileNotice(result);
+    } catch (error) {
+      setProjectFileNotice(`Save failed: ${String(error)}`);
+    }
   };
 
   const handleCreateFile = () => {
@@ -1167,7 +1278,27 @@ export class SupruPipeline {
   const renderEditorContent = () => (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[#0c0c14]">
       {/* File Tabs & Actions Toolbar */}
-      <div className="flex h-8 items-center justify-between border-b border-white/[0.08] bg-[#101018] px-2 text-[11px] shrink-0">
+      <div className="flex min-h-8 items-center justify-between gap-2 border-b border-white/[0.08] bg-[#101018] px-2 py-1 text-[11px] shrink-0">
+        <div className="flex min-w-0 items-center gap-2">
+          {workspaceRoot ? (
+            <>
+              <select
+                aria-label="Open project file"
+                value={activeProjectPath || ''}
+                disabled={isProjectFileLoading || projectPaths.length === 0}
+                onChange={(event) => { if (event.target.value) void openProjectFile(event.target.value); }}
+                className="max-w-[220px] min-w-[120px] rounded-md border border-emerald-500/30 bg-[#0c1715] px-2 py-1 text-[10px] text-emerald-200 outline-none"
+              >
+                {projectPaths.length === 0 && <option value="">No project files</option>}
+                {projectPaths.map((path) => <option key={path} value={path}>{path}</option>)}
+              </select>
+              <span className="hidden max-w-[180px] truncate text-[9px] text-emerald-300/70 xl:inline" title={workspaceRoot}>{workspaceRoot}</span>
+              <button type="button" onClick={() => void handleSaveProjectFile()} disabled={!activeProjectPath || isProjectFileLoading} className="rounded-md border border-emerald-500/30 px-2 py-1 text-[10px] text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40">Save to Project</button>
+            </>
+          ) : (
+            <span className="px-1 text-[10px] text-amber-300/80">Demo workspace — choose File → Open Project Folder to edit a real project</span>
+          )}
+        </div>
         {/* File Tabs */}
         <div className="flex items-center gap-1 overflow-x-auto py-1 scrollbar-none">
           {files.map((file) => {
