@@ -114,3 +114,7 @@ The macOS workflow's npm install reported **34 dependency advisories (including 
 - **CI scope:** workflow #144 is the first workflow configured to build this rebuild branch. Its result must be checked before treating these edits as build-verified.
 - **Not yet implemented:** the Quests app-builder source and Pi agent runtime have been selected for evaluation, but no upstream orchestration/runtime has been integrated yet. Multi-file autonomous planning, durable sessions, keychain migration, permission-gated writes, rollback, and full app-level end-to-end tests remain open milestones.
 
+### Additional editor-runtime risk found during follow-up
+
+The production Tauri CSP in `tauri.conf.json` does not declare `worker-src` or `child-src`, while Monaco relies on web workers for language services. A packaged-app smoke test that only launches the window will not prove those workers start. Add an explicit least-privilege worker policy (for Monaco's required local/blob workers) and a packaged-app check that opens Monaco, edits text, and receives editor diagnostics before treating the editor as verified. This is a likely explanation for the user's report, not yet a confirmed runtime diagnosis.
+
