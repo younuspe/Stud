@@ -403,11 +403,11 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
                   { id: 'ollama', label: 'Ollama' },
                   { id: 'lmstudio', label: 'LM Studio' },
                   { id: 'gemini', label: 'Google Gemini' },
-                  { id: 'openai', label: 'OpenAI Compliant' },
+                  { id: 'openai', label: 'OpenAI-Compatible' },
                   { id: 'groq', label: 'Groq Cloud' },
                   { id: 'deepseek', label: 'DeepSeek' },
                   { id: 'anthropic', label: 'Anthropic' },
-                  { id: 'custom', label: 'Custom Endpoint' },
+                  { id: 'custom', label: 'Any Compatible API' },
                 ] as const
               ).map((p) => (
                 <button
@@ -430,13 +430,13 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
           <div>
             <label className="block text-xs font-medium text-gray-300 mb-1 flex items-center justify-between">
               <span>Endpoint URL</span>
-              <span className="text-[10px] text-gray-400">Leave blank for default cloud API</span>
+              <span className="text-[10px] text-gray-400">Use a compatible API endpoint; custom vendors need no preset name</span>
             </label>
             <div className="relative">
               <Globe size={13} className="absolute left-3 top-2.5 text-gray-400" />
               <input
                 type="text"
-                placeholder="e.g. http://localhost:11434 or https://api.openai.com/v1"
+                placeholder="Base URL, /v1 URL, or full /chat/completions URL"
                 value={endpointUrl}
                 onChange={(e) => setEndpointUrl(e.target.value)}
                 className="w-full rounded-xl border border-white/[0.1] bg-[#161622] pl-8 pr-3 py-2 text-xs text-white font-mono placeholder-gray-500 outline-none focus:border-amber-400 transition-colors"
