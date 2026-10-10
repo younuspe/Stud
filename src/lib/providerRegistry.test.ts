@@ -95,7 +95,7 @@ assertThrows(
 );
 
 const htmlDocument = '<!doctype html><html><head><title>App</title></head><body><button id="go">Go</button></body></html>';
-assertEqual(extractCompleteHtml('\\```html\\n' + htmlDocument + '\\n\\```\\n\\nHere is the updated app.'), htmlDocument, 'HTML extraction with fenced code and trailing commentary');
+assertEqual(extractCompleteHtml('```html\n' + htmlDocument + '\n```\n\nHere is the updated app.'), htmlDocument, 'HTML extraction with fenced code and trailing commentary');
 assertEqual(extractCompleteHtml(`I updated your app:\n${htmlDocument}\nDone.`), htmlDocument, 'HTML extraction with surrounding commentary');
 assertEqual(extractCompleteHtml('<!doctype html><html><body>unfinished'), '', 'Reject incomplete HTML response');
 
