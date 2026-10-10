@@ -133,20 +133,23 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     setVoiceNotice,
   } = useSpeechListener();
 
-  // A comment sent from the floating pill is an actual App Builder request,
-  // not just text inserted into the prompt field.
+  // Floating-pill prompts should respect the mode the user is currently using.
+  // Only auto-run when App Builder is already selected; never silently switch a
+  // visual/motion/world prompt into code generation.
   useEffect(() => {
     const handleWorkspacePrompt = (event: Event) => {
       const detail = (event as CustomEvent<{ text?: string }>).detail;
-      if (!detail?.text?.trim()) return;
-      setPrompt(detail.text.trim());
+      const text = detail?.text?.trim();
+      if (!text) return;
+      setPrompt(text);
       setGenerationError(null);
-      setActiveMode('app');
-      setAutoGenerateRequested(true);
+      if (activeMode === 'app') {
+        setAutoGenerateRequested(true);
+      }
     };
     window.addEventListener('supru-generative-prompt', handleWorkspacePrompt);
     return () => window.removeEventListener('supru-generative-prompt', handleWorkspacePrompt);
-  }, []);
+  }, [activeMode]);
 
   // Handle Speech dictation
   const toggleSpeech = () => {
