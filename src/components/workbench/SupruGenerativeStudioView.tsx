@@ -516,6 +516,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
               role: 'system',
               content: 'You are Supru Generative Studio App Builder. Return one complete, self-contained HTML5 document. Output raw HTML only, not Markdown fences or commentary. Implement real interactions, accessible responsive layout, validation, and useful empty/error states. No placeholder buttons, fake success states, external dependencies, or secret credentials. Treat the latest user message as a requested change to the existing app when source is provided. Preserve working features unless the user asks to change them. Never claim the code was executed or tested.'
             },
+            ...appBuildMessages.slice(-12).map((turn) => ({ role: turn.role, content: turn.text })),
             {
               role: 'user',
               content: appPrompt + (currentResultApp ? '\n\nExisting source to improve:\n' + currentResultApp : '')
