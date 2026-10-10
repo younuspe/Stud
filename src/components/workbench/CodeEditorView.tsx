@@ -975,27 +975,35 @@ export class SupruPipeline {
         let persistenceNote = 'Updated the live preview buffer only. Select a project folder to save generated code to disk.';
         if (isTauri() && workspaceRoot) {
           const isWorkspaceFile = activeFileId.startsWith('workspace-file:') && Boolean(activeProjectPath);
-          const extension = (activeFile.name.split('.').pop() || 'html').replace(/[^a-z0-9]/gi, '') || 'html';
-          const targetPath = isWorkspaceFile ? activeProjectPath! : `generated-app-${Date.now()}.${extension}`;
-          const targetId = `workspace-file:${targetPath}`;
-          const saveResult = await invoke<string>('write_workspace_file', {
-            workspaceRoot,
-            relativePath: targetPath,
-            content: data.code,
-          });
-          const savedFile: EditorFile = {
-            id: targetId,
-            name: targetPath,
-            language: activeFile.language,
-            content: data.code,
-            isModified: false,
-          };
-          setFiles((current) => [...current.filter((item) => item.id !== targetId), savedFile]);
-          setActiveFileId(targetId);
-          setActiveProjectPath(targetPath);
-          setProjectPaths((current) => Array.from(new Set([...current, targetPath])).sort());
-          setProjectFileNotice(saveResult || `Saved ${targetPath} to the selected project.`);
-          persistenceNote = `Saved to project file ${targetPath}.`;
+          if (isWorkspaceFile) {
+            // Stage edits in Monaco first; the explicit Save action commits them to disk.
+            handleUpdateContent(data.code);
+            setProjectFileNotice(`Unsaved generated changes in ${activeProjectPath}. Review them, then choose Save Project File.`);
+            persistenceNote = `Changes staged in ${activeProjectPath}; use Save Project File to write them.`;
+          } else {
+            // Generating from a demo tab creates a new project file instead of overwriting a real file.
+            const extension = (activeFile.name.split('.').pop() || 'html').replace(/[^a-z0-9]/gi, '') || 'html';
+            const targetPath = `generated-app-${Date.now()}.${extension}`;
+            const targetId = `workspace-file:${targetPath}`;
+            const saveResult = await invoke<string>('write_workspace_file', {
+              workspaceRoot,
+              relativePath: targetPath,
+              content: data.code,
+            });
+            const savedFile: EditorFile = {
+              id: targetId,
+              name: targetPath,
+              language: activeFile.language,
+              content: data.code,
+              isModified: false,
+            };
+            setFiles((current) => [...current.filter((item) => item.id !== targetId), savedFile]);
+            setActiveFileId(targetId);
+            setActiveProjectPath(targetPath);
+            setProjectPaths((current) => Array.from(new Set([...current, targetPath])).sort());
+            setProjectFileNotice(saveResult || `Created ${targetPath} in the selected project.`);
+            persistenceNote = `Created project file ${targetPath}.`;
+          }
         } else {
           handleUpdateContent(data.code);
         }
