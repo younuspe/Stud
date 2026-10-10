@@ -442,7 +442,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           if (!selectedModel.trim()) {
             throw new Error('Select a model in Provider Settings before generating an application.');
           }
-          if ((selectedProvider === 'custom_local' || selectedProvider === 'custom') && !selectedEndpoint.trim()) {
+          if (selectedProvider === 'custom_local' && !selectedEndpoint.trim()) {
             throw new Error('Add the compatible provider base URL before generating an application.');
           }
           const response = await invoke<string>('chat_completion', {
