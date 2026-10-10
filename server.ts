@@ -1203,42 +1203,53 @@ function normalizeOpenAICompatibleModelsUrl(endpoint: string): string {
 
 app.post('/api/studio/test-connection', async (req, res) => {
   const { provider, modelId, apiKey: customKey, endpointUrl } = req.body || {};
-  const startTime = Date.now();
-  const latency = () => Date.now() - startTime;
+  const startedAt = Date.now();
+  const latencyMs = () => Date.now() - startedAt;
+  const fail = (message: string) => res.json({ status: 'offline', latencyMs: latencyMs(), message });
 
   try {
+    const model = String(modelId || '').trim();
+    if (!model) return fail('Select a model before testing the connection.');
+
     if (provider === 'gemini') {
       const activeKey = customKey || apiKey;
-      if (!activeKey || activeKey === 'MY_GEMINI_API_KEY') {
-        return res.json({ status: 'offline', latencyMs: latency(), message: 'Gemini API key is missing. Add a real key to test the connection.' });
-      }
+      if (!activeKey || activeKey === 'MY_GEMINI_API_KEY') return fail('Gemini API key is missing. Add a real key to test the connection.');
       const client = new GoogleGenAI({ apiKey: activeKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } });
-      await client.models.generateContent({ model: modelId || 'gemini-3.8-flash', contents: 'ping', config: { maxOutputTokens: 5 } });
-      return res.json({ status: 'online', latencyMs: latency(), message: `Live Gemini request succeeded for ${modelId || 'gemini-3.8-flash'}.` });
+      await client.models.generateContent({ model, contents: 'Reply with OK.', config: { maxOutputTokens: 8, temperature: 0 } });
+      return res.json({ status: 'online', latencyMs: latencyMs(), message: `Live Gemini test succeeded for '${model}'.` });
     }
 
-    if (provider === 'ollama') {
-      const base = String(endpointUrl || 'http://localhost:11434').trim().replace(/\\/+$/, '');
-      const url = /\\/api\\/tags$/i.test(base) ? base : `${base}/api/tags`;
-      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (provider === 'ollama' || provider === 'ollama_local') {
+      const base = String(endpointUrl || 'http://localhost:11434').trim().replace(/\/+$/, '');
+      const url = base.endsWith('/api/chat') ? base : base.endsWith('/api/tags') ? base.slice(0, -'/api/tags'.length) + '/api/chat' : base + '/api/chat';
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(20000),
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Reply with OK.' }], stream: false, options: { temperature: 0 } }),
+      });
       const body = await response.text();
-      if (!response.ok) return res.json({ status: 'offline', latencyMs: latency(), message: `Ollama returned HTTP ${response.status}: ${providerErrorDetail(body)}` });
+      if (!response.ok) return fail(`Ollama returned HTTP ${response.status}: ${providerErrorDetail(body)}`);
       const data = JSON.parse(body);
-      const models = (data.models || []).map((m: any) => m.name).filter(Boolean);
-      const found = !modelId || models.includes(modelId);
-      return res.json({ status: 'online', latencyMs: latency(), message: found ? 'Connected to Ollama; selected model is available.' : `Connected to Ollama, but model '${modelId}' is not in its local model list.` });
+      if (typeof data.message?.content !== 'string' || !data.message.content.trim()) return fail('Ollama responded but returned no generated text.');
+      return res.json({ status: 'online', latencyMs: latencyMs(), message: `Live Ollama test succeeded for '${model}'.` });
     }
 
     if (provider === 'anthropic') {
-      if (!customKey) return res.json({ status: 'offline', latencyMs: latency(), message: 'Anthropic API key is missing.' });
-      const base = String(endpointUrl || 'https://api.anthropic.com').trim().replace(/\\/+$/, '');
-      const url = /\\/v1$/i.test(base) ? `${base}/models` : `${base}/v1/models`;
-      const response = await fetch(url, { headers: { 'x-api-key': customKey, 'anthropic-version': '2023-06-01' }, signal: AbortSignal.timeout(7000) });
+      if (!customKey) return fail('Anthropic API key is missing.');
+      const base = String(endpointUrl || 'https://api.anthropic.com').trim().replace(/\/+$/, '');
+      const url = base.endsWith('/v1/messages') ? base : base.endsWith('/v1') ? base + '/messages' : base + '/v1/messages';
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': customKey, 'anthropic-version': '2023-06-01' },
+        signal: AbortSignal.timeout(20000),
+        body: JSON.stringify({ model, max_tokens: 8, temperature: 0, messages: [{ role: 'user', content: 'Reply with OK.' }] }),
+      });
       const body = await response.text();
-      if (!response.ok) return res.json({ status: 'offline', latencyMs: latency(), message: `Anthropic returned HTTP ${response.status}: ${providerErrorDetail(body)}` });
+      if (!response.ok) return fail(`Anthropic returned HTTP ${response.status}: ${providerErrorDetail(body)}`);
       const data = JSON.parse(body);
-      const models = (data.data || []).map((m: any) => m.id).filter(Boolean);
-      return res.json({ status: 'online', latencyMs: latency(), message: models.length && modelId && !models.includes(modelId) ? `Connected, but model '${modelId}' was not found in the model list.` : 'Live Anthropic model-list request succeeded.' });
+      if (!Array.isArray(data.content) || !data.content.some((part: any) => part.type === 'text' && typeof part.text === 'string' && part.text.trim())) return fail('Anthropic responded but returned no generated text.');
+      return res.json({ status: 'online', latencyMs: latencyMs(), message: `Live Anthropic test succeeded for '${model}'.` });
     }
 
     const defaults: Record<string, string> = {
@@ -1246,34 +1257,31 @@ app.post('/api/studio/test-connection', async (req, res) => {
       deepseek: 'https://api.deepseek.com/v1',
       groq: 'https://api.groq.com/openai/v1',
       lmstudio: 'http://localhost:1234/v1',
+      lmstudio_local: 'http://localhost:1234/v1',
       custom: 'http://localhost:1234/v1',
+      custom_local: 'http://localhost:1234/v1',
     };
     const endpoint = String(endpointUrl || defaults[provider] || '').trim();
-    if (!endpoint) return res.json({ status: 'offline', latencyMs: latency(), message: 'Enter the provider base URL or full /chat/completions URL.' });
+    if (!endpoint) return fail('Enter the provider base URL or full /chat/completions URL.');
+    if (['openai', 'deepseek', 'groq'].includes(provider) && !customKey) return fail(`${provider.toUpperCase()} API key is missing.`);
 
-    const url = normalizeOpenAICompatibleModelsUrl(endpoint);
-    const headers: Record<string, string> = {};
+    const url = normalizeOpenAICompatibleChatUrl(endpoint);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (customKey) headers.Authorization = `Bearer ${customKey}`;
-    const response = await fetch(url, { headers, signal: AbortSignal.timeout(7000) });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      signal: AbortSignal.timeout(20000),
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Reply with OK.' }], temperature: 0, max_tokens: 8, stream: false }),
+    });
     const body = await response.text();
-    if (!response.ok) {
-      return res.json({ status: 'offline', latencyMs: latency(), message: `Provider returned HTTP ${response.status} at ${url}: ${providerErrorDetail(body)}` });
-    }
-
-    let data: any;
-    try { data = JSON.parse(body); } catch {
-      return res.json({ status: 'offline', latencyMs: latency(), message: 'Provider model-list endpoint returned invalid JSON.' });
-    }
-    const models = (data.data || data.models || []).map((m: any) => m.id || m.name).filter((m: any) => typeof m === 'string');
-    const modelFound = !modelId || !models.length || models.some((id: string) => id === modelId || id.endsWith('/' + modelId));
-    const message = !models.length
-      ? 'Endpoint responded successfully, but did not provide a readable model list; test a real chat request to confirm generation.'
-      : modelFound
-        ? `Connected; model '${modelId || '(none selected)'}' is listed by the provider.`
-        : `Connected, but model '${modelId}' was not found in the returned list. The model ID may still be accepted for generation by this provider.`;
-    return res.json({ status: 'online', latencyMs: latency(), message });
+    if (!response.ok) return fail(`Provider returned HTTP ${response.status} at ${url}: ${providerErrorDetail(body)}`);
+    const data = JSON.parse(body);
+    const reply = data.choices?.[0]?.message?.content;
+    if (typeof reply !== 'string' || !reply.trim()) return fail('Provider responded but returned no choices[0].message.content text.');
+    return res.json({ status: 'online', latencyMs: latencyMs(), message: `Live compatible-API test succeeded for '${model}'.` });
   } catch (error: any) {
-    return res.json({ status: 'offline', latencyMs: latency(), message: error.message || 'Connection failed.' });
+    return fail(error?.name === 'TimeoutError' ? 'Provider test timed out after 20 seconds.' : error.message || 'Connection failed.');
   }
 });
 
