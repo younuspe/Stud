@@ -47,6 +47,11 @@ jobs:
         with:
           targets: aarch64-apple-darwin
 
+      - name: Cache Cargo dependencies and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
       - name: Validate desktop configuration
         run: |
           python3 - <<'PY'
@@ -72,6 +77,9 @@ jobs:
 
       - name: Type-check frontend
         run: npm run lint
+
+      - name: Test shared provider resolution
+        run: npm run test:providers
 
       - name: Convert cat icon to RGBA PNG for Tauri
         run: |

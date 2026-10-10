@@ -22,7 +22,10 @@ The latest observed macOS workflow, run [#136](https://github.com/younuspe/Stud/
 - Provider metadata is inconsistently typed: `AIProviderType` only covers internal IDs, while custom model configuration uses vendor IDs and several components map these values with untyped `Record<string, string>` objects. This mismatch contributed to the earlier TS2322 failure.
 - Provider keys are currently included in local UI configuration persisted through `localStorage` (`supru_ai_local_config_v1` and custom-model state). Password inputs mask entry, but localStorage is not an operating-system credential vault. Reinstalling the app normally does not erase its per-user application data, so saved settings can remain.
 - The Rust project-file APIs canonicalize paths and enforce workspace boundaries, but the normal terminal command is an unrestricted shell command. The separate sandboxed command is fail-closed, yet the UI must deliberately choose it for operations that require isolation.
-- The discovered repository tree contains Rust URL unit tests but no obvious TypeScript component/provider regression test suite. The CI workflow checks TypeScript, Rust tests, frontend build, DMG packaging, and a packaged-process smoke test; it does not perform a live authenticated provider test.
+- The Code Editor still used a plain `textarea` with a hand-built line-number gutter even though Monaco Editor was already installed but unused; that is now being replaced with Monaco for syntax highlighting, folding, minimap, and IDE keyboard shortcuts.
+- The packaged Tauri app does not start `server.ts`; that server is used by the development/start scripts. Some Generative Studio actions still call relative routes such as `/api/generate-video` rather than a registered Rust command, so those actions are not dependable in a packaged desktop app until migrated.
+- `package.json` still contains Electron/electron-builder development dependencies although Tauri is the actual desktop shell. `npm ci` reported 34 dependency vulnerabilities (2 critical, 5 high); review the advisory details and production reachability before upgrading, and do not use a blind forced upgrade.
+- Rust provider URL tests existed, but no TypeScript provider-registry regression suite did; a focused test script is being added. CI does not perform a live authenticated provider test.
 
 ## Main risks to fix before adding more features
 
@@ -73,12 +76,13 @@ Keep the persistent Pill as a global natural-language command surface. Chat, Cod
 ## Implementation order
 
 1. **Stabilization and contracts:** record the baseline, type-check all entry points, add provider registry/types and regression tests, and verify each provider adapter against a real generation response.
-2. **Credential migration:** introduce native secret storage and migrate existing keys without exposing them in logs or ordinary settings.
-3. **Desktop-only privileged paths:** migrate remaining provider/file/shell consumers to native commands; prevent silent browser fallback; remove duplicate server routes only after usage is zero.
-4. **Shared project state:** unify active project, file buffers, unsaved-change handling, selected artifact, and context sent to the Pill/Copilot/Studio/Hunter.
-5. **Review-and-apply loop:** structured file-change proposals, diffs, confirmation, atomic writes, checkpoints, and real verification evidence.
-6. **Xcode-like workbench:** improve navigator/editor/terminal/problems/preview layout after the shared state and change pipeline are stable.
-7. **Release gates:** TypeScript checks, Rust tests, provider adapter tests with mock HTTP responses, packaged DMG smoke test, and a manual real-provider test (OpenRouter and NVIDIA) on the installed app.
+2. **IDE editing quality:** replace the plain text area with Monaco and confirm the real project-file buffer, preview, and save flow remain synchronized.
+3. **Credential migration:** introduce native secret storage and migrate existing keys without exposing them in logs or ordinary settings.
+4. **Desktop-only privileged paths:** migrate remaining provider/file/shell consumers to native commands; prevent silent browser fallback; remove duplicate server routes only after usage is zero.
+5. **Shared project state:** unify active project, file buffers, unsaved-change handling, selected artifact, and context sent to the Pill/Copilot/Studio/Hunter.
+6. **Review-and-apply loop:** structured file-change proposals, diffs, confirmation, atomic writes, checkpoints, and real verification evidence.
+7. **Xcode-like workbench:** improve navigator/editor/terminal/problems/preview layout after the shared state and change pipeline are stable.
+8. **Release gates:** TypeScript checks, Rust tests, provider adapter tests with mock HTTP responses, packaged DMG smoke test, and a manual real-provider test (OpenRouter and NVIDIA) on the installed app.
 
 ## Acceptance checklist
 

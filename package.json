@@ -11,6 +11,7 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
     "lint:server": "tsc --noEmit --target ES2022 --module ESNext --moduleResolution bundler --esModuleInterop --skipLibCheck --types node server.ts",
+    "test:providers": "tsx src/lib/providerRegistry.test.ts",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:init": "tauri init"

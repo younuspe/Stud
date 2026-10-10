@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import Editor from '@monaco-editor/react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { resolveProviderConfig } from '../../lib/providerRegistry';
 import { 
@@ -54,6 +55,21 @@ import { GetCodeModal } from '../modals/GetCodeModal';
 import { FloatingWindow } from './FloatingWindow';
 import { soundFx } from '../../utils/audio';
 import { useSpeechListener } from '../../utils/useSpeechListener';
+
+const MONACO_LANGUAGE_BY_FILE: Record<SupportedLanguage, string> = {
+  typescript: 'typescript',
+  javascript: 'javascript',
+  python: 'python',
+  rust: 'rust',
+  go: 'go',
+  html: 'html',
+  css: 'css',
+  json: 'json',
+  sql: 'sql',
+  markdown: 'markdown',
+  bash: 'shell',
+};
+
 
 interface CodeEditorViewProps {
   onRunInTerminal: (command: string) => void;
@@ -525,7 +541,6 @@ export class SupruPipeline {
   const [activeProjectPath, setActiveProjectPath] = useState<string | null>(null);
   const [isProjectFileLoading, setIsProjectFileLoading] = useState(false);
   const [projectFileNotice, setProjectFileNotice] = useState<string | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isReadableProjectPath = (path: string) => {
     const name = path.split('/').pop() || path;
@@ -1177,7 +1192,6 @@ export class SupruPipeline {
       : `${interceptor}${activeFile.content}`;
   }, [activeFile.content, activeFile.language, activeFile.name]);
 
-  const lines = activeFile.content.split('\n');
 
   // ==========================================================
   // DRAGGABLE HORIZONTAL SPLITTER (Between Editor & Preview)
@@ -1398,43 +1412,36 @@ export class SupruPipeline {
         </div>
       )}
 
-      {/* Code Textarea & Gutter */}
-      <div className="relative flex flex-1 overflow-hidden bg-[#09090f]">
-        {/* Line Numbers Gutter */}
-        <div className="select-none bg-[#07070c] py-2.5 pl-2.5 pr-2 text-right font-mono text-[11px] text-gray-600 border-r border-white/[0.06]">
-          {lines.map((_, idx) => (
-            <div key={idx} className="h-5 leading-5 text-[10.5px]">
-              {idx + 1}
-            </div>
-          ))}
-        </div>
-
-        {/* Textarea Code Editor */}
-        <textarea
-          ref={textareaRef}
+      {/* Monaco source editor: syntax highlighting, folding, minimap, and keyboard shortcuts */}
+      <div className="flex flex-1 overflow-hidden bg-[#09090f]">
+        <Editor
+          height="100%"
+          language={MONACO_LANGUAGE_BY_FILE[activeFile.language] || 'plaintext'}
           value={activeFile.content}
-          onChange={(e) => handleUpdateContent(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Tab') {
-              e.preventDefault();
-              const start = e.currentTarget.selectionStart;
-              const end = e.currentTarget.selectionEnd;
-              const val = activeFile.content;
-              handleUpdateContent(val.substring(0, start) + '  ' + val.substring(end));
-              setTimeout(() => {
-                if (textareaRef.current) {
-                  textareaRef.current.selectionStart = textareaRef.current.selectionEnd = start + 2;
-                }
-              }, 0);
-            }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-              e.preventDefault();
-              handleManualRunPreview();
-            }
+          onChange={(value) => handleUpdateContent(value ?? '')}
+          theme="vs-dark"
+          options={{
+            automaticLayout: true,
+            minimap: { enabled: true },
+            fontSize: 12,
+            fontFamily: 'SF Mono, Menlo, Monaco, Consolas, monospace',
+            lineNumbers: 'on',
+            lineNumbersMinChars: 3,
+            scrollBeyondLastLine: false,
+            wordWrap: 'off',
+            tabSize: 2,
+            insertSpaces: true,
+            renderWhitespace: 'selection',
+            bracketPairColorization: { enabled: true },
+            folding: true,
+            glyphMargin: true,
+            smoothScrolling: true,
+            padding: { top: 12, bottom: 12 },
+            scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
           }}
-          spellCheck={false}
-          className="flex-1 resize-none bg-transparent p-2.5 font-mono text-[11.5px] leading-5 text-gray-100 outline-none selection:bg-amber-500/30 selection:text-amber-200"
-          placeholder="// Write code here..."
+          onMount={(editor, monaco) => {
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => handleManualRunPreview());
+          }}
         />
       </div>
     </div>
