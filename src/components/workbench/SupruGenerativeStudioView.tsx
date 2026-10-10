@@ -532,7 +532,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
         setAppGenerationSummary(buildSummary);
         setAppBuildMessages((previous) => [...previous, {
           id: `assistant-${Date.now()}`,
-          role: 'assistant',
+          role: 'assistant' as const,
           text: `Generated and saved the updated HTML source using ${modelUsed} (${providerUsed}). Use Preview to inspect it, or Open source in editor to continue editing. It has not been automatically tested.`,
           timestamp: Date.now(),
         }].slice(-60));
@@ -554,7 +554,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
       if (activeMode === 'app') {
         setAppBuildMessages((previous) => [...previous, {
           id: `assistant-error-${Date.now()}`,
-          role: 'assistant',
+          role: 'assistant' as const,
           text: `No new code was applied. ${message}`,
           timestamp: Date.now(),
         }].slice(-60));
