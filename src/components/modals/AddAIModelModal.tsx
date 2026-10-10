@@ -381,7 +381,7 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
             ) : (
               <div className="mt-2.5 flex items-center gap-2 text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
                 <ShieldCheck size={13} className="shrink-0" />
-                <span>API key will be encrypted and stored locally in your browser session for direct queries.</span>
+                <span>API key is saved in local app settings for reuse. OS-keychain storage is not implemented yet; use this only on a trusted device.</span>
               </div>
             )}
           </div>
