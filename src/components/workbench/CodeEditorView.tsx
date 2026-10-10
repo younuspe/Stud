@@ -908,7 +908,7 @@ export class SupruPipeline {
   }, [activeFile.content]);
 
   // Google AI Studio: Generate or Refine Code by Message
-  const handleGenerateByMessage = async (presetPrompt?: string) => {
+  const handleGenerateByMessage = async (presetPrompt?: string, saveProjectFile = false) => {
     const promptToSend = presetPrompt || generatorPrompt.trim();
     if (!promptToSend || isGeneratingCode) return;
 
@@ -982,10 +982,24 @@ export class SupruPipeline {
         if (isTauri() && workspaceRoot) {
           const isWorkspaceFile = activeFileId.startsWith('workspace-file:') && Boolean(activeProjectPath);
           if (isWorkspaceFile) {
-            // Stage edits in Monaco first; the explicit Save action commits them to disk.
-            handleUpdateContent(data.code);
-            setProjectFileNotice(`Unsaved generated changes in ${activeProjectPath}. Review them, then choose Save Project File.`);
-            persistenceNote = `Changes staged in ${activeProjectPath}; use Save Project File to write them.`;
+            if (saveProjectFile) {
+              // Build-by-Chat is an explicit request to modify the selected project file.
+              const saveResult = await invoke<string>('write_workspace_file', {
+                workspaceRoot,
+                relativePath: activeProjectPath,
+                content: data.code,
+              });
+              setFiles((current) => current.map((item) => item.id === activeFileId
+                ? { ...item, content: data.code, isModified: false }
+                : item));
+              setProjectFileNotice(saveResult || `Saved generated changes to ${activeProjectPath}.`);
+              persistenceNote = `Saved changes to project file ${activeProjectPath}.`;
+            } else {
+              // The ordinary Generate action stages edits for review before saving.
+              handleUpdateContent(data.code);
+              setProjectFileNotice(`Unsaved generated changes in ${activeProjectPath}. Review them, then choose Save to Project.`);
+              persistenceNote = `Changes staged in ${activeProjectPath}; use Save to Project to write them.`;
+            }
           } else {
             // Generating from a demo tab creates a new project file instead of overwriting a real file.
             const extension = (activeFile.name.split('.').pop() || 'html').replace(/[^a-z0-9]/gi, '') || 'html';
