@@ -116,19 +116,21 @@ export default function App() {
   const [workspaceRoot, setWorkspaceRoot] = useState<string>(() => {
     try { return localStorage.getItem('supru_workspace_root_v1') || ''; } catch { return ''; }
   });
-  const handleOpenWorkspaceFolder = async () => {
+  const handleOpenWorkspaceFolder = async (): Promise<string | null> => {
     if (!isTauri()) {
       window.alert('Open Project Folder is available in the installed Supru desktop app, not browser mode.');
-      return;
+      return null;
     }
     try {
       const selected = await invoke<string | null>('choose_workspace_folder');
-      if (!selected) return;
+      if (!selected) return null;
       setWorkspaceRoot(selected);
       try { localStorage.setItem('supru_workspace_root_v1', selected); } catch {}
       setWorkspaceView((current) => current === 'chat' ? 'editor' : current);
+      return selected;
     } catch (error) {
       window.alert(`Could not open project folder: ${String(error)}`);
+      return null;
     }
   };
 
@@ -1299,7 +1301,12 @@ export default function App() {
           onOpenImageStudio={() => handleOpenImageStudio()}
           onOpenVeoStudio={() => handleOpenVeoStudio()}
           onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
-          onBuildRequest={(text) => {
+          onBuildRequest={async (text) => {
+            // A build request must target a real folder, never the demo tabs.
+            if (!workspaceRoot) {
+              const selected = await handleOpenWorkspaceFolder();
+              if (!selected) return;
+            }
             setWorkspaceView('editor');
             setExternalEditorPrompt({ id: `build-prompt-${Date.now()}`, text });
           }}
