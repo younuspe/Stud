@@ -785,6 +785,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           </div>
 
           {activeMode !== 'app' && (
+            <>
           {/* Aesthetic Singularity Presets */}
           <div className="space-y-1.5">
             <span className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
@@ -904,6 +905,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
             </div>
           </div>
 
+            </>
           )}
 
           {/* MANIFEST REALITY BUTTON */}
