@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - rebuild/native-coding-core
       - fix/desktop-app-launch
       - fix/macos-app-bundle-signature
       - fix/functional-implementation-audit
