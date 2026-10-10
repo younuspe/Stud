@@ -1032,7 +1032,7 @@ export class SupruPipeline {
             const savedFile: EditorFile = {
               id: targetId,
               name: targetPath,
-              language: activeFile.language,
+              language: targetLanguage,
               content: data.code,
               isModified: false,
             };
