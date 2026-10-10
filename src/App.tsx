@@ -182,6 +182,11 @@ export default function App() {
           editor: { ...DEFAULT_STUDIO_WINDOWS.editor, ...parsed.editor, isOpen: true, isUndocked: false },
           preview: { ...DEFAULT_STUDIO_WINDOWS.preview, ...parsed.preview, isOpen: true, isUndocked: false },
           generator: { ...DEFAULT_STUDIO_WINDOWS.generator, ...parsed.generator, isOpen: true, isUndocked: false },
+          terminal: { ...DEFAULT_STUDIO_WINDOWS.terminal, ...parsed.terminal, isOpen: false, isUndocked: false },
+          agent: { ...DEFAULT_STUDIO_WINDOWS.agent, ...parsed.agent, isOpen: false, isUndocked: false },
+          github: { ...DEFAULT_STUDIO_WINDOWS.github, ...parsed.github, isOpen: false, isUndocked: false },
+          console: { ...DEFAULT_STUDIO_WINDOWS.console, ...parsed.console, isOpen: false, isUndocked: false },
+          orchestrator: { ...DEFAULT_STUDIO_WINDOWS.orchestrator, ...parsed.orchestrator, isOpen: false, isUndocked: false },
         };
       }
     } catch {}
@@ -998,7 +1003,7 @@ export default function App() {
           <main className="relative flex flex-1 flex-col overflow-hidden z-10">
             <CodeEditorView
               onRunInTerminal={(command) => {
-                setExternalEditorPrompt({ id: `terminal-request-${Date.now()}`, text: `Run this command in the project terminal: ${command}` });
+                window.alert(`Terminal execution is not part of the focused App Builder yet. Nothing was run.\n\nCommand: ${command}`);
               }}
               onSendToChat={(codePrompt) => {
                 setExternalEditorPrompt({ id: `prompt-${Date.now()}`, text: codePrompt });
