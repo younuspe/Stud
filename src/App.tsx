@@ -338,15 +338,8 @@ export default function App() {
         localStorage.setItem('supru_active_custom_model', JSON.stringify((({ apiKey, ...safeModel }) => safeModel)(model)));
       } catch {}
 
-      if (model.provider === 'ollama' || model.provider === 'lmstudio' || model.provider === 'custom') {
-        setLocalConfig((prev) => ({
-          ...prev,
-          provider: model.provider === 'ollama' ? 'ollama_local' : model.provider === 'lmstudio' ? 'lmstudio_local' : 'custom_local',
-          endpointUrl: model.endpointUrl || (model.provider === 'ollama' ? 'http://localhost:11434' : model.provider === 'lmstudio' ? 'http://localhost:1234/v1' : ''),
-          modelName: model.modelId,
-          apiKey: undefined,
-        }));
-      }
+      // The selected external profile is resolved independently by the shared provider registry.
+      // Do not overwrite the primary provider's endpoint, model, or credential with this profile.
     }
   };
 
