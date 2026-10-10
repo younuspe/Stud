@@ -848,7 +848,14 @@ export default function App() {
             ? {
                 ...t,
                 messages: t.messages.map((m) =>
-                  m.id === assistantMsgId ? { ...m, isStreaming: false } : m
+                  m.id === assistantMsgId
+                    ? {
+                        ...m,
+                        isStreaming: false,
+                        provider: activeCustomModel?.name || localConfig.provider,
+                        model: activeCustomModel?.modelId || localConfig.modelName,
+                      }
+                    : m
                 ),
               }
             : t
