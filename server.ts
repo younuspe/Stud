@@ -1139,8 +1139,6 @@ app.post('/api/local-chat', async (req, res) => {
       groq: 'https://api.groq.com/openai/v1',
       deepseek: 'https://api.deepseek.com/v1',
       openai: 'https://api.openai.com/v1',
-      custom_local: 'http://localhost:1234/v1',
-      custom: 'http://localhost:1234/v1',
     };
     const endpoint = String(endpointUrl || defaultUrls[provider] || '').trim();
     if (!endpoint) {
