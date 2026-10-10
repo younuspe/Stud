@@ -1603,7 +1603,7 @@ export class SupruPipeline {
               key={iframeKey}
               srcDoc={sandboxHtml}
               title="Supru Live Sandbox"
-              sandbox="allow-scripts allow-modals allow-forms allow-same-origin"
+              sandbox="allow-scripts allow-modals allow-forms"
               className="h-full w-full border-none bg-black"
             />
           </div>
