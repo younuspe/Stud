@@ -640,7 +640,7 @@ async fn test_provider_connection(
         )
     } else if kind == "gemini_cloud" || kind == "gemini" {
         (
-            format!("{}/v1beta/models/{}:generateContent", base.trim_end_matches('/'), model),
+            gemini_generate_url(base, model),
             serde_json::json!({
                 "contents": [{"parts": [{"text": "Reply with OK."}]}],
                 "generationConfig": {"temperature": 0, "maxOutputTokens": 8}
@@ -648,11 +648,7 @@ async fn test_provider_connection(
             "gemini"
         )
     } else if kind == "anthropic" {
-        let url = if base.ends_with("/v1") {
-            format!("{base}/messages")
-        } else {
-            format!("{base}/v1/messages")
-        };
+        let url = anthropic_messages_url(base);
         (
             url,
             serde_json::json!({
