@@ -926,7 +926,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
     const promptToSend = presetPrompt || generatorPrompt.trim();
     if (!promptToSend || isGeneratingCode) return;
     // Build-by-Chat must never overwrite a README or project manifest just because it was selected first.
-    const buildIntoNewFile = saveProjectFile && Boolean(workspaceRoot) &&
+    const buildIntoNewFile = Boolean(workspaceRoot) &&
       (!activeProjectPath || !isBuildableSourcePath(activeProjectPath));
     const targetLanguage: SupportedLanguage = buildIntoNewFile ? 'html' : activeFile.language;
     const targetFileName = buildIntoNewFile ? 'generated-app.html' : activeFile.name;
