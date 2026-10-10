@@ -1262,6 +1262,10 @@ export default function App() {
           onOpenImageStudio={() => handleOpenImageStudio()}
           onOpenVeoStudio={() => handleOpenVeoStudio()}
           onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
+          onBuildRequest={(text) => {
+            setWorkspaceView('editor');
+            setExternalEditorPrompt({ id: `build-prompt-${Date.now()}`, text });
+          }}
           activeModelName={activeCustomModel?.name || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'Gemini 3.8 Flash')}
         />
       )}
