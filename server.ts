@@ -1189,11 +1189,15 @@ app.post('/api/agent/step', handleAgentStep);
 
 // Test connection to any external AI provider or model using a real upstream request.
 function normalizeOpenAICompatibleModelsUrl(endpoint: string): string {
-  const value = endpoint.trim().replace(/\\/+$/, '');
+  let value = endpoint.trim();
+  while (value.endsWith('/')) value = value.slice(0, -1);
   if (!value) throw new Error('Provider endpoint URL is required.');
-  if (/\\/models$/i.test(value)) return value;
-  if (/\\/chat\\/completions$/i.test(value)) return value.replace(/\\/chat\\/completions$/i, '/models');
-  if (/\\/v1$/i.test(value)) return value + '/models';
+  const lower = value.toLowerCase();
+  if (lower.endsWith('/models')) return value;
+  if (lower.endsWith('/chat/completions')) {
+    return value.slice(0, -'/chat/completions'.length) + '/models';
+  }
+  if (lower.endsWith('/v1')) return value + '/models';
   return value + '/v1/models';
 }
 
