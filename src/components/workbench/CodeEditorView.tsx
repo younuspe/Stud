@@ -1051,20 +1051,29 @@ export class SupruPipeline {
     handleSendCopilotMessage(fixPrompt);
   };
 
-  // Listen for incoming external prompt from FloatingChatPill or other actions
+  // Build prompts use the project-aware generator; ordinary prompts remain in Copilot chat.
+  // Wait for project discovery to finish so a build cannot accidentally target a demo tab.
   useEffect(() => {
-    if (externalPrompt && externalPrompt.text && externalPrompt.text.trim()) {
-      if (!windows.generator?.isOpen) {
-        onToggleWindow?.('generator');
-      }
-      if (drawerHeight < 280) {
-        setDrawerHeight(340);
-      }
-      setActiveAiTab('copilot');
-      handleSendCopilotMessage(externalPrompt.text.trim());
+    if (!externalPrompt?.text?.trim()) return;
+
+    if (externalPrompt.id.startsWith('build-prompt-')) {
+      if (!workspaceRoot || isProjectFileLoading) return;
+      if (projectPaths.length > 0 && (!activeProjectPath || !activeFileId.startsWith('workspace-file:'))) return;
+
+      if (!windows.generator?.isOpen) onToggleWindow?.('generator');
+      if (drawerHeight < 280) setDrawerHeight(340);
+      setActiveAiTab('generator');
+      void handleGenerateByMessage(externalPrompt.text.trim(), true);
       onClearExternalPrompt?.();
+      return;
     }
-  }, [externalPrompt]);
+
+    if (!windows.generator?.isOpen) onToggleWindow?.('generator');
+    if (drawerHeight < 280) setDrawerHeight(340);
+    setActiveAiTab('copilot');
+    handleSendCopilotMessage(externalPrompt.text.trim());
+    onClearExternalPrompt?.();
+  }, [externalPrompt, workspaceRoot, isProjectFileLoading, projectPaths.length, activeProjectPath, activeFileId]);
 
   // Auto-scroll Copilot messages to bottom
   useEffect(() => {
