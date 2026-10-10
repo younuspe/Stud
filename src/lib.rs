@@ -405,10 +405,20 @@ async fn chat_completion(
         .map_err(|e| format!("Could not initialize provider client: {e}"))?;
 
     let provider_lower = provider.to_lowercase();
+    if (provider_lower == "custom_local" || provider_lower == "custom") && endpoint.is_empty() {
+        return Err("Custom compatible providers require an explicit base URL or full /chat/completions URL.".to_string());
+    }
     let (url, body, auth_mode) = if provider_lower == "ollama_local" || provider_lower == "ollama" {
         let base = if endpoint.is_empty() { "http://127.0.0.1:11434" } else { endpoint };
+        let chat_url = if base.ends_with("/api/chat") {
+            base.to_string()
+        } else if base.ends_with("/api/tags") {
+            format!("{}/api/chat", base.trim_end_matches("/api/tags"))
+        } else {
+            format!("{}/api/chat", base.trim_end_matches('/'))
+        };
         (
-            format!("{}/api/chat", base.trim_end_matches('/')),
+            chat_url,
             serde_json::json!({
                 "model": model,
                 "messages": messages.iter().map(|m| serde_json::json!({"role": m.role, "content": m.content})).collect::<Vec<_>>(),
@@ -547,6 +557,9 @@ async fn test_provider_connection(
     }
     if matches!(kind.as_str(), "gemini_cloud" | "gemini" | "openai" | "anthropic" | "deepseek" | "groq") && key.is_empty() {
         return failed("API key is missing. Add the provider key before testing the connection.".into());
+    }
+    if matches!(kind.as_str(), "custom_local" | "custom") && endpoint.is_empty() {
+        return failed("Custom compatible providers require an explicit base URL or full /chat/completions URL.".into());
     }
 
     let base = if endpoint.is_empty() {
