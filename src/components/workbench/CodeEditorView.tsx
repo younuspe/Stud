@@ -972,8 +972,34 @@ export class SupruPipeline {
       }
 
       if (data.code) {
-        handleUpdateContent(data.code);
-        setGenerationSummary(data.explanation || `Code updated by ${modelConfigPayload.modelId || 'the selected AI model'}.`);
+        let persistenceNote = 'Updated the live preview buffer only. Select a project folder to save generated code to disk.';
+        if (isTauri() && workspaceRoot) {
+          const isWorkspaceFile = activeFileId.startsWith('workspace-file:') && Boolean(activeProjectPath);
+          const extension = (activeFile.name.split('.').pop() || 'html').replace(/[^a-z0-9]/gi, '') || 'html';
+          const targetPath = isWorkspaceFile ? activeProjectPath! : `generated-app-${Date.now()}.${extension}`;
+          const targetId = `workspace-file:${targetPath}`;
+          const saveResult = await invoke<string>('write_workspace_file', {
+            workspaceRoot,
+            relativePath: targetPath,
+            content: data.code,
+          });
+          const savedFile: EditorFile = {
+            id: targetId,
+            name: targetPath,
+            language: activeFile.language,
+            content: data.code,
+            isModified: false,
+          };
+          setFiles((current) => [...current.filter((item) => item.id !== targetId), savedFile]);
+          setActiveFileId(targetId);
+          setActiveProjectPath(targetPath);
+          setProjectPaths((current) => Array.from(new Set([...current, targetPath])).sort());
+          setProjectFileNotice(saveResult || `Saved ${targetPath} to the selected project.`);
+          persistenceNote = `Saved to project file ${targetPath}.`;
+        } else {
+          handleUpdateContent(data.code);
+        }
+        setGenerationSummary(`${data.explanation || `Code updated by ${modelConfigPayload.modelId || 'the selected AI model'}.`} ${persistenceNote}`);
         setIframeKey(Date.now());
         soundFx.playChime();
         if (!presetPrompt) setGeneratorPrompt('');
