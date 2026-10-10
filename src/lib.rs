@@ -370,6 +370,32 @@ fn openai_compatible_models_url(endpoint: &str) -> String {
     format!("{base}/v1/models")
 }
 
+fn anthropic_messages_url(endpoint: &str) -> String {
+    let base = endpoint.trim().trim_end_matches('/');
+    if base.ends_with("/v1/messages") {
+        base.to_string()
+    } else if base.ends_with("/v1") {
+        format!("{base}/messages")
+    } else {
+        format!("{base}/v1/messages")
+    }
+}
+
+fn gemini_generate_url(endpoint: &str, model: &str) -> String {
+    let base = endpoint.trim().trim_end_matches('/');
+    if base.ends_with(":generateContent") {
+        return base.to_string();
+    }
+    if base.contains("/v1beta/models/") {
+        return format!("{base}:generateContent");
+    }
+    if base.ends_with("/v1beta") {
+        format!("{base}/models/{model}:generateContent")
+    } else {
+        format!("{base}/v1beta/models/{model}:generateContent")
+    }
+}
+
 #[derive(serde::Deserialize)]
 struct ChatMessageInput {
     role: String,
@@ -444,13 +470,13 @@ async fn chat_completion(
             })
         }).collect::<Vec<_>>();
         (
-            format!("{}/v1beta/models/{}:generateContent?key={}", base.trim_end_matches('/'), model, key),
+            gemini_generate_url(base, model),
             serde_json::json!({
                 "contents": contents,
                 "systemInstruction": if system.is_empty() { serde_json::Value::Null } else { serde_json::json!({"parts":[{"text":system}]}) },
                 "generationConfig": {"temperature": temp}
             }),
-            "none"
+            "gemini"
         )
     } else if provider_lower == "anthropic" {
         if key.is_empty() {
@@ -462,16 +488,25 @@ async fn chat_completion(
             serde_json::json!({"role": if m.role == "assistant" { "assistant" } else { "user" }, "content": m.content})
         }).collect::<Vec<_>>();
         (
-            if base.trim_end_matches('/').ends_with("/v1") {
-                format!("{}/messages", base.trim_end_matches('/'))
-            } else {
-                format!("{}/v1/messages", base.trim_end_matches('/'))
-            },
+            anthropic_messages_url(base),
             serde_json::json!({"model": model, "max_tokens": 4096, "temperature": temp, "system": system, "messages": history}),
             "anthropic"
         )
     } else {
-        let base = if endpoint.is_empty() { "https://api.openai.com/v1" } else { endpoint };
+        if matches!(provider_lower.as_str(), "custom" | "custom_local") && endpoint.is_empty() {
+            return Err("Custom compatible providers require an explicit base URL or full /chat/completions URL.".to_string());
+        }
+        let base = if endpoint.is_empty() {
+            match provider_lower.as_str() {
+                "openai" => "https://api.openai.com/v1",
+                "deepseek" => "https://api.deepseek.com/v1",
+                "groq" => "https://api.groq.com/openai/v1",
+                "lmstudio" | "lmstudio_local" => "http://127.0.0.1:1234/v1",
+                _ => return Err(format!("Provider '{provider}' requires an explicit compatible API endpoint.")),
+            }
+        } else {
+            endpoint
+        };
         let url = openai_compatible_chat_url(base);
         if key.is_empty() && (provider_lower == "openai" || provider_lower == "deepseek" || provider_lower == "groq") {
             return Err(format!("{} API key is missing. Add it in provider settings.", provider));
@@ -493,6 +528,9 @@ async fn chat_completion(
         "bearer" if !key.is_empty() => { request = request.bearer_auth(key); }
         "anthropic" => {
             request = request.header("x-api-key", key).header("anthropic-version", "2023-06-01");
+        }
+        "gemini" => {
+            request = request.query(&[("key", key)]);
         }
         _ => {}
     }
@@ -714,4 +752,37 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .run(tauri::generate_context!("tauri.conf.json"))
         .expect("failed to start Supru desktop application");
+}
+
+#[cfg(test)]
+mod provider_url_tests {
+    use super::{anthropic_messages_url, gemini_generate_url, openai_compatible_chat_url, openai_compatible_models_url};
+
+    #[test]
+    fn compatible_chat_urls_accept_base_and_full_endpoint() {
+        assert_eq!(openai_compatible_chat_url("https://openrouter.ai/api/v1"), "https://openrouter.ai/api/v1/chat/completions");
+        assert_eq!(openai_compatible_chat_url("https://openrouter.ai/api/v1/chat/completions"), "https://openrouter.ai/api/v1/chat/completions");
+        assert_eq!(openai_compatible_chat_url("https://integrate.api.nvidia.com/v1/models"), "https://integrate.api.nvidia.com/v1/chat/completions");
+    }
+
+    #[test]
+    fn compatible_model_urls_accept_base_and_full_endpoint() {
+        assert_eq!(openai_compatible_models_url("https://openrouter.ai/api/v1"), "https://openrouter.ai/api/v1/models");
+        assert_eq!(openai_compatible_models_url("https://openrouter.ai/api/v1/chat/completions"), "https://openrouter.ai/api/v1/models");
+        assert_eq!(openai_compatible_models_url("https://integrate.api.nvidia.com/v1/models"), "https://integrate.api.nvidia.com/v1/models");
+    }
+
+    #[test]
+    fn anthropic_urls_do_not_duplicate_v1_or_messages() {
+        assert_eq!(anthropic_messages_url("https://api.anthropic.com"), "https://api.anthropic.com/v1/messages");
+        assert_eq!(anthropic_messages_url("https://api.anthropic.com/v1"), "https://api.anthropic.com/v1/messages");
+        assert_eq!(anthropic_messages_url("https://api.anthropic.com/v1/messages"), "https://api.anthropic.com/v1/messages");
+    }
+
+    #[test]
+    fn gemini_urls_accept_base_and_full_endpoint() {
+        assert_eq!(gemini_generate_url("https://generativelanguage.googleapis.com", "gemini-2.5-flash"), "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent");
+        assert_eq!(gemini_generate_url("https://generativelanguage.googleapis.com/v1beta", "gemini-2.5-flash"), "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent");
+        assert_eq!(gemini_generate_url("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash", "ignored"), "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent");
+    }
 }
