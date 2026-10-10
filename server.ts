@@ -1502,132 +1502,45 @@ app.post('/api/studio/generate', async (req, res) => {
 
 // // Supru Code AI Copilot Chat Endpoint (Conversational IDE intelligence for active code)
 app.post('/api/studio/chat', async (req, res) => {
-  const {
-    messages = [],
-    currentCode = '',
-    fileName = 'index.html',
-    language = 'html',
-    modelConfig = {},
-    settings = {},
-  } = req.body;
-
-  if (!messages || !Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: 'Messages array is required' });
+  const { messages = [], currentCode = '', fileName = 'index.html', language = 'html', modelConfig = {}, settings = {} } = req.body || {};
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: 'Messages array is required.' });
   }
 
-  const modelId = modelConfig.modelId || 'gemini-3.8-flash';
-  const provider = modelConfig.provider || 'gemini';
-  const customKey = modelConfig.apiKey;
-  const activeKey = customKey || apiKey;
+  const modelId = String(modelConfig.modelId || 'gemini-3.8-flash');
+  const provider = String(modelConfig.provider || 'gemini');
+  const systemInstruction = `You are Supru Code Copilot, an expert pair programmer inside the Supru Code IDE. The active file is ${fileName} (${String(language).toUpperCase()}). Explain bugs precisely. When the user requests a code change, return the COMPLETE updated file in one fenced code block and a concise explanation. Never claim changes were applied; the UI applies code only after the user chooses Apply. Keep explanations, UI text, and code comments in English unless another language is explicitly requested.\n\nCurrent source begins:\n${String(currentCode).slice(0, 24000)}\nCurrent source ends.`;
 
-  const systemInstruction = `You are Supru Code AI Copilot, an expert pair programmer and software architect embedded directly inside the Supru Code IDE.
-The developer is currently editing the file "${fileName}" (${language.toUpperCase()}).
-Current code in editor:
-\`\`\`${language}
-${currentCode.slice(0, 16000)}
-\`\`\`
+  const normalizedMessages: ProviderChatMessage[] = messages
+    .filter((message: any) => message && ['user', 'assistant', 'system'].includes(message.role))
+    .map((message: any) => ({ role: message.role, content: String(message.content || message.text || '') }));
 
-Guidelines:
-1. Answer clearly, concisely, and accurately.
-2. Provide complete code in a standard markdown fence when asked to change code.
-3. Prefer production-ready code and state assumptions.
-4. Explain bugs and runtime errors precisely.
-5. Write explanations, UI text, and code comments in English, even when the user speaks Malayalam, unless another output language is explicitly requested.`;
-
-  // 1. Google Gemini API
-  if (provider === 'gemini' && activeKey && activeKey !== 'MY_GEMINI_API_KEY') {
-    try {
-      const client = new GoogleGenAI({
-        apiKey: activeKey,
-        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-      });
-
-      const contents = messages.map((m: any) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content || m.text || '' }],
-      }));
-
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Model timeout (12s)')), 12000)
-      );
-
-      const apiPromise = client.models.generateContent({
-        model: modelId.startsWith('gemini') ? modelId : 'gemini-3.8-flash',
-        contents: contents as any,
-        config: {
-          systemInstruction,
-          temperature: typeof settings.temperature === 'number' ? settings.temperature : 0.7,
-          maxOutputTokens: typeof settings.maxOutputTokens === 'number' ? settings.maxOutputTokens : 4096,
-        },
-      });
-
-      const response = await Promise.race([apiPromise, timeoutPromise]);
-      const replyText = response.text || 'No response generated.';
-      const extracted = extractCodeFromMarkdown(replyText, language);
-
-      return res.json({
-        reply: replyText,
-        code: extracted.code || null,
-        model: modelId,
-        provider: 'gemini',
-      });
-    } catch (err: any) {
-      console.warn('Copilot Gemini generation error:', err.message);
-    }
+  try {
+    const reply = await requestProviderText({
+      provider,
+      modelId,
+      endpointUrl: modelConfig.endpointUrl,
+      apiKey: modelConfig.apiKey,
+      messages: normalizedMessages,
+      systemInstruction,
+      temperature: settings.temperature,
+      maxOutputTokens: settings.maxOutputTokens,
+    });
+    const extracted = extractCodeFromMarkdown(reply, language);
+    return res.json({
+      reply,
+      code: extracted.code || null,
+      model: modelId,
+      provider,
+    });
+  } catch (error: any) {
+    const credentialsConfigured = Boolean(modelConfig.apiKey || apiKey) && (modelConfig.apiKey || apiKey) !== 'MY_GEMINI_API_KEY';
+    return res.status(credentialsConfigured ? 502 : 503).json({
+      error: error.message || 'The selected provider failed. No generated answer or code was substituted.',
+      provider,
+      model: modelId,
+    });
   }
-
-  // 2. External Provider (OpenAI / DeepSeek / Groq)
-  if ((provider === 'openai' || provider === 'deepseek' || provider === 'groq') && customKey) {
-    try {
-      const defaultEndpoints: Record<string, string> = {
-        openai: 'https://api.openai.com/v1',
-        deepseek: 'https://api.deepseek.com/v1',
-        groq: 'https://api.groq.com/openai/v1',
-      };
-      const url = (modelConfig.endpointUrl || defaultEndpoints[provider] || 'https://api.openai.com/v1').replace(/\/$/, '');
-
-      const extRes = await fetch(`${url}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${customKey}`,
-        },
-        body: JSON.stringify({
-          model: modelId,
-          messages: [
-            { role: 'system', content: systemInstruction },
-            ...messages.map((m: any) => ({
-              role: m.role === 'system' ? 'system' : m.role === 'assistant' ? 'assistant' : 'user',
-              content: m.content || m.text || '',
-            })),
-          ],
-          temperature: typeof settings.temperature === 'number' ? settings.temperature : 0.7,
-        }),
-      });
-
-      if (extRes.ok) {
-        const data = await extRes.json();
-        const replyText = data.choices?.[0]?.message?.content || '';
-        const extracted = extractCodeFromMarkdown(replyText, language);
-        return res.json({
-          reply: replyText,
-          code: extracted.code || null,
-          model: modelId,
-          provider,
-        });
-      }
-    } catch (extErr: any) {
-      console.warn('Copilot external provider error:', extErr.message);
-    }
-  }
-
-  return res.status(activeKey && activeKey !== 'MY_GEMINI_API_KEY' ? 502 : 503).json({
-    error: activeKey && activeKey !== 'MY_GEMINI_API_KEY'
-      ? 'The selected AI provider failed. No generated answer or code was substituted.'
-      : 'No AI provider credentials are configured. Connect a model before using Supru Code Copilot.',
-    provider,
-    model: modelId,
-  });
 });
 
 // Helper for fallback Supru Code Copilot response
