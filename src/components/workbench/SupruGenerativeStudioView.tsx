@@ -420,7 +420,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           prompt,
         ].join('\n');
         let generatedCode = '';
-        let providerUsed = localConfig.provider;
+        let providerUsed: string = localConfig.provider;
         let modelUsed = localConfig.modelName;
         let explanation = 'Application source generated. It has not been tested automatically.';
         if (isTauri()) {
