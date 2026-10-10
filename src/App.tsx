@@ -651,11 +651,16 @@ export default function App() {
         const isOllama = activeCustomModel.provider === 'ollama';
         const isLmStudio = activeCustomModel.provider === 'lmstudio';
         const isLocal = isOllama || isLmStudio;
-        const fallbackEndpoint = isOllama
-          ? 'http://localhost:11434'
-          : isLmStudio
-            ? 'http://localhost:1234/v1'
-            : '';
+        const browserEndpointDefaults: Record<string, string> = {
+          gemini: 'https://generativelanguage.googleapis.com',
+          openai: 'https://api.openai.com/v1',
+          anthropic: 'https://api.anthropic.com/v1',
+          deepseek: 'https://api.deepseek.com/v1',
+          groq: 'https://api.groq.com/openai/v1',
+          ollama: 'http://localhost:11434',
+          lmstudio: 'http://localhost:1234/v1',
+        };
+        const fallbackEndpoint = browserEndpointDefaults[activeCustomModel.provider] || '';
         const modelRes = await fetch('/api/local-chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
