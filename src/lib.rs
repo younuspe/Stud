@@ -1007,7 +1007,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod provider_url_tests {
-    use super::{anthropic_messages_url, gemini_generate_url, openai_compatible_chat_url, openai_compatible_models_url};
+    use super::{anthropic_messages_url, gemini_generate_url, openai_compatible_chat_url, openai_compatible_models_url, write_workspace_files, WorkspaceFileWrite};
 
     #[test]
     fn compatible_chat_urls_accept_base_and_full_endpoint() {
@@ -1028,6 +1028,43 @@ mod provider_url_tests {
         assert_eq!(anthropic_messages_url("https://api.anthropic.com"), "https://api.anthropic.com/v1/messages");
         assert_eq!(anthropic_messages_url("https://api.anthropic.com/v1"), "https://api.anthropic.com/v1/messages");
         assert_eq!(anthropic_messages_url("https://api.anthropic.com/v1/messages"), "https://api.anthropic.com/v1/messages");
+    }
+
+    #[tokio::test]
+    async fn native_batch_writer_creates_nested_files_and_preserves_contents() {
+        let temp = tempfile::tempdir().expect("temporary workspace");
+        let root = temp.path().to_string_lossy().to_string();
+        let result = write_workspace_files(
+            root.clone(),
+            vec![
+                WorkspaceFileWrite { path: "src/main.ts".into(), content: "export const ok = true;".into() },
+                WorkspaceFileWrite { path: "README.md".into(), content: "# App".into() },
+            ],
+        ).await;
+        assert!(result.is_ok(), "batch write should succeed: {result:?}");
+        assert_eq!(std::fs::read_to_string(temp.path().join("src/main.ts")).unwrap(), "export const ok = true;");
+        assert_eq!(std::fs::read_to_string(temp.path().join("README.md")).unwrap(), "# App");
+    }
+
+    #[tokio::test]
+    async fn native_batch_writer_rejects_traversal_and_duplicate_paths() {
+        let temp = tempfile::tempdir().expect("temporary workspace");
+        let root = temp.path().to_string_lossy().to_string();
+        let traversal = write_workspace_files(
+            root.clone(),
+            vec![WorkspaceFileWrite { path: "../escape.txt".into(), content: "no".into() }],
+        ).await;
+        assert!(traversal.is_err(), "parent traversal must be rejected");
+
+        let duplicate = write_workspace_files(
+            root,
+            vec![
+                WorkspaceFileWrite { path: "same.txt".into(), content: "first".into() },
+                WorkspaceFileWrite { path: "same.txt".into(), content: "second".into() },
+            ],
+        ).await;
+        assert!(duplicate.is_err(), "duplicate paths must be rejected");
+        assert!(!temp.path().join("same.txt").exists(), "invalid manifests must not write files");
     }
 
     #[test]
