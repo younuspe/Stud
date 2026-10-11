@@ -1231,6 +1231,7 @@ export default function App() {
               <HeadlessAgentView
                 localConfig={localConfig}
                 activeCustomModel={activeCustomModel}
+                availableModels={customModels}
                 workspaceRoot={workspaceRoot}
                 initialObjective={agentInitialObjective}
                 initialWorkspacePath={agentInitialWorkspacePath}
