@@ -11,6 +11,7 @@ import { callProvider, testProvider, defaultModelFor } from './server.providers'
 import { PROVIDER_CATALOG, PROVIDER_ORDER, FREE_MODEL_PRESETS, getProviderMeta } from './src/lib/providers';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
+import { logger } from './src/utils/logger';
 
 const execPromise = util.promisify(exec);
 
@@ -177,7 +178,7 @@ app.get(['/api/download/dmg', '/api/download/macos-dmg'], (req, res) => {
       }
     }
   } catch (err) {
-    console.error('Failed to auto-generate DMG:', err);
+    logger.error('Failed to auto-generate DMG:', err);
   }
   return res.status(404).json({ error: 'DMG installer not found. Please regenerate package.' });
 });
@@ -208,7 +209,7 @@ app.get(['/api/download/zip', '/api/download/macos-zip', '/api/download/app-zip'
       }
     }
   } catch (err) {
-    console.error('Failed to auto-generate ZIP:', err);
+    logger.error('Failed to auto-generate ZIP:', err);
   }
   return res.status(404).json({ error: 'ZIP package not found.' });
 });
@@ -436,7 +437,7 @@ app.post('/api/generate-image', async (req, res) => {
             });
           }
         } catch (pollErr) {
-          console.warn('Pollinations image synthesis failed:', (pollErr as any)?.message);
+          logger.warn('Pollinations image synthesis failed:', (pollErr as any)?.message);
           if (i < attempts.length - 1) await sleep(700 * (i + 1));
         }
       }
@@ -452,7 +453,7 @@ app.post('/api/generate-image', async (req, res) => {
       simulated: true,
     });
   } catch (error: any) {
-    console.error('Image generation error:', error);
+    logger.error('Image generation error:', error);
     const fallbackImage = generateSimulatedImageSvg(
       req.body.prompt || 'Generated Artwork',
       Boolean(req.body.sourceImage),
@@ -508,7 +509,7 @@ app.post('/api/generate-video', async (req, res) => {
           aspectRatio: targetAspectRatio,
         });
       } catch (apiError: any) {
-        console.warn('Veo API call encountered quota or error, falling back to simulation:', apiError.message);
+        logger.warn('Veo API call encountered quota or error, falling back to simulation:', apiError.message);
         // Fall through to simulated job below
       }
     }
@@ -531,7 +532,7 @@ app.post('/api/generate-video', async (req, res) => {
       notice: 'Live Veo requires active paid quota. Served video preview.',
     });
   } catch (error: any) {
-    console.error('Video generation start error:', error);
+    logger.error('Video generation start error:', error);
     return res.status(500).json({ error: error.message || 'Failed to start video generation' });
   }
 });
@@ -575,7 +576,7 @@ app.post('/api/video-status', async (req, res) => {
       simulated: true,
     });
   } catch (error: any) {
-    console.error('Video status polling error:', error);
+    logger.error('Video status polling error:', error);
     return res.status(500).json({ error: error.message || 'Failed to poll video status' });
   }
 });
@@ -627,7 +628,7 @@ app.get('/api/video-download', async (req, res) => {
 
     return res.status(404).json({ error: 'Sample video could not be loaded.' });
   } catch (error: any) {
-    console.error('Video download error:', error);
+    logger.error('Video download error:', error);
     return res.status(500).json({ error: error.message || 'Failed to download video' });
   }
 });
@@ -671,7 +672,7 @@ app.post('/api/video-download', async (req, res) => {
     }
     return res.status(404).json({ error: 'Sample video not found' });
   } catch (error: any) {
-    console.error('Video download error:', error);
+    logger.error('Video download error:', error);
     return res.status(500).json({ error: error.message || 'Failed to download video' });
   }
 });
@@ -799,7 +800,7 @@ app.post('/api/chat', async (req, res) => {
     const simulatedReply = generateSimulatedSupruResponse(latestUserMsg, persona);
     return res.json({ reply: simulatedReply, simulated: true });
   } catch (error: any) {
-    console.error('Error generating chat response:', error);
+    logger.error('Error generating chat response:', error);
     // Return friendly fallback rather than crashing
     const simulatedReply = generateSimulatedSupruResponse(
       req.body.messages?.[req.body.messages.length - 1]?.content || '',
@@ -1494,7 +1495,7 @@ If the language is HTML, create a single self-contained document with HTML5, CSS
           provider: 'gemini',
         });
       } catch (err: any) {
-        console.warn('Gemini studio generation error, using smart synthesis engine:', err.message);
+        logger.warn('Gemini studio generation error, using smart synthesis engine:', err.message);
       }
     }
   }
@@ -1525,7 +1526,7 @@ If the language is HTML, create a single self-contained document with HTML5, CSS
         provider,
       });
     }
-    console.warn(`Studio generate: ${provider} failed — ${result.error}`);
+    logger.warn(`Studio generate: ${provider} failed — ${result.error}`);
   }
 
   // 3. High quality built-in code synthesis fallback engine
@@ -1611,7 +1612,7 @@ Guidelines:
         provider: 'gemini',
       });
     } catch (err: any) {
-      console.warn('Copilot Gemini generation error:', err.message);
+      logger.warn('Copilot Gemini generation error:', err.message);
     }
   }
 
@@ -1639,7 +1640,7 @@ Guidelines:
         provider,
       });
     }
-    console.warn(`Copilot ${provider} failed — ${result.error}`);
+    logger.warn(`Copilot ${provider} failed — ${result.error}`);
   }
 
   // 3. Fallback intelligent response for Supru Code
@@ -2225,23 +2226,23 @@ function synthesizeCreativeCode(prompt: string, currentCode: string, lang: strin
     document.getElementById('incrementBtn').addEventListener('click', () => {
       count++;
       counterVal.innerText = count;
-      console.log('Incremented counter to:', count);
+      logger.info('Incremented counter to:', count);
     });
     document.getElementById('decrementBtn').addEventListener('click', () => {
       count--;
       counterVal.innerText = count;
-      console.log('Decremented counter to:', count);
+      logger.info('Decremented counter to:', count);
     });
 
     document.getElementById('colorShiftBtn').addEventListener('click', () => {
       const colors = ['#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6'];
       const c = colors[Math.floor(Math.random() * colors.length)];
       counterVal.style.color = c;
-      console.info('Color shifted to:', c);
+      logger.info('Color shifted to:', c);
     });
 
     document.getElementById('toastBtn').addEventListener('click', () => {
-      console.log('🐾 Supru AI Studio: Live message dispatched at', new Date().toLocaleTimeString());
+      logger.info('🐾 Supru AI Studio: Live message dispatched at', new Date().toLocaleTimeString());
     });
   </script>
 </body>
@@ -2261,7 +2262,7 @@ app.use('/api', (req, res) => {
 app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const status = err?.status || (err?.type === 'entity.parse.failed' ? 400 : 500);
   const message = err?.type === 'entity.parse.failed' ? 'Malformed JSON request body' : (err?.message || 'Internal server error');
-  if (status >= 500) console.error('Unhandled server error:', err);
+  if (status >= 500) logger.error('Unhandled server error:', err);
   if (!res.headersSent) res.status(status).json({ error: message });
 });
 
@@ -2281,7 +2282,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Supru AI server active at http://0.0.0.0:${PORT}`);
+    logger.info(`Supru AI server active at http://0.0.0.0:${PORT}`);
   });
 }
 

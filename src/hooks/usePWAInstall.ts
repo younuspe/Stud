@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { logger } from '../utils/logger';
 
 export interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -41,7 +42,7 @@ export function usePWAInstall() {
     // Register service worker if supported
     if ('serviceWorker' in navigator && (globalThis as any).process?.env?.NODE_ENV !== 'test') {
       navigator.serviceWorker.register('/sw.js').catch((err) => {
-        console.warn('SW registration note:', err);
+        logger.warn('SW registration note:', err);
       });
     }
 
@@ -64,7 +65,7 @@ export function usePWAInstall() {
           return true;
         }
       } catch (err) {
-        console.error('Install prompt error:', err);
+        logger.error('Install prompt error:', err);
       }
     }
     return false;

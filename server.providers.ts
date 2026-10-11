@@ -11,6 +11,7 @@
 
 import { GoogleGenAI } from '@google/genai';
 import { getProviderMeta, isOpenAICompatible } from './src/lib/providers';
+import { logger } from './src/utils/logger';
 
 export interface ProviderRequest {
   provider?: string;

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { ImageAspectRatio, ImageItem } from '../../types/media';
 import { soundFx } from '../../utils/audio';
+import { logger } from '../../utils/logger';
 
 interface ImageStudioModalProps {
   isOpen: boolean;
@@ -112,7 +113,7 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
       setHistory((prev) => [newItem, ...prev]);
       soundFx.playPurr();
     } catch (err: any) {
-      console.error('Image gen error:', err);
+      logger.error('Image gen error:', err);
       setErrorMessage(err.message || 'Error communicating with gemini-3.1-flash-image-preview');
     } finally {
       setIsGenerating(false);

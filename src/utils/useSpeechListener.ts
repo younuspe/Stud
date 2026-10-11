@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { soundFx } from './audio';
+import { logger } from './logger';
 
 export interface UseSpeechListenerOptions {
   onTranscript?: (text: string) => void;
@@ -136,7 +137,7 @@ export function useSpeechListener(options?: UseSpeechListenerOptions) {
           }
         } catch (mediaErr: any) {
           // Do not abort! SpeechRecognition might still work in Chrome without getUserMedia
-          console.warn('Microphone volume meter unavailable, continuing with SpeechRecognition:', mediaErr.message);
+          logger.warn('Microphone volume meter unavailable, continuing with SpeechRecognition:', mediaErr.message);
         }
       }
 
@@ -202,7 +203,7 @@ export function useSpeechListener(options?: UseSpeechListenerOptions) {
           };
 
           recognition.onerror = (err: any) => {
-            console.warn('SpeechRecognition status:', err.error);
+            logger.warn('SpeechRecognition status:', err.error);
             if (err.error === 'no-speech') {
               // Crucial: No speech yet is normal, keep listening!
               setVoiceNotice('Listening actively... Speak when ready.');
@@ -236,7 +237,7 @@ export function useSpeechListener(options?: UseSpeechListenerOptions) {
 
           recognition.start();
         } catch (err: any) {
-          console.warn('Error starting speech recognition:', err);
+          logger.warn('Error starting speech recognition:', err);
           // If already started or browser throws, retry once if still listening
           if (isListeningRef.current) {
             restartTimerRef.current = setTimeout(() => {

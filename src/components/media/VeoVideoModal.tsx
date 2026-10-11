@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { VideoAspectRatio, VideoItem } from '../../types/media';
 import { soundFx } from '../../utils/audio';
+import { logger } from '../../utils/logger';
 
 interface VeoVideoModalProps {
   isOpen: boolean;
@@ -179,7 +180,7 @@ export const VeoVideoModal: React.FC<VeoVideoModalProps> = ({
             soundFx.playPurr();
           }
         } catch (pollErr: any) {
-          console.error('Polling error:', pollErr);
+          logger.error('Polling error:', pollErr);
           clearInterval(pollingRef.current!);
           setErrorMessage(pollErr.message || 'Error checking video status');
           setIsGenerating(false);
@@ -187,7 +188,7 @@ export const VeoVideoModal: React.FC<VeoVideoModalProps> = ({
       }, 2500);
 
     } catch (err: any) {
-      console.error('Video gen start error:', err);
+      logger.error('Video gen start error:', err);
       setErrorMessage(err.message || 'Error starting video animation');
       setIsGenerating(false);
     }

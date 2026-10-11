@@ -37,6 +37,7 @@ import { useSpeechListener } from '../../utils/useSpeechListener';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { getProviderMeta, FREE_MODEL_PRESETS } from '../../lib/providers';
 import type { LocalHostConfig, ExternalAIModelConfig } from '../../types/workbench';
+import { logger } from '../../utils/logger';
 
 interface SupruGenerativeStudioViewProps {
   onSendToChat?: (content: string, imageUrl?: string) => void;
@@ -387,7 +388,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
         }
       }
     } catch (err) {
-      console.error('Media synthesis error:', err);
+      logger.error('Media synthesis error:', err);
     } finally {
       setIsSynthesizing(false);
     }
@@ -419,7 +420,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
       oscillatorRef.current = osc;
       setIsPlayingAudio(true);
     } catch (e) {
-      console.warn('Audio synthesis unavailable:', e);
+      logger.warn('Audio synthesis unavailable:', e);
     }
   };
 
