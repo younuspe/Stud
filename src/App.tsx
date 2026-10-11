@@ -1179,6 +1179,7 @@ export default function App() {
               <SupruGenerativeStudioView
                 localConfig={localConfig}
                 workspaceRoot={workspaceRoot}
+                onOpenWorkspaceFolder={handleOpenWorkspaceFolder}
                 activeCustomModel={activeCustomModel}
                 onSendToChat={(text, img) => {
                   handleSendMessage(text, img ? { name: 'manifestation.png', mimeType: 'image/png', data: img } : undefined);
