@@ -591,7 +591,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
         }
       } else if (activeMode === 'app') {
         const appPrompt = [
-          'Build or modify a real multi-file software project from the user's request.',
+          "Build or modify a real multi-file software project from the user's request.",
           'Do not default to a static HTML prototype. Use the requested language and framework; if the user requests TypeScript, create TypeScript source files.',
           'Return ONLY one valid JSON object with this exact shape: {"summary":"brief explanation","files":[{"path":"relative/path.ext","content":"complete file contents"}]}. No Markdown fences or commentary outside JSON.',
           'Include all new or changed files needed for the requested feature, with complete contents. Keep existing working behavior unless asked to change it. For follow-up comments, modify the existing project files rather than starting over.',
