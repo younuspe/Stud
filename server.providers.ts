@@ -64,7 +64,7 @@ const PROVIDER_ALIASES: Record<string, string> = {
 };
 
 export function normalizeProvider(provider: string | undefined): string {
-  const p = provider || 'gemini';
+  const p = (provider || 'gemini').trim().toLowerCase();
   return PROVIDER_ALIASES[p] || p;
 }
 

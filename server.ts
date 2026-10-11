@@ -3,12 +3,14 @@ import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { exec, execSync } from 'child_process';
 import util from 'util';
 import { GoogleGenAI, GenerateVideosOperation } from '@google/genai';
 import { callProvider, testProvider, defaultModelFor } from './server.providers';
 import { PROVIDER_CATALOG, PROVIDER_ORDER, FREE_MODEL_PRESETS, getProviderMeta } from './src/lib/providers';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 
 const execPromise = util.promisify(exec);
 
@@ -20,8 +22,39 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
+// Security headers. CSP is disabled because Vite injects inline scripts and the
+// Studio renders generated HTML in sandboxed iframes; the rest of the helmet
+// defaults still apply.
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Rate limiting. Tests disable it via SUPRU_DISABLE_RATE_LIMIT=1.
+const rateLimitEnabled = process.env.SUPRU_DISABLE_RATE_LIMIT !== '1';
+const apiLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: () => !rateLimitEnabled,
+});
+// Tighter budget for endpoints that cost money/quota or spawn processes.
+const heavyLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  skip: () => !rateLimitEnabled,
+});
+app.use('/api', apiLimiter);
+const heavyPaths = [
+  '/api/chat', '/api/chat/stream', '/api/local-chat', '/api/studio/chat',
+  '/api/generate-image', '/api/generate-video', '/api/video-status',
+  '/api/terminal/execute', '/api/agent/step', '/api/agent/execute-step',
+  '/api/orchestrator/tool', '/api/provider/test', '/api/keys/test',
+];
+app.use(heavyPaths, heavyLimiter);
 
 /**
  * Endpoints that spawn shell commands or run project tooling are only safe to
@@ -2252,4 +2285,10 @@ async function startServer() {
   });
 }
 
-startServer();
+export { app, startServer };
+
+// Only boot when executed directly (tests import `app` instead).
+const entry = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : '';
+if (import.meta.url === entry) {
+  startServer();
+}
