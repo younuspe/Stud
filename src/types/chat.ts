@@ -15,6 +15,9 @@ export interface Message {
   attachment?: Attachment;
   persona?: PersonaType;
   isStreaming?: boolean;
+  /** Provider id and model that produced an assistant reply (e.g. "nvidia" / "openai"). */
+  provider?: string;
+  model?: string;
 }
 
 export interface ChatThread {

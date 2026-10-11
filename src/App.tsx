@@ -600,6 +600,8 @@ export default function App() {
 
     setIsGenerating(true);
     abortControllerRef.current = new AbortController();
+    let responseProvider: string | undefined;
+    let responseModel: string | undefined;
 
     try {
       // Resolve the active provider (explicitly added model wins, else local config).
@@ -679,6 +681,8 @@ export default function App() {
                 );
               }
               if (data.done) {
+                if (data.provider) responseProvider = data.provider;
+                if (data.model) responseModel = data.model;
                 break;
               }
             } catch {
@@ -749,7 +753,14 @@ export default function App() {
             ? {
                 ...t,
                 messages: t.messages.map((m) =>
-                  m.id === assistantMsgId ? { ...m, isStreaming: false } : m
+                  m.id === assistantMsgId
+                    ? {
+                        ...m,
+                        isStreaming: false,
+                        provider: responseProvider ?? m.provider,
+                        model: responseModel ?? m.model,
+                      }
+                    : m
                 ),
               }
             : t
