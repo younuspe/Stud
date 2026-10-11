@@ -7,6 +7,8 @@ import { fileURLToPath } from 'url';
 import { exec, execSync } from 'child_process';
 import util from 'util';
 import { GoogleGenAI, GenerateVideosOperation } from '@google/genai';
+import { callProvider, testProvider, defaultModelFor } from './server.providers';
+import { PROVIDER_CATALOG, PROVIDER_ORDER, FREE_MODEL_PRESETS, getProviderMeta } from './src/lib/providers';
 
 const execPromise = util.promisify(exec);
 
@@ -73,11 +75,20 @@ app.get('/api/status', (req, res) => {
   res.json({
     status: 'online',
     hasApiKey: Boolean(apiKey && apiKey !== 'MY_GEMINI_API_KEY'),
-    model: 'gemini-3.8-flash',
-    imageModel: 'gemini-3.1-flash-image-preview',
+    model: defaultModelFor('gemini'),
+    imageModel: 'gemini-2.5-flash-image',
     videoModel: 'veo-3.1-fast-generate-preview',
-    version: '2.5.0',
+    version: '2.6.0',
     app: 'Supru AI',
+  });
+});
+
+// Provider catalog + free model presets (consumed by the Add Model UI)
+app.get('/api/providers', (req, res) => {
+  res.json({
+    providers: PROVIDER_ORDER.map((id) => PROVIDER_CATALOG[id]),
+    presets: FREE_MODEL_PRESETS,
+    serverKeyAvailable: Boolean(apiKey && apiKey !== 'MY_GEMINI_API_KEY'),
   });
 });
 
@@ -260,7 +271,7 @@ open -a "$APP_DIR" 2>/dev/null || open "${appUrl}"
 });
 
 // ==========================================
-// FEATURE: Create & Edit Images using gemini-3.1-flash-image-preview
+// FEATURE: Create & Edit Images using gemini-2.5-flash-image
 // ==========================================
 app.post('/api/generate-image', async (req, res) => {
   try {
@@ -273,7 +284,7 @@ app.post('/api/generate-image', async (req, res) => {
     const validAspectRatios = ['1:1', '16:9', '9:16', '4:3', '3:4'];
     const selectedAspectRatio = validAspectRatios.includes(aspectRatio) ? aspectRatio : '1:1';
 
-    // If API key is available, call gemini-3.1-flash-image-preview
+    // If API key is available, call gemini-2.5-flash-image
     if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
       const contentsParts: any[] = [];
 
@@ -291,7 +302,7 @@ app.post('/api/generate-image', async (req, res) => {
       contentsParts.push({ text: prompt });
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-image-preview',
+        model: 'gemini-2.5-flash-image',
         contents: {
           parts: contentsParts,
         },
@@ -321,8 +332,47 @@ app.post('/api/generate-image', async (req, res) => {
           imageUrl: generatedImageUrl,
           text: textContent,
           isEdit: Boolean(sourceImage),
-          model: 'gemini-3.1-flash-image-preview',
+          model: 'gemini-2.5-flash-image',
         });
+      }
+    }
+
+    // Keyless free image synthesis via Pollinations (no API key required).
+    // Only for fresh generation — image *editing* still needs Gemini.
+    if (!sourceImage) {
+      const dims: Record<string, [number, number]> = {
+        '1:1': [1024, 1024],
+        '16:9': [1280, 720],
+        '9:16': [720, 1280],
+        '4:3': [1024, 768],
+        '3:4': [768, 1024],
+      };
+      const [w, h] = dims[selectedAspectRatio] || [1024, 1024];
+      const seed = Math.floor(Math.random() * 1_000_000);
+      // The free tier throttles large canvases; retry once at a small size.
+      const attempts: Array<[number, number]> = [
+        [w, h],
+        [256, 256],
+      ];
+      for (const [aw, ah] of attempts) {
+        try {
+          const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${aw}&height=${ah}&nologo=true&seed=${seed}`;
+          const imgRes = await fetch(url, { signal: AbortSignal.timeout(45000) });
+          if (!imgRes.ok) continue;
+          const type = imgRes.headers.get('content-type') || 'image/jpeg';
+          const buf = Buffer.from(await imgRes.arrayBuffer());
+          if (buf.length > 1000) {
+            return res.json({
+              imageUrl: `data:${type};base64,${buf.toString('base64')}`,
+              text: `✨ Free synthesis via Pollinations: "${prompt}"`,
+              isEdit: false,
+              model: 'pollinations-flux',
+              free: true,
+            });
+          }
+        } catch (pollErr) {
+          console.warn('Pollinations image synthesis failed:', (pollErr as any)?.message);
+        }
       }
     }
 
@@ -330,9 +380,9 @@ app.post('/api/generate-image', async (req, res) => {
     const fallbackImage = generateSimulatedImageSvg(prompt, Boolean(sourceImage), selectedAspectRatio);
     return res.json({
       imageUrl: fallbackImage,
-      text: `✨ Supru AI synthesized visual: "${prompt}" using gemini-3.1-flash-image-preview`,
+      text: `✨ Supru AI synthesized visual: "${prompt}" using gemini-2.5-flash-image`,
       isEdit: Boolean(sourceImage),
-      model: 'gemini-3.1-flash-image-preview',
+      model: 'gemini-2.5-flash-image',
       simulated: true,
     });
   } catch (error: any) {
@@ -347,7 +397,7 @@ app.post('/api/generate-image', async (req, res) => {
       text: `Image generated via fallback due to API status: ${error.message}`,
       warning: error.message,
       isEdit: Boolean(req.body.sourceImage),
-      model: 'gemini-3.1-flash-image-preview',
+      model: 'gemini-2.5-flash-image',
     });
   }
 });
@@ -640,7 +690,7 @@ function generateSimulatedImageSvg(prompt: string, isEdit: boolean, aspectRatio:
 // Chat Completion endpoint (Non-streaming)
 app.post('/api/chat', async (req, res) => {
   try {
-    const { messages, persona = 'supru_cat', temperature = 0.7, attachment } = req.body;
+    const { messages, persona = 'supru_cat', temperature = 0.7, attachment, provider, modelId, apiKey: customKey, endpointUrl } = req.body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({ error: 'Messages array is required' });
@@ -648,40 +698,34 @@ app.post('/api/chat', async (req, res) => {
 
     const systemInstruction = PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat;
 
-    // If Gemini API key is configured, use real Gemini 3.8 Flash
-    if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
-      const contentsPayload: any[] = [];
-
-      for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
-        const role = msg.role === 'user' ? 'user' : 'model';
-        const parts: any[] = [];
-
-        // If the latest message has an image attachment
-        if (i === messages.length - 1 && attachment && attachment.data && attachment.mimeType) {
-          parts.push({
-            inlineData: {
-              mimeType: attachment.mimeType,
-              data: attachment.data.replace(/^data:[^;]+;base64,/, ''),
-            },
-          });
-        }
-
-        parts.push({ text: msg.content });
-        contentsPayload.push({ role, parts });
+    // Route through a client-selected provider (NVIDIA NIM, Groq, OpenRouter, ...)
+    if (provider && provider !== 'gemini_cloud' && provider !== 'offline_core') {
+      const result = await callProvider(
+        { provider, modelId, apiKey: customKey, endpointUrl },
+        messages.map((m: any) => ({ role: m.role, content: m.content })),
+        { systemInstruction, temperature }
+      );
+      if (result.ok) {
+        return res.json({ reply: result.reply, provider: result.provider, model: result.model });
       }
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: contentsPayload,
-        config: {
-          systemInstruction,
-          temperature: typeof temperature === 'number' ? temperature : 0.7,
-        },
+      return res.json({
+        reply: generateSimulatedSupruResponse(
+          messages[messages.length - 1]?.content || '',
+          persona
+        ),
+        simulated: true,
+        warning: result.error,
       });
+    }
 
-      const reply = response.text || "Meow! I'm purring over your question, but returned an empty thought. Let's try again!";
-      return res.json({ reply });
+    // If Gemini API key is configured, use real Gemini
+    if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
+      const result = await callProvider(
+        { provider: 'gemini', modelId: modelId || defaultModelFor('gemini'), apiKey: customKey || apiKey },
+        messages.map((m: any) => ({ role: m.role, content: m.content })),
+        { systemInstruction, temperature }
+      );
+      if (result.ok) return res.json({ reply: result.reply });
     }
 
     // Graceful fallback for local development or sandbox without key
@@ -709,7 +753,7 @@ app.post('/api/chat/stream', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders?.();
 
-  const { messages, persona = 'supru_cat', temperature = 0.7, attachment } = req.body;
+  const { messages, persona = 'supru_cat', temperature = 0.7, attachment, provider, modelId, apiKey: customKey, endpointUrl, systemInstruction: customSystem, maxOutputTokens } = req.body;
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     res.write(`data: ${JSON.stringify({ error: 'Messages required' })}\n\n`);
@@ -720,7 +764,7 @@ app.post('/api/chat/stream', async (req, res) => {
   const validMessages = messages.filter((m) => m && typeof m.content === 'string' && m.content.trim().length > 0);
   const effectiveMessages = validMessages.length > 0 ? validMessages : messages;
   const latestUserMsg = effectiveMessages[effectiveMessages.length - 1]?.content || '';
-  const systemInstruction = PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat;
+  const systemInstruction = (typeof customSystem === 'string' && customSystem.trim()) || PERSONA_PROMPTS[persona] || PERSONA_PROMPTS.supru_cat;
 
   // Stream high-speed 2027 futuristic responses smoothly
   const streamFallbackResponse = async (customText?: string) => {
@@ -743,69 +787,57 @@ app.post('/api/chat/stream', async (req, res) => {
     }
   };
 
-  if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
-    try {
-      const contentsPayload: any[] = [];
+  // Prefer a client-selected real provider when supplied. When the user has no
+  // cloud key, default to the keyless free provider so chat is never canned.
+  let activeProvider: string | null;
+  if (provider === 'offline_core') {
+    activeProvider = null;
+  } else if (provider && provider !== 'gemini_cloud') {
+    activeProvider = provider;
+  } else if (apiKey && apiKey !== 'MY_GEMINI_API_KEY') {
+    activeProvider = 'gemini';
+  } else {
+    activeProvider = 'pollinations';
+  }
 
-      for (let i = 0; i < effectiveMessages.length; i++) {
-        const msg = effectiveMessages[i];
-        const role = msg.role === 'user' ? 'user' : 'model';
-        const parts: any[] = [];
-
-        if (i === effectiveMessages.length - 1 && attachment && attachment.data && attachment.mimeType) {
-          parts.push({
-            inlineData: {
-              mimeType: attachment.mimeType,
-              data: attachment.data.replace(/^data:[^;]+;base64,/, ''),
-            },
-          });
-        }
-
-        parts.push({ text: msg.content || 'Continue' });
-        contentsPayload.push({ role, parts });
+  if (activeProvider) {
+    const result = await callProvider(
+      {
+        provider: activeProvider,
+        modelId: modelId || defaultModelFor(activeProvider),
+        apiKey: customKey || (activeProvider === 'gemini' ? apiKey : undefined),
+        endpointUrl,
+      },
+      effectiveMessages.map((m: any) => ({ role: m.role, content: m.content || 'Continue' })),
+      {
+        systemInstruction,
+        temperature,
+        maxTokens: typeof maxOutputTokens === 'number' ? maxOutputTokens : undefined,
       }
+    );
 
-      // Fast connection timeout so the user never feels a freeze
-      const streamInitTimeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Stream init timeout (2.5s)')), 2500)
-      );
-
-      const streamPromise = ai.models.generateContentStream({
-        model: 'gemini-3.8-flash',
-        contents: contentsPayload,
-        config: {
-          systemInstruction,
-          temperature: typeof temperature === 'number' ? temperature : 0.7,
-        },
-      });
-
-      const stream = await Promise.race([streamPromise, streamInitTimeout]);
-
-      let tokenCount = 0;
-      for await (const chunk of stream) {
+    if (result.ok && result.reply) {
+      // Emit the real completion in smooth chunks for a streaming feel.
+      const tokens = result.reply.match(/\S+\s*|\s+/g) || [result.reply];
+      for (const token of tokens) {
         if (res.writableEnded) break;
-        const text = chunk.text;
-        if (text) {
-          tokenCount++;
-          res.write(`data: ${JSON.stringify({ chunk: text })}\n\n`);
-        }
+        res.write(`data: ${JSON.stringify({ chunk: token })}\n\n`);
+        await new Promise((resolve) => setTimeout(resolve, 4));
       }
-
-      if (tokenCount > 0 && !res.writableEnded) {
-        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-        return res.end();
-      } else if (!res.writableEnded) {
-        return streamFallbackResponse();
-      }
-    } catch (apiError: any) {
-      console.warn('Gemini cloud stream fallback triggered:', apiError.message);
       if (!res.writableEnded) {
-        return streamFallbackResponse();
+        res.write(`data: ${JSON.stringify({ done: true, provider: result.provider, model: result.model })}\n\n`);
+        return res.end();
       }
+      return;
+    }
+
+    // Provider failed: surface a concise notice then fall back to the built-in engine.
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ notice: result.error, provider: result.provider })}\n\n`);
     }
   }
 
-  // Streaming fallback when running offline or testing
+  // Streaming fallback when running offline, testing, or without credentials
   return streamFallbackResponse();
 });
 
@@ -905,159 +937,57 @@ app.post('/api/terminal/execute', async (req, res) => {
 // LOCAL HOST & CUSTOM AI PROVIDER TEST / PROXY
 // ==========================================
 app.post('/api/provider/test', async (req, res) => {
-  const { provider, endpointUrl = 'http://localhost:11434', modelName = 'llama3' } = req.body;
+  const { provider, endpointUrl, modelName, modelId, apiKey: customKey } = req.body;
 
-  try {
-    if (provider === 'ollama_local') {
-      const url = `${endpointUrl.replace(/\/$/, '')}/api/tags`;
-      const response = await fetch(url, { signal: AbortSignal.timeout(3500) });
-      if (response.ok) {
-        const data = await response.json();
-        return res.json({
-          status: 'online',
-          provider,
-          models: data.models?.map((m: any) => m.name) || [],
-          message: `Connected to Ollama! Found ${data.models?.length || 0} local models.`,
-        });
-      }
-    } else if (provider === 'lmstudio_local' || provider === 'custom_local') {
-      const url = `${endpointUrl.replace(/\/$/, '')}/models`;
-      const response = await fetch(url, { signal: AbortSignal.timeout(3500) });
-      if (response.ok) {
-        const data = await response.json();
-        return res.json({
-          status: 'online',
-          provider,
-          models: data.data?.map((m: any) => m.id) || [],
-          message: `Connected to local server at ${endpointUrl}!`,
-        });
-      }
-    }
+  const result = await testProvider({
+    provider,
+    modelId: modelId || modelName,
+    apiKey: customKey,
+    endpointUrl,
+  });
 
-    return res.json({
-      status: 'offline',
-      provider,
-      message: `Could not reach ${endpointUrl}. Ensure your local model server (Ollama or LM Studio) is running.`,
-    });
-  } catch (err: any) {
-    return res.json({
-      status: 'offline',
-      provider,
-      message: `Connection to local host at ${endpointUrl} timed out or failed: ${err.message}.`,
-    });
-  }
+  return res.json({ provider, ...result });
 });
 
 // Proxy to local host or custom models
 app.post('/api/local-chat', async (req, res) => {
-  const { messages, provider, endpointUrl, modelName = 'llama3', temperature = 0.7, apiKey: customKey } = req.body;
+  const { messages = [], provider, endpointUrl, modelName, temperature = 0.7, apiKey: customKey } = req.body;
 
-  try {
-    if (provider === 'ollama_local' || provider === 'ollama') {
-      const targetUrl = endpointUrl || 'http://localhost:11434';
-      const ollamaUrl = `${targetUrl.replace(/\/$/, '')}/api/chat`;
-      const ollamaRes = await fetch(ollamaUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: modelName,
-          messages: messages.map((m: any) => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.content,
-          })),
-          stream: false,
-          options: { temperature },
-        }),
-      });
-
-      if (ollamaRes.ok) {
-        const data = await ollamaRes.json();
-        return res.json({ reply: data.message?.content || 'No response from local Ollama model.' });
-      }
-    } else if (
-      provider === 'lmstudio_local' || 
-      provider === 'lmstudio' || 
-      provider === 'custom_local' || 
-      provider === 'custom' ||
-      provider === 'openai' ||
-      provider === 'groq' ||
-      provider === 'deepseek'
-    ) {
-      const defaultUrls: Record<string, string> = {
-        lmstudio: 'http://localhost:1234/v1',
-        lmstudio_local: 'http://localhost:1234/v1',
-        groq: 'https://api.groq.com/openai/v1',
-        deepseek: 'https://api.deepseek.com/v1',
-        openai: 'https://api.openai.com/v1',
-        custom_local: 'http://localhost:1234/v1',
-        custom: 'http://localhost:1234/v1',
-      };
-      const baseUrl = endpointUrl || defaultUrls[provider] || 'http://localhost:1234/v1';
-      const openaiUrl = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (customKey) {
-        headers['Authorization'] = `Bearer ${customKey}`;
-      }
-
-      const lmRes = await fetch(openaiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: modelName,
-          messages: messages.map((m: any) => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.content,
-          })),
-          temperature,
-        }),
-      });
-
-      if (lmRes.ok) {
-        const data = await lmRes.json();
-        return res.json({ reply: data.choices?.[0]?.message?.content || 'No response from model endpoint.' });
-      }
-    } else if (provider === 'anthropic') {
-      if (customKey) {
-        const claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': customKey,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: modelName || 'claude-3-7-sonnet-20250219',
-            max_tokens: 2048,
-            messages: messages.map((m: any) => ({
-              role: m.role === 'assistant' ? 'assistant' : 'user',
-              content: m.content,
-            })),
-          }),
-        });
-
-        if (claudeRes.ok) {
-          const data = await claudeRes.json();
-          const reply = data.content?.[0]?.text || 'No response from Claude.';
-          return res.json({ reply });
-        }
-      }
-    }
-
-    // Fallback to built-in intelligent simulated response
-    const lastMsg = messages[messages.length - 1]?.content || '';
-    return res.json({
-      reply: generateSimulatedSupruResponse(lastMsg, 'supru_cat'),
-      simulated: true,
-      note: `Connected through Supru engine for ${modelName}.`,
-    });
-  } catch (err: any) {
-    const lastMsg = req.body.messages?.[req.body.messages.length - 1]?.content || '';
-    return res.json({
-      reply: generateSimulatedSupruResponse(lastMsg, 'supru_cat'),
-      simulated: true,
-      warning: `Model request encountered: ${err.message}`,
-    });
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: 'messages array is required' });
   }
+
+  // Normalise legacy provider aliases to catalog ids.
+  const aliasMap: Record<string, string> = {
+    ollama_local: 'ollama',
+    lmstudio_local: 'lmstudio',
+    custom_local: 'custom',
+  };
+  const normalizedProvider = aliasMap[provider] || provider || 'custom';
+
+  const result = await callProvider(
+    {
+      provider: normalizedProvider,
+      modelId: modelName,
+      apiKey: customKey,
+      endpointUrl,
+    },
+    messages.map((m: any) => ({ role: m.role, content: m.content })),
+    { temperature }
+  );
+
+  if (result.ok) {
+    return res.json({ reply: result.reply, provider: result.provider, model: result.model });
+  }
+
+  // Graceful fallback so the UI never dead-ends.
+  const lastMsg = messages[messages.length - 1]?.content || '';
+  return res.json({
+    reply: generateSimulatedSupruResponse(lastMsg, 'supru_cat'),
+    simulated: true,
+    warning: result.error,
+    note: `Fell back to the built-in engine (${result.provider}).`,
+  });
 });
 
 // ==========================================
@@ -1180,10 +1110,40 @@ const handleAgentStep = async (req: express.Request, res: express.Response) => {
       }
     }
 
-    // Step is an analytical reasoning or code generation task
+    // Step is an analytical reasoning or code generation task — ask a real model.
+    const priorContext = Array.isArray(previousOutputs) && previousOutputs.length
+      ? `\n\nPrior step outputs:\n${previousOutputs.slice(-4).map((o: any) => `- ${typeof o === 'string' ? o : o?.output || ''}`).join('\n')}`
+      : '';
+    const stepPrompt = [
+      `Objective: ${objective || 'Complete the engineering task'}`,
+      `Current step: ${step?.title || step?.description || 'Analysis'}`,
+      step?.description ? `Details: ${step.description}` : '',
+      priorContext,
+      'Respond with the concrete result of this step: findings, decisions, and any code or commands needed. Be concise and specific.',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    const provider = process.env.SUPRU_DEFAULT_PROVIDER || 'pollinations';
+    const result = await callProvider(
+      { provider, modelId: defaultModelFor(provider) },
+      [{ role: 'user', content: stepPrompt }],
+      { temperature: 0.3, maxTokens: 1024 }
+    );
+
+    if (result.ok && result.reply) {
+      return res.json({
+        status: 'completed',
+        output: result.reply,
+        provider: result.provider,
+        model: result.model,
+      });
+    }
+
     return res.json({
       status: 'completed',
-      output: `Autonomous Headless Step Completed: "${step?.title || 'Execution Step'}"\nAnalysis validated for objective: ${objective || 'Code Task'}.\nDiagnostics passed with zero breaking regressions.`,
+      output: `Step "${step?.title || 'Execution'}" could not reach a model (${result.error}).`,
+      warning: result.error,
     });
   } catch (err: any) {
     return res.status(500).json({ error: err.message || 'Agent step execution failed' });
@@ -1194,143 +1154,161 @@ app.post('/api/agent/execute-step', handleAgentStep);
 app.post('/api/agent/step', handleAgentStep);
 
 // ==========================================
+// ORCHESTRATOR — REAL WORKSPACE TOOL EXECUTION
+// ==========================================
+// Runs genuine project checks instead of returning canned strings, so the
+// Akhada / Orchestrator tool panel reflects the actual workspace state.
+app.post('/api/orchestrator/tool', async (req, res) => {
+  const { tool, project = 'supru', chunkSize = 4096 } = req.body || {};
+  const root = process.cwd();
+  const run = async (cmd: string, timeout = 60000) => {
+    try {
+      const { stdout, stderr } = await execPromise(cmd, {
+        cwd: root,
+        timeout,
+        maxBuffer: 1024 * 1024 * 8,
+        env: { ...process.env, TERM: 'dumb', PAGER: 'cat', CI: '1' },
+      });
+      return { code: 0, out: `${stdout || ''}${stderr || ''}`.trim() };
+    } catch (error: any) {
+      return {
+        code: error.code || 1,
+        out: `${error.stdout || ''}${error.stderr || ''}`.trim() || error.message || 'Execution error',
+      };
+    }
+  };
+  const countFiles = (dir: string, ext: RegExp, skip = /node_modules|dist|\.git|target/): string[] => {
+    const found: string[] = [];
+    const walk = (d: string) => {
+      let entries: fs.Dirent[] = [];
+      try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+      for (const e of entries) {
+        if (skip.test(e.name)) continue;
+        const full = path.join(d, e.name);
+        if (e.isDirectory()) walk(full);
+        else if (ext.test(e.name)) found.push(full);
+      }
+    };
+    walk(dir);
+    return found;
+  };
+
+  const started = Date.now();
+  try {
+    let output = '';
+    switch (tool) {
+      case 'linter': {
+        const r = await run('npx tsc --noEmit 2>&1');
+        const errs = (r.out.match(/error TS\d+/g) || []).length;
+        output = `🔍 Strict Linter / Type Check (tsc --noEmit)\n${r.out || 'No diagnostics.'}\n\nExit ${r.code} • ${errs} error(s) • ${Date.now() - started}ms`;
+        break;
+      }
+      case 'type_checker': {
+        const r = await run('npx tsc --noEmit 2>&1');
+        output = `📐 TypeScript Type Checker (noEmit)\n${r.out || 'Typecheck succeeded — full type safety verified.'}\n\nExit ${r.code} • ${Date.now() - started}ms`;
+        break;
+      }
+      case 'test_runner': {
+        const pkg = (() => { try { return JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')); } catch { return {}; } })();
+        if (pkg.scripts?.test) {
+          const r = await run('npm test --silent 2>&1', 120000);
+          output = `🧪 Test Runner (npm test)\n${r.out}\n\nExit ${r.code} • ${Date.now() - started}ms`;
+        } else {
+          const specs = countFiles(root, /\.(test|spec)\.(ts|tsx|js|jsx|py|rs)$/);
+          output = `🧪 Test Runner\nNo "test" script in package.json.\nDiscovered ${specs.length} spec file(s) on disk.\nAdd a test script to run them automatically.`;
+        }
+        break;
+      }
+      case 'ast_parser': {
+        const ts = countFiles(root, /\.(ts|tsx)$/);
+        const rs = countFiles(root, /\.rs$/);
+        const totalLines = [...ts, ...rs].reduce((n, f) => { try { return n + fs.readFileSync(f, 'utf8').split('\n').length; } catch { return n; } }, 0);
+        output = `🌲 AST / Source Inventory\nTypeScript modules: ${ts.length}\nRust modules: ${rs.length}\nTotal source lines: ${totalLines}\nWorkspace root: ${root}`;
+        break;
+      }
+      case 'git_diff': {
+        const r = await run('git status --short && echo "---" && git diff --stat');
+        output = `🔀 Git Status & Diff\n${r.out || 'Working tree clean.'}`;
+        break;
+      }
+      case 'token_budgeter': {
+        const ts = countFiles(root, /\.(ts|tsx|js|jsx|py|rs|md|css)$/);
+        const chars = ts.reduce((n, f) => { try { return n + fs.statSync(f).size; } catch { return n; } }, 0);
+        const approxTokens = Math.round(chars / 4);
+        output = `⚡ Token Budgeter\nTracked files: ${ts.length}\nApprox. context tokens: ${approxTokens.toLocaleString()}\nRequested chunk window: ${chunkSize} tokens\nDynamic compression headroom: ${Math.max(0, chunkSize * 4 - approxTokens).toLocaleString()} chars`;
+        break;
+      }
+      case 'debugger': {
+        const r = await run('node -e "const s=process.memoryUsage();console.log(JSON.stringify({heapUsedMB:(s.heapUsed/1048576).toFixed(1),rssMB:(s.rss/1048576).toFixed(1)}))"');
+        output = `🐛 Runtime Debugger Probe\nNode ${process.version}\n${r.out}\nUptime: ${process.uptime().toFixed(1)}s • Platform: ${process.platform}`;
+        break;
+      }
+      case 'package_manager': {
+        const r = await run('npm audit --json 2>/dev/null || true', 90000);
+        let vuln = 'n/a';
+        try {
+          const audit = JSON.parse(r.out || '{}');
+          const v = audit.metadata?.vulnerabilities;
+          vuln = v ? `${v.total} total (${v.critical || 0} critical, ${v.high || 0} high)` : 'unavailable (offline)';
+        } catch { vuln = 'unavailable (offline)'; }
+        const pkg = (() => { try { return JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')); } catch { return {}; } })();
+        const depCount = Object.keys({ ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) }).length;
+        output = `📦 Package Manager & Security Audit\nDependencies: ${depCount}\nVulnerabilities: ${vuln}`;
+        break;
+      }
+      case 'api_checker': {
+        const r = await run('grep -cE "app\\.(get|post|put|delete)\\(" server.ts');
+        const probe = await run('curl -s -o /dev/null -w "%{http_code}" http://localhost:' + (process.env.PORT || 3000) + '/api/status');
+        output = `🌐 API Contract Inventory\nDeclared server routes: ${r.out || '0'}\nHealth probe: GET /api/status → ${probe.out || 'n/a'}`;
+        break;
+      }
+      default:
+        return res.status(400).json({ error: `Unknown tool "${tool}"` });
+    }
+    return res.json({
+      tool,
+      project,
+      status: 'success',
+      output,
+      durationMs: Date.now() - started,
+      timestamp: Date.now(),
+    });
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Tool execution failed' });
+  }
+});
+
+// ==========================================
 // GOOGLE AI STUDIO / EXTERNAL MODEL CONNECTIONS
 // ==========================================
 
 // Test connection to any external AI provider or model
 app.post('/api/studio/test-connection', async (req, res) => {
   const { provider, modelId, apiKey: customKey, endpointUrl } = req.body;
-  const startTime = Date.now();
 
-  try {
-    if (provider === 'gemini') {
-      const activeKey = customKey || apiKey;
-      if (!activeKey || activeKey === 'MY_GEMINI_API_KEY') {
-        return res.json({
-          status: 'online',
-          latencyMs: 38,
-          message: 'Gemini Cloud connection ready (Standard Engine mode).',
-        });
-      }
+  const aliasMap: Record<string, string> = {
+    ollama_local: 'ollama',
+    lmstudio_local: 'lmstudio',
+    custom_local: 'custom',
+    gemini_cloud: 'gemini',
+  };
+  const normalizedProvider = aliasMap[provider] || provider || 'gemini';
 
-      const client = new GoogleGenAI({
-        apiKey: activeKey,
-        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-      });
+  const result = await testProvider({
+    provider: normalizedProvider,
+    modelId,
+    // Fall back to a server-side Gemini key when the client supplied none.
+    apiKey: customKey || (normalizedProvider === 'gemini' ? apiKey : undefined),
+    endpointUrl,
+  });
 
-      const response = await client.models.generateContent({
-        model: modelId || 'gemini-3.8-flash',
-        contents: 'ping',
-        config: { maxOutputTokens: 5 },
-      });
-
-      const latencyMs = Date.now() - startTime;
-      return res.json({
-        status: 'online',
-        latencyMs,
-        message: `Successfully connected to Google Gemini (${modelId || 'gemini-3.8-flash'}) in ${latencyMs}ms!`,
-      });
-    }
-
-    if (provider === 'openai' || provider === 'deepseek' || provider === 'groq') {
-      const defaultEndpoints: Record<string, string> = {
-        openai: 'https://api.openai.com/v1',
-        deepseek: 'https://api.deepseek.com/v1',
-        groq: 'https://api.groq.com/openai/v1',
-      };
-      const url = (endpointUrl || defaultEndpoints[provider] || 'https://api.openai.com/v1').replace(/\/$/, '');
-
-      if (!customKey) {
-        return res.json({
-          status: 'online',
-          latencyMs: 45,
-          message: `${provider.toUpperCase()} simulation ready. Enter custom API key for direct cloud queries.`,
-        });
-      }
-
-      const testRes = await fetch(`${url}/models`, {
-        headers: { Authorization: `Bearer ${customKey}` },
-        signal: AbortSignal.timeout(5000),
-      });
-
-      const latencyMs = Date.now() - startTime;
-      if (testRes.ok) {
-        return res.json({
-          status: 'online',
-          latencyMs,
-          message: `Connected to ${provider.toUpperCase()} API (${modelId}) in ${latencyMs}ms!`,
-        });
-      } else {
-        return res.json({
-          status: 'offline',
-          latencyMs,
-          message: `${provider.toUpperCase()} responded with status ${testRes.status}: ${testRes.statusText}`,
-        });
-      }
-    }
-
-    if (provider === 'anthropic') {
-      if (!customKey) {
-        return res.json({
-          status: 'online',
-          latencyMs: 40,
-          message: 'Anthropic Claude simulator ready. Enter custom x-api-key for live cloud dispatch.',
-        });
-      }
-
-      const testRes = await fetch('https://api.anthropic.com/v1/models', {
-        headers: {
-          'x-api-key': customKey,
-          'anthropic-version': '2023-06-01',
-        },
-        signal: AbortSignal.timeout(5000),
-      });
-
-      const latencyMs = Date.now() - startTime;
-      return res.json({
-        status: testRes.ok ? 'online' : 'offline',
-        latencyMs,
-        message: testRes.ok ? `Connected to Anthropic Claude in ${latencyMs}ms!` : `Anthropic API error: ${testRes.statusText}`,
-      });
-    }
-
-    if (provider === 'ollama' || provider === 'lmstudio' || provider === 'custom') {
-      const url = endpointUrl || (provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234/v1');
-      const pingUrl = provider === 'ollama' ? `${url.replace(/\/$/, '')}/api/tags` : `${url.replace(/\/$/, '')}/models`;
-
-      try {
-        const pingRes = await fetch(pingUrl, { signal: AbortSignal.timeout(3500) });
-        const latencyMs = Date.now() - startTime;
-        if (pingRes.ok) {
-          return res.json({
-            status: 'online',
-            latencyMs,
-            message: `Connected to local server at ${url} in ${latencyMs}ms!`,
-          });
-        }
-      } catch (err: any) {
-        // Fall through to offline notice
-      }
-
-      return res.json({
-        status: 'offline',
-        latencyMs: Date.now() - startTime,
-        message: `Could not reach ${url}. Ensure server is running or CORS is permitted.`,
-      });
-    }
-
-    return res.json({
-      status: 'online',
-      latencyMs: 25,
-      message: 'Connection verified.',
-    });
-  } catch (error: any) {
-    return res.json({
-      status: 'offline',
-      latencyMs: Date.now() - startTime,
-      message: error.message || 'Connection failed',
-    });
-  }
+  return res.json({
+    status: result.status,
+    latencyMs: result.latencyMs,
+    message: result.message,
+    models: result.models,
+    provider: normalizedProvider,
+  });
 });
 
 // Stored API keys vault
@@ -1378,7 +1356,7 @@ app.post('/api/studio/generate', async (req, res) => {
     return res.status(400).json({ error: 'Prompt message is required' });
   }
 
-  const modelId = modelConfig.modelId || 'gemini-3.8-flash';
+  const modelId = modelConfig.modelId || 'gemini-2.0-flash';
   const provider = modelConfig.provider || 'gemini';
   const customKey = modelConfig.apiKey;
   const systemInstruction = settings.systemInstruction || 
@@ -1411,7 +1389,7 @@ If the language is HTML, create a single self-contained document with HTML5, CSS
         );
 
         const apiPromise = client.models.generateContent({
-          model: modelId.startsWith('gemini') ? modelId : 'gemini-3.8-flash',
+          model: modelId.startsWith('gemini') ? modelId : 'gemini-2.0-flash',
           contents: contentsPayload,
           config: {
             systemInstruction,
@@ -1437,49 +1415,33 @@ If the language is HTML, create a single self-contained document with HTML5, CSS
     }
   }
 
-  // 2. Try External Provider if customKey provided (OpenAI, DeepSeek, Groq)
-  if ((provider === 'openai' || provider === 'deepseek' || provider === 'groq') && customKey) {
-    try {
-      const defaultEndpoints: Record<string, string> = {
-        openai: 'https://api.openai.com/v1',
-        deepseek: 'https://api.deepseek.com/v1',
-        groq: 'https://api.groq.com/openai/v1',
-      };
-      const url = (modelConfig.endpointUrl || defaultEndpoints[provider] || 'https://api.openai.com/v1').replace(/\/$/, '');
-
-      const extRes = await fetch(`${url}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${customKey}`,
+  // 2. Any other provider (NVIDIA NIM, Groq, OpenRouter, Mistral, keyless
+  //    Pollinations, local servers, ...) via the unified provider layer.
+  if (provider && provider !== 'gemini') {
+    const result = await callProvider(
+      { provider, modelId, apiKey: customKey, endpointUrl: modelConfig.endpointUrl },
+      [
+        {
+          role: 'user',
+          content: `User Request: ${prompt}\n\nCurrent Code In Editor:\n\`\`\`${language}\n${currentCode}\n\`\`\``,
         },
-        body: JSON.stringify({
-          model: modelId,
-          messages: [
-            { role: 'system', content: systemInstruction },
-            {
-              role: 'user',
-              content: `User Request: ${prompt}\n\nCurrent Code In Editor:\n\`\`\`${language}\n${currentCode}\n\`\`\``
-            }
-          ],
-          temperature: typeof settings.temperature === 'number' ? settings.temperature : 0.7,
-        }),
-      });
-
-      if (extRes.ok) {
-        const data = await extRes.json();
-        const responseText = data.choices?.[0]?.message?.content || '';
-        const extracted = extractCodeFromMarkdown(responseText, language);
-        return res.json({
-          code: extracted.code || currentCode,
-          explanation: extracted.explanation || `Synthesized via ${provider.toUpperCase()} (${modelId})`,
-          model: modelId,
-          provider,
-        });
+      ],
+      {
+        systemInstruction,
+        temperature: typeof settings.temperature === 'number' ? settings.temperature : 0.7,
+        maxTokens: typeof settings.maxOutputTokens === 'number' ? settings.maxOutputTokens : undefined,
       }
-    } catch (extErr: any) {
-      console.warn('External provider error, falling back:', extErr.message);
+    );
+    if (result.ok && result.reply) {
+      const extracted = extractCodeFromMarkdown(result.reply, language);
+      return res.json({
+        code: extracted.code || currentCode,
+        explanation: extracted.explanation || `Synthesized via ${provider} (${result.model})`,
+        model: result.model,
+        provider,
+      });
     }
+    console.warn(`Studio generate: ${provider} failed — ${result.error}`);
   }
 
   // 3. High quality built-in code synthesis fallback engine
@@ -1508,7 +1470,7 @@ app.post('/api/studio/chat', async (req, res) => {
     return res.status(400).json({ error: 'Messages array is required' });
   }
 
-  const modelId = modelConfig.modelId || 'gemini-3.8-flash';
+  const modelId = modelConfig.modelId || 'gemini-2.0-flash';
   const provider = modelConfig.provider || 'gemini';
   const customKey = modelConfig.apiKey;
   const activeKey = customKey || apiKey;
@@ -1545,7 +1507,7 @@ Guidelines:
       );
 
       const apiPromise = client.models.generateContent({
-        model: modelId.startsWith('gemini') ? modelId : 'gemini-3.8-flash',
+        model: modelId.startsWith('gemini') ? modelId : 'gemini-2.0-flash',
         contents: contents as any,
         config: {
           systemInstruction,
@@ -1569,49 +1531,31 @@ Guidelines:
     }
   }
 
-  // 2. External Provider (OpenAI / DeepSeek / Groq)
-  if ((provider === 'openai' || provider === 'deepseek' || provider === 'groq') && customKey) {
-    try {
-      const defaultEndpoints: Record<string, string> = {
-        openai: 'https://api.openai.com/v1',
-        deepseek: 'https://api.deepseek.com/v1',
-        groq: 'https://api.groq.com/openai/v1',
-      };
-      const url = (modelConfig.endpointUrl || defaultEndpoints[provider] || 'https://api.openai.com/v1').replace(/\/$/, '');
-
-      const extRes = await fetch(`${url}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${customKey}`,
-        },
-        body: JSON.stringify({
-          model: modelId,
-          messages: [
-            { role: 'system', content: systemInstruction },
-            ...messages.map((m: any) => ({
-              role: m.role === 'assistant' ? 'assistant' : 'user',
-              content: m.content || m.text || '',
-            })),
-          ],
-          temperature: typeof settings.temperature === 'number' ? settings.temperature : 0.7,
-        }),
-      });
-
-      if (extRes.ok) {
-        const data = await extRes.json();
-        const replyText = data.choices?.[0]?.message?.content || '';
-        const extracted = extractCodeFromMarkdown(replyText, language);
-        return res.json({
-          reply: replyText,
-          code: extracted.code || null,
-          model: modelId,
-          provider,
-        });
+  // 2. Any other provider (NVIDIA NIM, Groq, OpenRouter, Mistral, keyless
+  //    Pollinations, local servers, ...) via the unified provider layer.
+  if (provider && provider !== 'gemini') {
+    const result = await callProvider(
+      { provider, modelId, apiKey: customKey, endpointUrl: modelConfig.endpointUrl },
+      messages.map((m: any) => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.content || m.text || '',
+      })),
+      {
+        systemInstruction,
+        temperature: typeof settings.temperature === 'number' ? settings.temperature : 0.7,
+        maxTokens: typeof settings.maxOutputTokens === 'number' ? settings.maxOutputTokens : undefined,
       }
-    } catch (extErr: any) {
-      console.warn('Copilot external provider error:', extErr.message);
+    );
+    if (result.ok && result.reply) {
+      const extracted = extractCodeFromMarkdown(result.reply, language);
+      return res.json({
+        reply: result.reply,
+        code: extracted.code || null,
+        model: result.model,
+        provider,
+      });
     }
+    console.warn(`Copilot ${provider} failed — ${result.error}`);
   }
 
   // 3. Fallback intelligent response for Supru Code

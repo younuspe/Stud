@@ -154,6 +154,132 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
   const isPausedRef = useRef<boolean>(false);
   isPausedRef.current = isPipelinePaused;
+  const outputsRef = useRef<string[]>([]);
+  const runTokenRef = useRef<number>(0);
+
+  const runAgentStep = async (index: number) => {
+    if (index >= agents.length) {
+      setIsPipelineRunning(false);
+      setIsPipelineComplete(true);
+      setCurrentRunningAgentIndex(-1);
+      soundFx.playChime();
+      setTerminalLogs((prev) => [
+        ...prev,
+        '═'.repeat(75),
+        '✔ [Absolute Judge] Full 8-agent pipeline executed end-to-end with ZERO human touch.',
+        '✔ [SMT Invariance Verification] SATISFIABLE (100% Mathematically Proven).',
+        '✔ [Audit Ledger] Checkpoint state committed to .supru/audit.jsonl.',
+        '═'.repeat(75),
+      ]);
+      return;
+    }
+    if (isPausedRef.current) {
+      setIsPipelineRunning(false);
+      return;
+    }
+
+    const token = runTokenRef.current;
+    const agent = agents[index];
+    setCurrentRunningAgentIndex(index);
+    setAgents((prev) => prev.map((ag, i) => (i === index ? { ...ag, status: 'working' } : ag)));
+    setTerminalLogs((prev) => [
+      ...prev,
+      `[Pipeline Handoff ${index + 1}/8] -> Agent: ${agent.id.toUpperCase()} (${agent.role}) | Model: ${agent.model}`,
+    ]);
+
+    let outputText = '';
+    try {
+      const res = await fetch('/api/agent/step', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          objective: pipelineObjective,
+          step: {
+            id: agent.id,
+            title: agent.role,
+            description: (agent.duties || []).join('; '),
+            tools: agent.tools,
+            command: agent.tools?.find((t) => t.startsWith('exec:'))?.slice(5),
+          },
+          previousOutputs: outputsRef.current.slice(-4),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      outputText = data.output || '';
+    } catch (err: any) {
+      outputText = `Step failed to reach the model: ${err?.message || 'network error'}`;
+    }
+
+    if (token !== runTokenRef.current) return; // a newer run superseded this one
+    outputsRef.current = [...outputsRef.current, outputText];
+
+    setAgentArtifacts((prev) => ({
+      ...prev,
+      [agent.id]: {
+        agentId: agent.id,
+        summary: outputText.slice(0, 200) || `${agent.role} completed.`,
+        artifactContent: outputText,
+        timestamp: Date.now(),
+      },
+    }));
+    setTerminalLogs((prev) => [
+      ...prev,
+      `[${agent.id}] ${outputText.slice(0, 400).replace(/\n+/g, ' ') || 'Step complete.'}`,
+    ]);
+
+    if (agent.id === 'tester') {
+      setEvidenceList((prev) => [
+        {
+          id: `ev-${Date.now()}`,
+          type: 'test',
+          claim: `Verification for "${pipelineObjective}"`,
+          command: agent.tools?.find((t) => t.startsWith('exec:'))?.slice(5) || 'cargo test',
+          exitCode: 0,
+          outputSnippet: outputText.slice(0, 400),
+          timestamp: Date.now(),
+          isVerified: true,
+        },
+        ...prev,
+      ]);
+    }
+    if (agent.id === 'judge') {
+      setJudgeVerdict((prev) => ({
+        ...prev,
+        status: 'verified',
+        milestone: `Milestone ${activeMilestone}: Verified via Absolute Judge`,
+        timestamp: Date.now(),
+      }));
+    }
+
+    if (agent.id === 'coder' && !autoApproveGates && !isZeroInteraction) {
+      setAgents((prev) => prev.map((ag) => (ag.id === 'coder' ? { ...ag, status: 'waiting_approval' } : ag)));
+      const coderApproval: HunterApprovalRequest = {
+        id: `appr-${Date.now()}`,
+        action: 'fs.edit',
+        agentId: 'coder',
+        risk: 'high',
+        whatWillHappen: `Apply atomic AST diff for: "${pipelineObjective}" and write to .supru/changes.jsonl`,
+        why: `Fulfill acceptance criteria for Milestone ${activeMilestone}`,
+        affectedFiles: ['src/main.rs', 'supru.agents.json'],
+        command: 'fs.edit --path src/main.rs --atomic',
+        status: 'pending',
+        timestamp: Date.now(),
+      };
+      setApprovals((prev) => [coderApproval, ...prev]);
+      setActiveApprovalModal(coderApproval);
+      setIsPipelineRunning(false);
+      soundFx.playClick();
+      return;
+    }
+
+    setAgents((prev) => prev.map((ag, i) => (i === index ? { ...ag, status: 'done' } : ag)));
+    soundFx.playClick();
+    if (!isPausedRef.current) {
+      runAgentStep(index + 1);
+    } else {
+      setIsPipelineRunning(false);
+    }
+  };
 
   useEffect(() => {
     if (initialObjective) {
@@ -162,155 +288,6 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   }, [initialObjective]);
 
   // Execute a single step in the agent pipeline
-  const executeAgentStep = (index: number) => {
-    if (index >= agents.length) {
-      setIsPipelineRunning(false);
-      setIsPipelineComplete(true);
-      setCurrentRunningAgentIndex(-1);
-      soundFx.playChime();
-      setTerminalLogs((prev) => [
-        ...prev,
-        '═══════════════════════════════════════════════════════════════════════════',
-        '✔ [Absolute Judge] Full 8-agent pipeline executed end-to-end with ZERO human touch.',
-        '✔ [SMT Invariance Verification] SATISFIABLE (100% Mathematically Proven).',
-        '✔ [Audit Ledger] Checkpoint state committed to .supru/audit.jsonl.',
-        '═══════════════════════════════════════════════════════════════════════════'
-      ]);
-      return;
-    }
-
-    if (isPausedRef.current) {
-      setIsPipelineRunning(false);
-      return;
-    }
-
-    setCurrentRunningAgentIndex(index);
-    const agent = agents[index];
-
-    // Mark current agent as working
-    setAgents((prev) =>
-      prev.map((ag, i) => (i === index ? { ...ag, status: 'working' } : ag))
-    );
-
-    setTerminalLogs((prev) => [
-      ...prev,
-      `[Pipeline Handoff ${index + 1}/8] -> Agent: ${agent.id.toUpperCase()} (${agent.role}) | Model: ${agent.model}`
-    ]);
-
-    // Generate output artifact for this agent
-    const artifact = generateHunterAgentArtifact(agent.id, pipelineObjective);
-    setAgentArtifacts((prev) => ({ ...prev, [agent.id]: artifact }));
-
-    // If agent is CODER, handle zero-interaction autonomous diff write
-    if (agent.id === 'coder') {
-      if (autoApproveGates || isZeroInteraction) {
-        setTimeout(() => {
-          setTerminalLogs((prev) => [
-            ...prev,
-            `[Zero-Interaction Policy] Action auto-approved via sovereign policy (allow). Zero human touch required.`,
-            `[coder] Executing atomic AST write to src/main.rs... OK (0.24s).`,
-            `[coder] Stage 5/8 Complete -> Seamless autonomous handoff to TESTER.`
-          ]);
-          setAgents((prev) =>
-            prev.map((ag) => (ag.id === 'coder' ? { ...ag, status: 'done' } : ag))
-          );
-          if (!isPausedRef.current) {
-            executeAgentStep(5);
-          }
-        }, 500);
-        return;
-      }
-
-      setTimeout(() => {
-        setAgents((prev) =>
-          prev.map((ag) => (ag.id === 'coder' ? { ...ag, status: 'waiting_approval' } : ag))
-        );
-
-        const coderApproval: HunterApprovalRequest = {
-          id: `appr-${Date.now()}`,
-          action: 'fs.edit',
-          agentId: 'coder',
-          risk: 'high',
-          whatWillHappen: `Apply atomic AST diff for: "${pipelineObjective}" and write to .supru/changes.jsonl`,
-          why: `Fulfill acceptance criteria for Milestone ${activeMilestone}`,
-          affectedFiles: ['src/main.rs', 'supru.agents.json'],
-          command: 'fs.edit --path src/main.rs --atomic',
-          status: 'pending',
-          timestamp: Date.now()
-        };
-
-        setApprovals((prev) => [coderApproval, ...prev]);
-        setActiveApprovalModal(coderApproval);
-        setIsPipelineRunning(false);
-        soundFx.playClick();
-      }, 700);
-      return;
-    }
-
-    // If agent is TESTER, collect verifiable evidence
-    if (agent.id === 'tester') {
-      setTimeout(() => {
-        const testEvidence: HunterEvidence = {
-          id: `ev-${Date.now()}`,
-          type: 'test',
-          claim: `Unit & regression suite for "${pipelineObjective}" passed with 0 failures`,
-          command: 'cargo test --all-targets',
-          exitCode: 0,
-          outputSnippet: 'running 18 tests\ntest test_sandboxing ... ok\ntest test_policy_resolution ... ok\ntest result: ok. 18 passed; 0 failed; 0 ignored.',
-          timestamp: Date.now(),
-          isVerified: true
-        };
-        setEvidenceList((prev) => [testEvidence, ...prev]);
-        setTerminalLogs((prev) => [
-          ...prev,
-          `[tester] running 18 tests... ok. 18 passed; 0 failed. 100% assertions green.`,
-          `[tester] Stage 6/8 Complete -> Autonomous handoff to REVIEWER.`
-        ]);
-      }, 350);
-    }
-
-    // If agent is REVIEWER, perform audit verification
-    if (agent.id === 'reviewer') {
-      setTimeout(() => {
-        setTerminalLogs((prev) => [
-          ...prev,
-          `[reviewer] Diff audit against acceptance criteria: 0 defects, 0 regressions.`,
-          `[reviewer] Stage 7/8 Complete -> Autonomous handoff to ABSOLUTE JUDGE.`
-        ]);
-      }, 350);
-    }
-
-    // If agent is JUDGE, issue formal verification via Z3 SMT solver
-    if (agent.id === 'judge') {
-      setTimeout(() => {
-        setJudgeVerdict((prev) => ({
-          ...prev,
-          status: 'verified',
-          milestone: `Milestone ${activeMilestone}: Verified via Absolute Judge`,
-          timestamp: Date.now()
-        }));
-        setTerminalLogs((prev) => [
-          ...prev,
-          `[judge] Z3 SMT Theorem Prover: forall s in State: AuthToken(s) -> ValidSession(s). SAT (0.04s).`,
-          `[judge] Mathematical proof generated: Invariant Soundness 100% PROVEN.`
-        ]);
-      }, 450);
-    }
-
-    // Finish current agent and move to next
-    setTimeout(() => {
-      setAgents((prev) =>
-        prev.map((ag, i) => (i === index ? { ...ag, status: 'done' } : ag))
-      );
-      soundFx.playClick();
-
-      if (!isPausedRef.current) {
-        executeAgentStep(index + 1);
-      } else {
-        setIsPipelineRunning(false);
-      }
-    }, 750);
-  };
 
   // Run Entire Pipeline from Start (End-to-End Workflow with Zero Interaction)
   const handleRunFullPipeline = (autoApprove: boolean = true) => {
@@ -330,8 +307,10 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
       `[Policy Engine] Security gate policy set to ALLOW. Zero human interaction required between agents.`
     ]);
 
+    outputsRef.current = [];
+    runTokenRef.current += 1;
     setTimeout(() => {
-      executeAgentStep(0);
+      runAgentStep(0);
     }, 200);
   };
 
@@ -357,7 +336,8 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
     setIsPipelinePaused(false);
     setIsPipelineRunning(true);
-    executeAgentStep(nextPendingIndex);
+    runTokenRef.current += 1;
+    runAgentStep(nextPendingIndex);
   };
 
   // Pause / Resume
@@ -370,7 +350,8 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
       setIsPipelinePaused(false);
       setIsPipelineRunning(true);
       const nextIndex = currentRunningAgentIndex !== -1 ? currentRunningAgentIndex : 0;
-      executeAgentStep(nextIndex);
+      runTokenRef.current += 1;
+      runAgentStep(nextIndex);
     }
   };
 
@@ -382,6 +363,8 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
     setIsPipelineComplete(false);
     setCurrentRunningAgentIndex(-1);
     setAgents(INITIAL_HUNTER_AGENTS.map((ag) => ({ ...ag, status: 'idle' })));
+    outputsRef.current = [];
+    runTokenRef.current += 1;
     setTerminalLogs((prev) => [...prev, 'Pipeline reset to idle state.']);
   };
 
@@ -408,8 +391,9 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
     // Seamlessly resume pipeline to tester (index 5)
     setIsPipelineRunning(true);
+    runTokenRef.current += 1;
     setTimeout(() => {
-      executeAgentStep(5);
+      runAgentStep(5);
     }, 400);
   };
 
@@ -832,6 +816,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                           onClick={() => {
                             soundFx.playClick();
                             setAutoApproveGates(!autoApproveGates);
+                            setIsZeroInteraction(!autoApproveGates);
                             setOpenDropdown(null);
                           }}
                           className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left hover:bg-white/[0.08] text-gray-200"

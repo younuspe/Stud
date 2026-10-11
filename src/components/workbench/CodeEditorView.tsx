@@ -34,7 +34,12 @@ import {
   MicOff,
   MessageSquare,
   Bot,
-  ArrowDown
+  ArrowDown,
+  LayoutGrid,
+  Layers,
+  Cpu,
+  Menu,
+  SquareTerminal
 } from 'lucide-react';
 import { 
   EditorFile, 
@@ -501,6 +506,7 @@ export class SupruPipeline {
   // Preview Execution State
   const [iframeKey, setIframeKey] = useState(Date.now());
   const [isAutoRun, setIsAutoRun] = useState(true);
+  const [showWindowsMenu, setShowWindowsMenu] = useState(false);
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLogEntry[]>([
     { id: '1', level: 'info', message: '🐾 Supru Live Preview Sandbox initialized. Ready to execute.', timestamp: Date.now() }
   ]);
@@ -698,8 +704,8 @@ export class SupruPipeline {
           endpointUrl: localConfig.endpointUrl,
         }
       : {
-          provider: 'gemini',
-          modelId: 'gemini-3.8-flash',
+          provider: 'pollinations',
+          modelId: 'openai',
         };
 
     try {
@@ -799,8 +805,8 @@ export class SupruPipeline {
           endpointUrl: localConfig.endpointUrl,
         }
       : {
-          provider: 'gemini',
-          modelId: 'gemini-3.8-flash',
+          provider: 'pollinations',
+          modelId: 'openai',
         };
 
     try {
@@ -1687,7 +1693,7 @@ export class SupruPipeline {
               title="Active Model (Click to add or select models)"
             >
               <Sparkles size={10} className="text-amber-400" />
-              <span className="truncate max-w-[90px]">{activeModelName || 'Gemini 3.8'}</span>
+              <span className="truncate max-w-[90px]">{activeModelName || 'Gemini 2.5'}</span>
             </button>
 
             {/* Send Button */}
@@ -1777,7 +1783,7 @@ export class SupruPipeline {
               title="Active Model (Click to add or select models)"
             >
               <Sparkles size={10} className="text-amber-400" />
-              <span className="truncate max-w-[90px]">{activeModelName || 'Gemini 3.8'}</span>
+              <span className="truncate max-w-[90px]">{activeModelName || 'Gemini 2.5'}</span>
             </button>
 
             <button
@@ -1818,6 +1824,90 @@ export class SupruPipeline {
 
   return (
     <div className="relative flex h-full w-full flex-col bg-[#08080d] text-gray-200 overflow-hidden font-sans text-xs">
+      {/* ======================================================== */}
+      {/* TOP STUDIO TOOLBAR (Windows menu, Terminal, Models)       */}
+      {/* ======================================================== */}
+      <div className="relative z-30 flex h-9 items-center justify-between border-b border-white/[0.08] bg-[#0c0c14] px-2.5 shrink-0">
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 rounded-md bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-gray-200">
+            <Code2 size={12} className="text-cyan-400" />
+            <span>Supru Code</span>
+          </div>
+
+          {/* Windows dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowWindowsMenu((v) => !v)}
+              className="flex items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-1 text-[11px] font-medium text-gray-300 hover:bg-white/[0.08] hover:text-white transition-colors"
+            >
+              <LayoutGrid size={12} />
+              <span>Windows</span>
+              <ChevronDown size={11} />
+            </button>
+            {showWindowsMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowWindowsMenu(false)} />
+                <div className="absolute left-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-xl border border-white/[0.1] bg-[#12121c] shadow-2xl">
+                  {([
+                    { id: 'editor', label: 'Code Editor', icon: <Code2 size={12} /> },
+                    { id: 'preview', label: 'Live Preview', icon: <Eye size={12} /> },
+                    { id: 'generator', label: 'AI Copilot', icon: <Sparkles size={12} /> },
+                  ] as const).map((w) => (
+                    <button
+                      key={w.id}
+                      onClick={() => {
+                        onToggleWindow?.(w.id as StudioWindowId);
+                      }}
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-[11px] text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors"
+                    >
+                      <span className="flex items-center gap-2">{w.icon}{w.label}</span>
+                      <span className={`h-1.5 w-1.5 rounded-full ${windows[w.id as StudioWindowId]?.isOpen ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+                    </button>
+                  ))}
+                  <div className="border-t border-white/[0.08]">
+                    <button
+                      onClick={() => {
+                        onResetWindowLayout?.();
+                        setShowWindowsMenu(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-amber-300 hover:bg-white/[0.06] transition-colors"
+                    >
+                      <RotateCcw size={12} />
+                      <span>Restore Default Windows</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Terminal shortcut */}
+          <button
+            onClick={() => {
+              const cmd = activeFile.language === 'html' ? `echo "Preview ${activeFile.name} in Supru Code"` : `node ${activeFile.name}`;
+              window.dispatchEvent(new CustomEvent('supru-run-terminal-command', { detail: cmd }));
+            }}
+            className="flex items-center gap-1 rounded-md border border-white/[0.08] bg-white/[0.03] px-2 py-1 text-[11px] font-medium text-gray-300 hover:bg-white/[0.08] hover:text-white transition-colors"
+            title="Open this file in the Sovereign Shell"
+          >
+            <SquareTerminal size={12} />
+            <span className="hidden sm:inline">Terminal</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {/* Model switcher */}
+          <button
+            onClick={() => onOpenAddModels?.()}
+            className="flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-300 hover:bg-amber-500/20 transition-colors"
+            title="Connect NVIDIA NIM, Groq, OpenRouter, Gemini, or local models"
+          >
+            <Cpu size={12} />
+            <span className="max-w-[160px] truncate">{activeModelName || 'Connect AI Model'}</span>
+          </button>
+        </div>
+      </div>
+
       {/* ======================================================== */}
       {/* MAIN DOCKED GRID CONTAINER (Adjustable Split Windows)     */}
       {/* ======================================================== */}

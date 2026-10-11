@@ -3,32 +3,34 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { StudioHeader } from './components/StudioHeader';
 import { HeroLanding } from './components/HeroLanding';
 import { ChatMessageList } from './components/ChatMessageList';
-import { ChatInputDock } from './components/ChatInputDock';
-import { FloatingChatPill } from './components/FloatingChatPill';
-import { ConnectModal } from './components/modals/ConnectModal';
-import { AddAIModelModal } from './components/modals/AddAIModelModal';
-import { GetCodeModal } from './components/modals/GetCodeModal';
-import { SettingsModal } from './components/modals/SettingsModal';
-import { ShareModal } from './components/modals/ShareModal';
-import { LoginModal } from './components/modals/LoginModal';
-import { HelpModal } from './components/modals/HelpModal';
-import { LocalProviderModal } from './components/modals/LocalProviderModal';
-import { SupruTeamModal } from './components/modals/SupruTeamModal';
-import { MacOSInstallModal } from './components/modals/MacOSInstallModal';
-import { ImageStudioModal } from './components/media/ImageStudioModal';
-import { VeoVideoModal } from './components/media/VeoVideoModal';
-import { TerminalView } from './components/workbench/TerminalView';
-import { CodeEditorView } from './components/workbench/CodeEditorView';
-import { HeadlessAgentView } from './components/workbench/HeadlessAgentView';
-import { GitHubView } from './components/workbench/GitHubView';
-import { OrchestratorView } from './components/workbench/OrchestratorView';
-import { StratifiedTopologyView } from './components/workbench/StratifiedTopologyView';
-import { SupruGenerativeStudioView } from './components/workbench/SupruGenerativeStudioView';
+
+// Heavy, route-level workbench views and modals are code-split so the initial
+// bundle stays small; each loads on first visit of its workspace view.
+const TerminalView = lazy(() => import('./components/workbench/TerminalView').then((m) => ({ default: m.TerminalView })));
+const CodeEditorView = lazy(() => import('./components/workbench/CodeEditorView').then((m) => ({ default: m.CodeEditorView })));
+const HeadlessAgentView = lazy(() => import('./components/workbench/HeadlessAgentView').then((m) => ({ default: m.HeadlessAgentView })));
+const GitHubView = lazy(() => import('./components/workbench/GitHubView').then((m) => ({ default: m.GitHubView })));
+const OrchestratorView = lazy(() => import('./components/workbench/OrchestratorView').then((m) => ({ default: m.OrchestratorView })));
+const StratifiedTopologyView = lazy(() => import('./components/workbench/StratifiedTopologyView').then((m) => ({ default: m.StratifiedTopologyView })));
+const SupruGenerativeStudioView = lazy(() => import('./components/workbench/SupruGenerativeStudioView').then((m) => ({ default: m.SupruGenerativeStudioView })));
+const ImageStudioModal = lazy(() => import('./components/media/ImageStudioModal').then((m) => ({ default: m.ImageStudioModal })));
+const VeoVideoModal = lazy(() => import('./components/media/VeoVideoModal').then((m) => ({ default: m.VeoVideoModal })));
+const SettingsModal = lazy(() => import('./components/modals/SettingsModal').then((m) => ({ default: m.SettingsModal })));
+const AddAIModelModal = lazy(() => import('./components/modals/AddAIModelModal').then((m) => ({ default: m.AddAIModelModal })));
+const ConnectModal = lazy(() => import('./components/modals/ConnectModal').then((m) => ({ default: m.ConnectModal })));
+const GetCodeModal = lazy(() => import('./components/modals/GetCodeModal').then((m) => ({ default: m.GetCodeModal })));
+const ShareModal = lazy(() => import('./components/modals/ShareModal').then((m) => ({ default: m.ShareModal })));
+const LoginModal = lazy(() => import('./components/modals/LoginModal').then((m) => ({ default: m.LoginModal })));
+const HelpModal = lazy(() => import('./components/modals/HelpModal').then((m) => ({ default: m.HelpModal })));
+const LocalProviderModal = lazy(() => import('./components/modals/LocalProviderModal').then((m) => ({ default: m.LocalProviderModal })));
+const SupruTeamModal = lazy(() => import('./components/modals/SupruTeamModal').then((m) => ({ default: m.SupruTeamModal })));
+const MacOSInstallModal = lazy(() => import('./components/modals/MacOSInstallModal').then((m) => ({ default: m.MacOSInstallModal })));
+const FloatingChatPill = lazy(() => import('./components/FloatingChatPill').then((m) => ({ default: m.FloatingChatPill })));
 import { ChatThread, Message, PersonaType, UserSettings, Attachment, ServerStatus } from './types/chat';
 import { WorkspaceView, LocalHostConfig, CodingSpaceLayout, StudioWindowId, StudioWindowState, ExternalAIModelConfig } from './types/workbench';
 import { soundFx } from './utils/audio';
@@ -265,7 +267,7 @@ export default function App() {
   const [serverStatus, setServerStatus] = useState<ServerStatus>({
     status: 'online',
     hasApiKey: true,
-    model: 'gemini-3.8-flash',
+    model: 'gemini-2.5-flash',
     version: '2.5.0',
   });
 
@@ -280,6 +282,9 @@ export default function App() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [isMacOSModalOpen, setIsMacOSModalOpen] = useState(false);
+
+  // Transient provider/status notice shown above the composer.
+  const [statusNotice, setStatusNotice] = useState<string | null>(null);
 
   // Custom AI Models (with or without API key)
   const [customModels, setCustomModels] = useState<ExternalAIModelConfig[]>(() => {
@@ -596,73 +601,24 @@ export default function App() {
     abortControllerRef.current = new AbortController();
 
     try {
-      if (activeCustomModel) {
-        const isLocal = activeCustomModel.provider === 'ollama' || activeCustomModel.provider === 'lmstudio' || activeCustomModel.provider === 'custom';
-        const modelRes = await fetch('/api/local-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: abortControllerRef.current.signal,
-          body: JSON.stringify({
-            messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
-            provider: isLocal ? (activeCustomModel.provider === 'ollama' ? 'ollama_local' : 'lmstudio_local') : activeCustomModel.provider,
-            endpointUrl: activeCustomModel.endpointUrl || (activeCustomModel.provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234/v1'),
-            modelName: activeCustomModel.modelId,
+      // Resolve the active provider (explicitly added model wins, else local config).
+      const providerPayload: Record<string, unknown> = activeCustomModel
+        ? {
+            provider: activeCustomModel.provider,
+            modelId: activeCustomModel.modelId,
             apiKey: activeCustomModel.apiKey,
-            temperature: settings.temperature,
-          }),
-        });
-
-        const modelData = await modelRes.json();
-        const reply = modelData.reply || `Response from ${activeCustomModel.name}`;
-
-        setThreads((prev) =>
-          prev.map((t) =>
-            t.id === targetThreadId
-              ? {
-                  ...t,
-                  messages: t.messages.map((m) =>
-                    m.id === assistantMsgId ? { ...m, content: reply, isStreaming: false } : m
-                  ),
-                }
-              : t
-          )
-        );
-        return;
-      }
-
-      if (localConfig.provider !== 'gemini_cloud' && localConfig.provider !== 'offline_core') {
-        const localRes = await fetch('/api/local-chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: abortControllerRef.current.signal,
-          body: JSON.stringify({
-            messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
+            endpointUrl: activeCustomModel.endpointUrl,
+          }
+        : localConfig.provider !== 'gemini_cloud' && localConfig.provider !== 'offline_core'
+        ? {
             provider: localConfig.provider,
+            modelId: localConfig.modelName,
+            apiKey: localConfig.apiKey,
             endpointUrl: localConfig.endpointUrl,
-            modelName: localConfig.modelName,
-            temperature: settings.temperature,
-          }),
-        });
+          }
+        : {};
 
-        const localData = await localRes.json();
-        const reply = localData.reply || `Response from local model (${localConfig.modelName})`;
-
-        setThreads((prev) =>
-          prev.map((t) =>
-            t.id === targetThreadId
-              ? {
-                  ...t,
-                  messages: t.messages.map((m) =>
-                    m.id === assistantMsgId ? { ...m, content: reply, isStreaming: false } : m
-                  ),
-                }
-              : t
-          )
-        );
-        return;
-      }
-
-      // Cloud Gemini streaming flow
+      // Streaming flow (works for Gemini and every OpenAI-compatible provider).
       const res = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -675,6 +631,7 @@ export default function App() {
           persona: settings.persona,
           temperature: settings.temperature,
           attachment: attachment ? { data: attachment.data, mimeType: attachment.mimeType } : undefined,
+          ...providerPayload,
         }),
       });
 
@@ -686,6 +643,7 @@ export default function App() {
       const decoder = new TextDecoder();
       let accumulated = '';
       let streamBuffer = '';
+      let providerNotice = '';
 
       while (true) {
         const { value, done } = await reader.read();
@@ -701,6 +659,9 @@ export default function App() {
           if (trimmed.startsWith('data: ')) {
             try {
               const data = JSON.parse(trimmed.replace(/^data:\s*/, ''));
+              if (data.notice) {
+                providerNotice = data.notice;
+              }
               if (data.chunk) {
                 accumulated += data.chunk;
                 setThreads((prev) =>
@@ -746,6 +707,15 @@ export default function App() {
             );
           }
         } catch {}
+      }
+
+      // Surface a notice when the selected provider could not be reached.
+      if (providerNotice) {
+        setStatusNotice(
+          `${activeCustomModel?.name || localConfig.modelName || 'Provider'} unreachable — using the built-in engine. (${providerNotice})`
+        );
+      } else {
+        setStatusNotice(null);
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
@@ -844,6 +814,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen w-full flex-col bg-[#08080a] text-[#f1f2f6] overflow-hidden">
+      <Suspense fallback={<div className="flex h-full w-full items-center justify-center bg-[#08080a] text-sm text-gray-400">Loading Supru workspace…</div>}>
       {/* UNIFIED 2027 STUDIO HEADER (File, Edit, View, Windows Dropdown, Models, Presets, View Switcher) */}
       <StudioHeader
         onToggleSidebar={() => setSidebarMobileOpen(!sidebarMobileOpen)}
@@ -878,7 +849,7 @@ export default function App() {
         onToggleSound={() => setSettings((s) => ({ ...s, soundEffects: !s.soundEffects }))}
         onOpenConnectModel={() => setIsConnectModalOpen(true)}
         onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
-        activeModelName={activeCustomModel?.name || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'Gemini 3.8 Flash')}
+        activeModelName={activeCustomModel?.name || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'Gemini 2.5 Flash')}
         onOpenGetCode={() => setIsGetCodeModalOpen(true)}
         onOpenMacOSInstall={() => setIsMacOSModalOpen(true)}
       />
@@ -957,6 +928,18 @@ export default function App() {
                   />
                 ) : (
                   <div className="flex flex-1 flex-col overflow-hidden pb-20">
+                    {statusNotice && (
+                      <div className="mx-4 mt-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+                        <span className="mt-0.5">⚠️</span>
+                        <span className="flex-1">{statusNotice}</span>
+                        <button
+                          onClick={() => setStatusNotice(null)}
+                          className="text-amber-300/70 hover:text-white"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
                     <ChatMessageList
                       messages={activeMessages}
                       isGenerating={isGenerating}
@@ -979,10 +962,13 @@ export default function App() {
                 }}
                 onOpenInEditor={handleOpenInEditor}
                 onRunInTerminal={(cmd) => {
+                  window.dispatchEvent(new CustomEvent('supru-run-terminal-command', { detail: cmd }));
                   setWorkspaceView('terminal');
                 }}
                 onOpenImageStudio={(img) => handleOpenImageStudio(img)}
                 onOpenVeoStudio={(img) => handleOpenVeoStudio(img)}
+                localConfig={localConfig}
+                activeCustomModel={activeCustomModel}
               />
             )}
 
@@ -990,6 +976,7 @@ export default function App() {
             {workspaceView === 'editor' && (
               <CodeEditorView
                 onRunInTerminal={(command) => {
+                  window.dispatchEvent(new CustomEvent('supru-run-terminal-command', { detail: command }));
                   setWorkspaceView('terminal');
                 }}
                 onSendToChat={(codePrompt) => {
@@ -1011,7 +998,7 @@ export default function App() {
                 onOpenConnectModel={() => setIsConnectModalOpen(true)}
                 onOpenGetCode={() => setIsGetCodeModalOpen(true)}
                 onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
-                activeModelName={activeCustomModel?.name || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'Gemini 3.8 Flash')}
+                activeModelName={activeCustomModel?.name || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'Gemini 2.5 Flash')}
                 activeCustomModel={activeCustomModel}
               />
             )}
@@ -1171,7 +1158,7 @@ export default function App() {
           onOpenImageStudio={() => handleOpenImageStudio()}
           onOpenVeoStudio={() => handleOpenVeoStudio()}
           onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
-          activeModelName={activeCustomModel?.name || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'Gemini 3.8 Flash')}
+          activeModelName={activeCustomModel?.name || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'Gemini 2.5 Flash')}
         />
       )}
 
@@ -1201,11 +1188,11 @@ export default function App() {
           isExternal: true,
           status: 'online',
         } : {
-          id: 'gemini-3.8-flash',
-          name: 'Gemini 3.8 Flash',
+          id: 'gemini-2.5-flash',
+          name: 'Gemini 2.5 Flash',
           provider: 'gemini',
-          modelId: 'gemini-3.8-flash',
-          description: 'Official Google Gemini 3.8 Flash Engine',
+          modelId: 'gemini-2.5-flash',
+          description: 'Official Google Gemini 2.5 Flash Engine',
           isExternal: false,
           status: 'online',
         }}
@@ -1217,6 +1204,7 @@ export default function App() {
         }}
         currentPrompt={activeMessages[activeMessages.length - 1]?.content || ''}
       />
+      </Suspense>
     </div>
   );
 }

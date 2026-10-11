@@ -14,6 +14,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { ExternalAIModelConfig, StudioModelSettings } from '../../types/workbench';
+import { getProviderMeta } from '../../lib/providers';
 import { soundFx } from '../../utils/audio';
 
 interface ConnectExternalModelModalProps {
@@ -50,6 +51,7 @@ export const ConnectExternalModelModal: React.FC<ConnectExternalModelModalProps>
   if (!isOpen) return null;
 
   const currentSelected = modelsList.find(m => m.id === selectedModelId) || activeModel;
+  const currentMeta = getProviderMeta(currentSelected.provider);
 
   const handleModelChange = (id: string) => {
     soundFx.playClick();
@@ -215,22 +217,29 @@ export const ConnectExternalModelModal: React.FC<ConnectExternalModelModalProps>
               </span>
             </div>
 
-            <div>
-              <label className="block text-[10.5px] font-medium text-gray-400 mb-1">
-                {currentSelected.provider === 'gemini' 
-                  ? 'Gemini API Key (Optional — default cloud key active)' 
-                  : `${currentSelected.provider.toUpperCase()} API Key`}
-              </label>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={currentSelected.provider === 'gemini' ? 'Default cloud credentials active or enter AI Studio key...' : 'sk-...'}
-                className="w-full rounded-lg border border-[#2b2b3d] bg-[#0c0c14] px-3 py-1.5 font-mono text-xs text-white placeholder-gray-600 outline-none focus:border-amber-400"
-              />
-            </div>
+            {!currentMeta.requiresKey ? (
+              <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-[10.5px] text-emerald-300 flex items-center gap-1.5">
+                <ShieldCheck size={12} />
+                <span>{currentMeta.label} needs no API key — {currentMeta.badge}. Just press Test Connection.</span>
+              </div>
+            ) : (
+              <div>
+                <label className="block text-[10.5px] font-medium text-gray-400 mb-1">
+                  {currentSelected.provider === 'gemini'
+                    ? 'Gemini API Key (Optional — default cloud key active)'
+                    : `${currentMeta.label} API Key`}
+                </label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={currentSelected.provider === 'gemini' ? 'Default cloud credentials active or enter AI Studio key...' : currentMeta.keyPlaceholder || 'sk-...'}
+                  className="w-full rounded-lg border border-[#2b2b3d] bg-[#0c0c14] px-3 py-1.5 font-mono text-xs text-white placeholder-gray-600 outline-none focus:border-amber-400"
+                />
+              </div>
+            )}
 
-            {(currentSelected.provider === 'ollama' || currentSelected.provider === 'lmstudio' || currentSelected.provider === 'custom' || currentSelected.provider === 'openai' || currentSelected.provider === 'deepseek' || currentSelected.provider === 'groq') && (
+            {(currentSelected.provider === 'ollama' || currentSelected.provider === 'lmstudio' || currentSelected.provider === 'custom' || !currentMeta.requiresKey) && (
               <div>
                 <label className="block text-[10.5px] font-medium text-gray-400 mb-1 flex items-center gap-1">
                   <Globe size={11} />
@@ -240,7 +249,7 @@ export const ConnectExternalModelModal: React.FC<ConnectExternalModelModalProps>
                   type="text"
                   value={endpointUrl}
                   onChange={(e) => setEndpointUrl(e.target.value)}
-                  placeholder={currentSelected.provider === 'ollama' ? 'http://localhost:11434' : 'http://localhost:1234/v1'}
+                  placeholder={currentSelected.provider === 'ollama' ? 'http://localhost:11434' : currentMeta.baseUrl || 'http://localhost:1234/v1'}
                   className="w-full rounded-lg border border-[#2b2b3d] bg-[#0c0c14] px-3 py-1.5 font-mono text-xs text-white placeholder-gray-600 outline-none focus:border-amber-400"
                 />
               </div>

@@ -36,12 +36,12 @@ export interface StratifiedStackState {
 
 export type CodingSpaceLayout = 'single' | 'split-terminal' | 'split-hunter' | 'split-github' | 'split-preview';
 
-export type AIProviderType = 'gemini_cloud' | 'ollama_local' | 'lmstudio_local' | 'custom_local' | 'offline_core';
+export type AIProviderType = 'gemini_cloud' | 'nvidia' | 'pollinations' | 'ollama_local' | 'lmstudio_local' | 'custom_local' | 'offline_core';
 
 export interface ExternalAIModelConfig {
   id: string;
   name: string;
-  provider: 'gemini' | 'openai' | 'anthropic' | 'deepseek' | 'groq' | 'ollama' | 'lmstudio' | 'custom';
+  provider: 'gemini' | 'nvidia' | 'openai' | 'anthropic' | 'deepseek' | 'groq' | 'openrouter' | 'cerebras' | 'mistral' | 'github' | 'together' | 'pollinations' | 'ollama' | 'lmstudio' | 'custom';
   modelId: string;
   apiKey?: string;
   endpointUrl?: string;

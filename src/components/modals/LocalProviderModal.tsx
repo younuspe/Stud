@@ -52,6 +52,22 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
       icon: <Cloud size={18} className="text-amber-400" />,
     },
     {
+      id: 'pollinations',
+      name: 'Pollinations (No Key)',
+      badge: 'Free · Zero Setup',
+      desc: 'Keyless OpenAI-compatible text + image synthesis. Works instantly with no account',
+      defaultUrl: 'https://text.pollinations.ai/openai',
+      icon: <Zap size={18} className="text-fuchsia-400" />,
+    },
+    {
+      id: 'nvidia',
+      name: 'NVIDIA NIM (build.nvidia.com)',
+      badge: 'Free API Credits',
+      desc: 'Hosted Nemotron, Llama & DeepSeek models via an OpenAI-compatible endpoint',
+      defaultUrl: 'https://integrate.api.nvidia.com/v1',
+      icon: <Cpu size={18} className="text-lime-400" />,
+    },
+    {
       id: 'ollama_local',
       name: 'Ollama (Localhost)',
       badge: '100% Offline / Local',
@@ -90,6 +106,7 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
           provider: config.provider,
           endpointUrl: config.endpointUrl,
           modelName: config.modelName,
+          apiKey: config.apiKey,
         }),
       });
 
@@ -146,9 +163,14 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
                     key={p.id}
                     onClick={() => {
                       soundFx.playClick();
+                      const defaultModel =
+                        p.id === 'pollinations' ? 'openai'
+                        : p.id === 'nvidia' ? 'meta/llama-3.1-8b-instruct'
+                        : undefined;
                       onUpdateConfig({
                         provider: p.id,
                         endpointUrl: p.defaultUrl,
+                        ...(defaultModel ? { modelName: defaultModel } : {}),
                       });
                       setTestStatus('idle');
                     }}
@@ -177,13 +199,31 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
             </div>
           </div>
 
-          {/* Localhost Configuration Details (if local provider selected) */}
-          {config.provider !== 'gemini_cloud' && config.provider !== 'offline_core' && (
+          {/* Endpoint / credential setup for every non-builtin provider */}
+          {config.provider !== 'offline_core' && (
             <div className="space-y-3 rounded-2xl border border-[#272738] bg-[#151522] p-4">
               <div className="text-xs font-bold text-white flex items-center justify-between">
-                <span>Localhost Endpoint Setup</span>
-                <span className="text-[10px] text-emerald-400 font-mono">No API key required</span>
+                <span>{config.provider === 'gemini_cloud' ? 'Cloud Provider Setup' : config.provider === 'nvidia' || config.provider === 'pollinations' ? 'Hosted Provider Setup' : 'Localhost Endpoint Setup'}</span>
+                <span className="text-[10px] text-emerald-400 font-mono">
+                  {config.provider === 'nvidia' ? 'Free API key required' : config.provider === 'pollinations' ? 'No API key required' : config.provider === 'gemini_cloud' ? 'Cloud key or fallback' : 'No API key required'}
+                </span>
               </div>
+
+              {config.provider === 'nvidia' && (
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold text-gray-300">NVIDIA API Key</label>
+                  <input
+                    type="password"
+                    value={config.apiKey || ''}
+                    onChange={(e) => onUpdateConfig({ apiKey: e.target.value })}
+                    placeholder="nvapi-..."
+                    className="w-full rounded-xl border border-[#2b2b3c] bg-[#101018] px-3.5 py-2 text-xs font-mono text-white outline-none focus:border-amber-500/60"
+                  />
+                  <p className="text-[10px] text-gray-500">
+                    Get a free key at build.nvidia.com — Nemotron & Llama models include free credits.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-[11px] font-semibold text-gray-300">Endpoint URL</label>
@@ -215,7 +255,7 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
                   className="flex items-center justify-center gap-2 rounded-xl bg-[#202030] px-4 py-2 text-xs font-semibold text-gray-200 hover:bg-[#28283c] hover:text-white transition-colors"
                 >
                   <RefreshCw size={13} className={testStatus === 'testing' ? 'animate-spin' : ''} />
-                  <span>Test Localhost Connection</span>
+                  <span>Test Connection</span>
                 </button>
 
                 {testMessage && (

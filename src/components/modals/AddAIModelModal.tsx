@@ -20,6 +20,7 @@ import {
   Radio
 } from 'lucide-react';
 import { ExternalAIModelConfig } from '../../types/workbench';
+import { FREE_MODEL_PRESETS, PROVIDER_CATALOG, PROVIDER_ORDER, getProviderMeta } from '../../lib/providers';
 import { soundFx } from '../../utils/audio';
 
 interface AddAIModelModalProps {
@@ -32,52 +33,28 @@ interface AddAIModelModalProps {
   activeModelId?: string;
 }
 
-// Common popular presets
+// Quick 1-click presets: free hosted models (NVIDIA NIM, Groq, OpenRouter, ...)
+// followed by a couple of popular paid cloud options.
 const MODEL_PRESETS = [
+  ...FREE_MODEL_PRESETS.map((p) => ({
+    name: p.name,
+    modelId: p.modelId,
+    provider: p.provider as ExternalAIModelConfig['provider'],
+    endpointUrl: p.endpointUrl || PROVIDER_CATALOG[p.provider].baseUrl,
+    requiresKey: p.requiresKey,
+    badge: p.badge,
+    description: p.description,
+    free: true,
+  })),
   {
-    name: 'Ollama Llama 3.3',
-    modelId: 'llama3.3:70b',
-    provider: 'ollama' as const,
-    endpointUrl: 'http://localhost:11434',
-    requiresKey: false,
-    badge: 'Local SLM',
-    description: 'High-throughput local intelligence running via Ollama without API key',
-  },
-  {
-    name: 'Ollama DeepSeek-R1',
-    modelId: 'deepseek-r1:8b',
-    provider: 'ollama' as const,
-    endpointUrl: 'http://localhost:11434',
-    requiresKey: false,
-    badge: 'Reasoning SLM',
-    description: 'Local reasoning chain-of-thought model via Ollama (no key required)',
-  },
-  {
-    name: 'LM Studio Local Server',
-    modelId: 'local-model',
-    provider: 'lmstudio' as const,
-    endpointUrl: 'http://localhost:1234/v1',
-    requiresKey: false,
-    badge: 'LM Studio',
-    description: 'Connect to any model hosted in LM Studio with zero authentication',
-  },
-  {
-    name: 'Google Gemini 2.5 Pro',
-    modelId: 'gemini-2.5-pro',
+    name: 'Google Gemini 2.5 Flash',
+    modelId: 'gemini-2.5-flash',
     provider: 'gemini' as const,
     endpointUrl: '',
     requiresKey: true,
-    badge: '1M Context',
-    description: 'Deep high-dimensional reasoning and multimodal analysis',
-  },
-  {
-    name: 'Groq Llama 3.3 70B',
-    modelId: 'llama-3.3-70b-versatile',
-    provider: 'groq' as const,
-    endpointUrl: 'https://api.groq.com/openai/v1',
-    requiresKey: true,
-    badge: 'Ultra Fast',
-    description: 'Extreme speed inference via Groq LPU cloud architecture',
+    badge: 'Free Tier',
+    description: 'Fast multimodal Gemini model with a free developer tier',
+    free: true,
   },
   {
     name: 'DeepSeek-V3 Chat',
@@ -85,17 +62,19 @@ const MODEL_PRESETS = [
     provider: 'deepseek' as const,
     endpointUrl: 'https://api.deepseek.com/v1',
     requiresKey: true,
-    badge: 'AST Architecture',
+    badge: 'Low Cost',
     description: 'DeepSeek cloud API with exceptional algorithmic code ability',
+    free: false,
   },
   {
-    name: 'Anthropic Claude 3.7 Sonnet',
-    modelId: 'claude-3-7-sonnet-20250219',
+    name: 'Anthropic Claude 3.5 Haiku',
+    modelId: 'claude-3-5-haiku-latest',
     provider: 'anthropic' as const,
     endpointUrl: 'https://api.anthropic.com/v1',
     requiresKey: true,
-    badge: 'Hybrid Reasoning',
-    description: 'Anthropic flagship model for nuanced software architecture',
+    badge: 'Paid',
+    description: 'Anthropic fast model for nuanced software architecture',
+    free: false,
   },
 ];
 
@@ -144,25 +123,10 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
 
   const handleProviderSelect = (newProvider: ExternalAIModelConfig['provider']) => {
     setProvider(newProvider);
-    if (newProvider === 'ollama') {
-      setEndpointUrl('http://localhost:11434');
-      setAuthMode('without_key');
-    } else if (newProvider === 'lmstudio') {
-      setEndpointUrl('http://localhost:1234/v1');
-      setAuthMode('without_key');
-    } else if (newProvider === 'groq') {
-      setEndpointUrl('https://api.groq.com/openai/v1');
-      setAuthMode('with_key');
-    } else if (newProvider === 'deepseek') {
-      setEndpointUrl('https://api.deepseek.com/v1');
-      setAuthMode('with_key');
-    } else if (newProvider === 'anthropic') {
-      setEndpointUrl('https://api.anthropic.com/v1');
-      setAuthMode('with_key');
-    } else if (newProvider === 'gemini') {
-      setEndpointUrl('');
-      setAuthMode('with_key');
-    }
+    const meta = getProviderMeta(newProvider);
+    setEndpointUrl(meta.baseUrl);
+    setAuthMode(meta.requiresKey ? 'with_key' : 'without_key');
+    if (!meta.requiresKey) setApiKey('');
     setTestResult(null);
   };
 
@@ -218,8 +182,8 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
       description: description.trim() || (authMode === 'without_key' ? 'Local / Open Model' : 'Cloud Authenticated Model'),
       badge: badge.trim() || (authMode === 'without_key' ? 'No-Key' : 'API-Key'),
       isExternal: true,
-      status: testResult?.status || 'online',
-      latencyMs: testResult?.latencyMs || 35,
+      status: testResult?.status || 'untested',
+      latencyMs: testResult?.latencyMs,
     };
 
     onAddModel(newModel, true);
@@ -277,15 +241,16 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
                   <span className="truncate">{preset.name}</span>
                   <span
                     className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${
-                      preset.requiresKey
-                        ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                        : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                      preset.free
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
                     }`}
                   >
-                    {preset.requiresKey ? 'Key Req' : 'No Key'}
+                    {preset.free ? 'FREE' : 'Key Req'}
                   </span>
                 </div>
                 <div className="text-[10px] text-gray-400 truncate mt-0.5">{preset.modelId}</div>
+                <div className="text-[9.5px] text-amber-300/80 truncate mt-0.5">{preset.badge}</div>
               </button>
             ))}
           </div>
@@ -379,35 +344,37 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
 
           {/* Provider Selection */}
           <div>
-            <label className="block text-xs font-medium text-gray-300 mb-1">
-              Provider Platform
+            <label className="block text-xs font-medium text-gray-300 mb-1 flex items-center justify-between">
+              <span>Provider Platform</span>
+              <span className="text-[10px] text-emerald-400">FREE = free tier / free credits</span>
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {(
-                [
-                  { id: 'ollama', label: 'Ollama' },
-                  { id: 'lmstudio', label: 'LM Studio' },
-                  { id: 'gemini', label: 'Google Gemini' },
-                  { id: 'openai', label: 'OpenAI Compliant' },
-                  { id: 'groq', label: 'Groq Cloud' },
-                  { id: 'deepseek', label: 'DeepSeek' },
-                  { id: 'anthropic', label: 'Anthropic' },
-                  { id: 'custom', label: 'Custom Endpoint' },
-                ] as const
-              ).map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => handleProviderSelect(p.id)}
-                  className={`rounded-xl px-2.5 py-1.5 text-xs text-center border transition-all ${
-                    provider === p.id
-                      ? 'border-amber-400 bg-amber-500/20 text-white font-semibold'
-                      : 'border-white/[0.08] bg-white/[0.02] text-gray-400 hover:text-white hover:border-white/20'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
+              {PROVIDER_ORDER.map((id) => {
+                const meta = getProviderMeta(id);
+                const isFree = meta.freeTier;
+                const isSelected = provider === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => handleProviderSelect(id)}
+                    className={`relative rounded-xl px-2.5 py-1.5 text-xs text-center border transition-all ${
+                      isSelected
+                        ? 'border-amber-400 bg-amber-500/20 text-white font-semibold'
+                        : isFree
+                        ? 'border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-200 hover:border-emerald-400/50 hover:text-white'
+                        : 'border-white/[0.08] bg-white/[0.02] text-gray-400 hover:text-white hover:border-white/20'
+                    }`}
+                  >
+                    {meta.label}
+                    {isFree && (
+                      <span className="ml-1 align-middle text-[8px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">
+                        FREE
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

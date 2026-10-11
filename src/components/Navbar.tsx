@@ -109,6 +109,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const providerLabels: Record<AIProviderType, { label: string; color: string }> = {
     gemini_cloud: { label: 'Cloud Gemini', color: 'text-amber-400 border-amber-500/30' },
+    nvidia: { label: 'NVIDIA NIM', color: 'text-lime-400 border-lime-500/30' },
+    pollinations: { label: 'Pollinations (Free)', color: 'text-fuchsia-400 border-fuchsia-500/30' },
     ollama_local: { label: 'Ollama Localhost', color: 'text-emerald-400 border-emerald-500/30' },
     lmstudio_local: { label: 'LM Studio', color: 'text-sky-400 border-sky-500/30' },
     custom_local: { label: 'Custom Local', color: 'text-purple-400 border-purple-500/30' },

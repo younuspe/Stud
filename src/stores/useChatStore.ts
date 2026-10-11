@@ -399,7 +399,18 @@ export const useChatStore = create<ChatStore>()(
             return;
           }
 
-          // Cloud Gemini streaming flow
+          // Cloud streaming flow — routes through the selected provider when set.
+          // (An explicitly selected custom model already returned above.)
+          const providerPayload: Record<string, unknown> =
+            lc.provider !== 'gemini_cloud' && lc.provider !== 'offline_core'
+              ? {
+                  provider: lc.provider,
+                  modelId: lc.modelName,
+                  apiKey: lc.apiKey,
+                  endpointUrl: lc.endpointUrl,
+                }
+              : {};
+
           const res = await fetch('/api/chat/stream', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -412,6 +423,7 @@ export const useChatStore = create<ChatStore>()(
               persona: s.persona,
               temperature: s.temperature,
               attachment: attachment ? { data: attachment.data, mimeType: attachment.mimeType } : undefined,
+              ...providerPayload,
             }),
           });
 

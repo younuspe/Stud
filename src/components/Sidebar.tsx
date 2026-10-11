@@ -82,8 +82,8 @@ const SOVEREIGN_GLYPHS: SovereignGlyphItem[] = [
   },
   {
     id: 'generative',
-    label: 'Studio',
-    tag: 'Generative Studio',
+    label: 'AI Studio',
+    tag: 'AI Studio',
     icon: Sparkles,
     accentColor: '#ec4899',
     glowColor: 'rgba(236, 72, 153, 0.4)',
@@ -217,7 +217,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const getRealmName = (view: WorkspaceView) => {
     switch (view) {
       case 'chat': return 'Chat';
-      case 'generative': return 'Generative Studio';
+      case 'generative': return 'AI Studio';
       case 'editor': return 'Code';
       case 'terminal': return 'CLI';
       case 'agent': return 'Hunter';
