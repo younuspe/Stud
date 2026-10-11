@@ -220,6 +220,7 @@ export default function App() {
 
   // Incoming external prompt for Supru Code Copilot (from Floating Chat Pill)
   const [externalEditorPrompt, setExternalEditorPrompt] = useState<{ id: string; text: string } | null>(null);
+  const [externalBuildPrompt, setExternalBuildPrompt] = useState<{ id: string; text: string } | null>(null);
 
   // Agent target objective buffer
   const [agentInitialObjective, setAgentInitialObjective] = useState<string>('');
@@ -1129,6 +1130,8 @@ export default function App() {
                   setWorkspaceView('chat');
                 }}
                 onOpenInEditor={handleOpenInEditor}
+                externalBuildPrompt={externalBuildPrompt}
+                onClearExternalBuildPrompt={() => setExternalBuildPrompt(null)}
                 onRunInTerminal={(cmd) => {
                   setWorkspaceView('terminal');
                 }}
@@ -1356,8 +1359,8 @@ export default function App() {
           onOpenVeoStudio={() => handleOpenVeoStudio()}
           onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
           onBuildRequest={(text) => {
-            setWorkspaceView('editor');
-            setExternalEditorPrompt({ id: `build-prompt-${Date.now()}`, text });
+            setExternalBuildPrompt({ id: `build-prompt-${Date.now()}`, text });
+            setWorkspaceView('generative');
           }}
           activeModelName={activeCustomModel?.modelId || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'gemini-3.8-flash')}
         />
