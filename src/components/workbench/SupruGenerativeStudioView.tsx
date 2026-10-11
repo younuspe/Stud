@@ -462,6 +462,69 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     }
   };
 
+  const handleApplyProjectFiles = async () => {
+    if (!pendingProjectFiles.length || isApplyingProject) return;
+    if (!isTauri()) {
+      setGenerationError('Applying project files requires the installed Supru desktop app.');
+      return;
+    }
+    if (!workspaceRoot.trim()) {
+      setGenerationError('Choose a project folder with Open Project Folder before applying generated files.');
+      return;
+    }
+    setIsApplyingProject(true);
+    setGenerationError(null);
+    try {
+      const existingFiles = await invoke<string[]>('list_workspace_files', {
+        workspaceRoot,
+        relativeDir: null,
+      });
+      const existingSet = new Set(existingFiles.map((file) => file.replace(/\\/g, '/')));
+      const conflicts = pendingProjectFiles.filter((file) => existingSet.has(file.path));
+      if (conflicts.length > 0) {
+        const names = conflicts.map((file) => file.path).join('\n');
+        if (!window.confirm(`These files already exist and will be overwritten:\n\n${names}\n\nContinue? Supru will not delete unrelated files.`)) {
+          return;
+        }
+      }
+      const directories = new Set<string>();
+      for (const file of pendingProjectFiles) {
+        const parts = file.path.split('/');
+        parts.pop();
+        for (let i = 1; i <= parts.length; i++) directories.add(parts.slice(0, i).join('/'));
+      }
+      for (const directory of [...directories].sort((a, b) => a.split('/').length - b.split('/').length)) {
+        await invoke<string>('create_workspace_directory', { workspaceRoot, relativePath: directory });
+      }
+      const applied: GeneratedProjectFile[] = [];
+      for (const file of pendingProjectFiles) {
+        await invoke<string>('write_workspace_file', {
+          workspaceRoot,
+          relativePath: file.path,
+          content: file.content,
+        });
+        applied.push(file);
+      }
+      setCurrentProjectFiles((previous) => {
+        const merged = new Map(previous.map((file) => [file.path, file]));
+        for (const file of applied) merged.set(file.path, file);
+        return [...merged.values()];
+      });
+      setPendingProjectFiles([]);
+      setAppGenerationSummary(`Applied ${applied.length} file(s) to ${workspaceRoot}. The source files were written; the project has not yet been built or tested.`);
+      setAppBuildMessages((previous) => [...previous, {
+        id: `applied-${Date.now()}`,
+        role: 'assistant' as const,
+        text: `Wrote ${applied.length} file(s) to the selected workspace: ${applied.map((file) => file.path).join(', ')}. No build or runtime test has been run yet.`,
+        timestamp: Date.now(),
+      }].slice(-60));
+    } catch (error) {
+      setGenerationError(`Could not apply all project files: ${error instanceof Error ? error.message : String(error)}. If this occurred during writing, inspect the workspace for any files already written.`);
+    } finally {
+      setIsApplyingProject(false);
+    }
+  };
+
   // Synthesize / Manifest Reality
   const handleManifest = async () => {
     if (!prompt.trim() || isSynthesizing) return;
