@@ -232,6 +232,10 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     }
   })();
 
+  const geminiImageApiKey = activeCustomModel?.provider === 'gemini'
+    ? activeCustomModel.apiKey || (localConfig.provider === 'gemini_cloud' ? localConfig.apiKey : undefined)
+    : localConfig.provider === 'gemini_cloud' ? localConfig.apiKey : undefined;
+
   // Keep app-builder conversation and generated artifacts isolated per selected project.
   // Gate persistence during a workspace switch so the previous project's state cannot be written under the new path.
   useEffect(() => {
@@ -578,7 +582,8 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           imageUrl = await invoke<string>('generate_image', {
             prompt: enhancedPrompt,
             aspectRatio: selectedAspectRatio,
-            apiKey: localConfig.apiKey || null,
+            apiKey: geminiImageApiKey || null,
+            sourceImage: null,
           });
         } else {
           const res = await fetch('/api/generate-image', {
