@@ -1124,6 +1124,32 @@ export default function App() {
                   />
                 ) : (
                   <div className="flex flex-1 flex-col overflow-hidden pb-20">
+                    <div className="flex shrink-0 items-center justify-end gap-2 border-b border-white/[0.06] px-4 py-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm('Clear all messages in this conversation? This does not delete the conversation from your history list.')) {
+                            handleClearCurrentChat();
+                          }
+                        }}
+                        className="rounded-lg border border-white/[0.08] px-2.5 py-1 text-[10px] text-gray-400 hover:border-amber-400/40 hover:text-amber-200"
+                        title="Remove all messages from the current conversation"
+                      >
+                        Clear messages
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (activeThreadId && window.confirm('Delete this conversation and its messages permanently from Supru history?')) {
+                            handleDeleteThread(activeThreadId);
+                          }
+                        }}
+                        className="rounded-lg border border-rose-500/20 px-2.5 py-1 text-[10px] text-rose-300/80 hover:border-rose-400/50 hover:text-rose-200"
+                        title="Delete this conversation from history"
+                      >
+                        Delete conversation
+                      </button>
+                    </div>
                     <ChatMessageList
                       messages={activeMessages}
                       isGenerating={isGenerating}
