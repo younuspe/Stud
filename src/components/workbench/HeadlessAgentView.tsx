@@ -185,10 +185,12 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
     const agent = agents[index];
     setCurrentRunningAgentIndex(index);
     setAgents((prev) => prev.map((item, i) => i === index ? { ...item, status: 'working' } : item));
-    setTerminalLogs((prev) => [...prev, '[Model handoff ' + (index + 1) + '/' + agents.length + '] ' + agent.id + ' (' + agent.role + ') using configured model: ' + (localConfig.modelName || '(none selected)')]);
+    setTerminalLogs((prev) => [...prev, '[Model handoff ' + (index + 1) + '/' + agents.length + '] ' + agent.id + ' (' + agent.role + ') resolving the active provider model.']);
     try {
       if (!isTauri()) throw new Error('Hunter model execution requires the packaged Tauri desktop app. No browser/server fallback is used.');
       const selectedConfig = resolveProviderConfig(localConfig, activeCustomModel);
+      setAgents((prev) => prev.map((item) => ({ ...item, model: selectedConfig.modelName || 'No model selected' })));
+      setTerminalLogs((prev) => [...prev, '[Provider] ' + selectedConfig.provider + ' / ' + (selectedConfig.modelName || '(no model selected)') + ' is the actual model used for this handoff. Agent-specific model routing is not yet configured.']);
       if (selectedConfig.provider === 'offline_core') throw new Error('No chat model is configured for Offline Core. Select Ollama, LM Studio, or a configured cloud/compatible provider.');
       if (!selectedConfig.modelName.trim()) throw new Error('Select a model in Provider Settings before running Hunter.');
       if (selectedConfig.provider === 'custom_local' && !selectedConfig.endpointUrl.trim()) throw new Error('Set the selected compatible provider base URL before running Hunter.');
@@ -358,7 +360,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
       setIsPipelineRunning(false); setIsPipelineComplete(false); setCurrentRunningAgentIndex(-1);
     }
   };
-  // Run Entire Pipeline from Start (End-to-End Workflow with Zero Interaction)
+  // Run the sequential model-handoff chain with explicit human approval gates
   const handleRunFullPipeline = (_autoApprove: boolean = false) => {
     soundFx.playClick();
     if (!pipelineObjective.trim()) {
@@ -971,7 +973,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                     </span>
                     <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-2 py-0.5 text-[9.5px] font-mono font-bold text-amber-300 border border-amber-500/30">
                       <Zap size={10} className="fill-amber-400" />
-                      Zero-Interaction End-to-End Mode
+                      Human-Approval-Gated Model Chain
                     </span>
                   </div>
                   <span className="text-[10px] text-gray-400">
