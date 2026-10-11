@@ -215,17 +215,20 @@ export default function App() {
     setStudioWindows(DEFAULT_STUDIO_WINDOWS);
   };
 
-  // Entering Supru Code must always reveal its editor and Copilot windows, even if
-  // an older saved layout accidentally left every window closed.
+  // Entering Supru Code must reveal the editor and Copilot panes in the visible
+  // docked layout. Older persisted layouts can have missing entries, closed panes,
+  // or an editor undocked beyond the current screen; normalize those cases here.
   useEffect(() => {
     if (workspaceView !== 'editor') return;
     setStudioWindows((prev) => {
-      const editor = prev.editor || DEFAULT_STUDIO_WINDOWS.editor;
-      const generator = prev.generator || DEFAULT_STUDIO_WINDOWS.generator;
-      if (editor.isOpen && generator.isOpen) return prev;
+      const merged = { ...DEFAULT_STUDIO_WINDOWS, ...prev };
+      const editor = merged.editor || DEFAULT_STUDIO_WINDOWS.editor;
+      const generator = merged.generator || DEFAULT_STUDIO_WINDOWS.generator;
+      if (editor.isOpen && !editor.isUndocked && generator.isOpen && !generator.isUndocked) {
+        return merged;
+      }
       return {
-        ...DEFAULT_STUDIO_WINDOWS,
-        ...prev,
+        ...merged,
         editor: { ...editor, isOpen: true, isUndocked: false },
         generator: { ...generator, isOpen: true, isUndocked: false },
       };
