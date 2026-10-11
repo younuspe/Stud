@@ -12,7 +12,7 @@ export const INITIAL_HUNTER_AGENTS: HunterAgentDefinition[] = [
     role: 'Lead Orchestrator',
     duties: ['Decompose user goals into milestone stages', 'Coordinate handoffs', 'Enforce human approval gates'],
     boundaries: ['Cannot execute shell commands directly', 'Cannot write code to production paths'],
-    model: 'Gemini 2.5 Pro',
+    model: 'Active provider model (runtime)',
     tools: ['orchestrator.plan', 'memory.query', 'checkpoint.create'],
     status: 'idle',
     handoffTo: 'researcher'
@@ -22,7 +22,7 @@ export const INITIAL_HUNTER_AGENTS: HunterAgentDefinition[] = [
     role: 'Deep Intelligence Researcher',
     duties: ['Hunt signatures and architectural patterns', 'Gather evidence for decisions', 'Enforce anti-injection constraints'],
     boundaries: ['Cannot modify project files', 'All external content treated as untrusted data'],
-    model: 'Gemini 2.5 Pro',
+    model: 'Active provider model (runtime)',
     tools: ['fs.read', 'fs.search', 'hunter.scent', 'git.status'],
     status: 'idle',
     handoffTo: 'planner'
@@ -32,7 +32,7 @@ export const INITIAL_HUNTER_AGENTS: HunterAgentDefinition[] = [
     role: 'Milestone & Dependency Strategist',
     duties: ['Formulate milestone execution strategy', 'Map acceptance criteria and done-when conditions'],
     boundaries: ['Cannot write code', 'Cannot bypass acceptance criteria'],
-    model: 'Gemini 2.5 Pro',
+    model: 'Active provider model (runtime)',
     tools: ['memory.query', 'checkpoint.inspect'],
     status: 'idle',
     handoffTo: 'architect'
@@ -42,7 +42,7 @@ export const INITIAL_HUNTER_AGENTS: HunterAgentDefinition[] = [
     role: 'System Architect',
     duties: ['Specify type boundaries, schemas, and API contracts', 'Enforce Rust-authoritative execution invariants'],
     boundaries: ['Cannot execute destructive shell commands', 'Cannot loosen Rust security policies'],
-    model: 'Gemini 2.5 Pro',
+    model: 'Active provider model (runtime)',
     tools: ['fs.read', 'ast.parser', 'type.checker'],
     status: 'idle',
     handoffTo: 'coder'
@@ -52,7 +52,7 @@ export const INITIAL_HUNTER_AGENTS: HunterAgentDefinition[] = [
     role: 'Code Implementer',
     duties: ['Implement production code adhering strictly to contracts', 'Generate reviewable diffs for approval', 'Log modifications to changes.jsonl'],
     boundaries: ['Cannot directly overwrite files without permission gate', 'Cannot self-declare code is working without evidence'],
-    model: 'Claude 3.7 Sonnet',
+    model: 'Active provider model (runtime)',
     tools: ['fs.edit', 'fs.write', 'git.diff', 'type.checker'],
     status: 'idle',
     handoffTo: 'tester'
@@ -62,7 +62,7 @@ export const INITIAL_HUNTER_AGENTS: HunterAgentDefinition[] = [
     role: 'Validation & Regression Runner',
     duties: ['Run unit tests and linters via Rust execution layer', 'Collect compiler output, exit codes, and durations as evidence'],
     boundaries: ['Cannot modify production code', 'Cannot fabricate or mock test success'],
-    model: 'Local Llama-3-8B Mojo',
+    model: 'Active provider model (runtime)',
     tools: ['test.runner', 'linter.exec', 'compiler.check'],
     status: 'idle',
     handoffTo: 'reviewer'
@@ -72,7 +72,7 @@ export const INITIAL_HUNTER_AGENTS: HunterAgentDefinition[] = [
     role: 'Critique & Quality Inspector',
     duties: ['Inspect code diffs against criteria', 'Ensure evidence exists for every claim', 'Identify anti-patterns and risks'],
     boundaries: ['Cannot write code', 'Cannot approve incomplete evidence'],
-    model: 'Gemini 2.5 Pro',
+    model: 'Active provider model (runtime)',
     tools: ['git.diff', 'audit.inspect', 'evidence.verify'],
     status: 'idle',
     handoffTo: 'judge'
@@ -82,7 +82,7 @@ export const INITIAL_HUNTER_AGENTS: HunterAgentDefinition[] = [
     role: 'Absolute Judge',
     duties: ['Inspect requested outcome vs. verified evidence', 'Evaluate layered verification ladder', 'Issue binary verdict: verified or blocked'],
     boundaries: ['Cannot execute arbitrary commands', 'Cannot turn an unverified claim into truth'],
-    model: 'Z3 Symbolic Logic / Zig Core',
+    model: 'Active provider model (runtime)',
     tools: ['smt.prover', 'evidence.audit', 'checkpoint.finalize'],
     status: 'idle',
     handoffTo: 'lead'
