@@ -252,6 +252,38 @@ async fn read_workspace_file(workspace_root: String, relative_path: String) -> R
 
 
 #[tauri::command]
+async fn create_workspace_directory(workspace_root: String, relative_path: String) -> Result<String, String> {
+    let root = PathBuf::from(workspace_root).canonicalize()
+        .map_err(|e| format!("Workspace root is unavailable: {e}"))?;
+    if !root.is_dir() { return Err("Workspace root must be a directory.".into()); }
+    let relative = PathBuf::from(relative_path.trim());
+    if relative.as_os_str().is_empty() || relative.is_absolute()
+        || relative.components().any(|c| !matches!(c, std::path::Component::Normal(_))) {
+        return Err("Directory path must be a safe relative path inside the workspace.".into());
+    }
+    let parts: Vec<_> = relative.components().filter_map(|c| match c {
+        std::path::Component::Normal(name) => Some(name.to_os_string()),
+        _ => None,
+    }).collect();
+    if parts.iter().any(|name| matches!(name.to_string_lossy().as_ref(), ".git" | "node_modules" | "target")) {
+        return Err("Creating directories inside .git, node_modules, and target is blocked.".into());
+    }
+    let mut current = root.clone();
+    for part in parts {
+        current.push(part);
+        if !current.exists() {
+            std::fs::create_dir(&current).map_err(|e| format!("Could not create workspace directory: {e}"))?;
+        }
+        let canonical = current.canonicalize().map_err(|e| format!("Could not resolve workspace directory: {e}"))?;
+        if !canonical.starts_with(&root) || !canonical.is_dir() {
+            return Err("Directory escapes the selected workspace or is not a directory.".into());
+        }
+        current = canonical;
+    }
+    Ok(format!("Created directory {}", current.strip_prefix(&root).unwrap_or(&current).display()))
+}
+
+#[tauri::command]
 async fn write_workspace_file(workspace_root: String, relative_path: String, content: String) -> Result<String, String> {
     let root = PathBuf::from(workspace_root).canonicalize()
         .map_err(|e| format!("Workspace root is unavailable: {e}"))?;
@@ -817,7 +849,7 @@ fn delete_secret(secret_id: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![execute_terminal_command, execute_sandboxed_command, chat_completion, test_provider_connection, store_secret, get_secret, delete_secret, generate_image, choose_workspace_folder, list_workspace_files, read_workspace_file, write_workspace_file])
+        .invoke_handler(tauri::generate_handler![execute_terminal_command, execute_sandboxed_command, chat_completion, test_provider_connection, store_secret, get_secret, delete_secret, generate_image, choose_workspace_folder, list_workspace_files, read_workspace_file, create_workspace_directory, write_workspace_file])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
