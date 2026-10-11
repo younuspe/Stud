@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { 
   X, 
   Sparkles, 
@@ -25,6 +26,7 @@ interface ImageStudioModalProps {
   onSendToChat?: (imageUrl: string, promptText: string) => void;
   initialSourceImage?: string | null;
   initialPrompt?: string;
+  imageApiKey?: string;
 }
 
 export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
@@ -34,6 +36,7 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
   onSendToChat,
   initialSourceImage = null,
   initialPrompt = '',
+  imageApiKey,
 }) => {
   const [tab, setTab] = useState<'create' | 'edit'>(initialSourceImage ? 'edit' : 'create');
   const [prompt, setPrompt] = useState(initialPrompt || '');
@@ -84,24 +87,38 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
     soundFx.playMeowChime();
 
     try {
-      const res = await fetch('/api/generate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let imageUrl: string;
+      if (isTauri()) {
+        if (!imageApiKey?.trim()) {
+          throw new Error('Desktop image generation requires a Gemini API key. Add it in Provider Settings; text-model keys are not interchangeable.');
+        }
+        imageUrl = await invoke<string>('generate_image', {
           prompt: prompt.trim(),
-          sourceImage: tab === 'edit' ? sourceImage : undefined,
-          aspectRatio: aspectRatio,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || 'Failed to generate image');
+          aspectRatio,
+          apiKey: imageApiKey,
+          sourceImage: tab === 'edit' ? sourceImage : null,
+        });
+      } else {
+        const res = await fetch('/api/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: prompt.trim(),
+            sourceImage: tab === 'edit' ? sourceImage : undefined,
+            aspectRatio,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Failed to generate image');
+        }
+        imageUrl = data.imageUrl;
       }
+      if (!imageUrl) throw new Error('Image provider returned no image data.');
 
       const newItem: ImageItem = {
         id: `img-${Date.now()}`,
-        url: data.imageUrl,
+        url: imageUrl,
         prompt: prompt.trim(),
         isEdit: tab === 'edit',
         aspectRatio: aspectRatio,
