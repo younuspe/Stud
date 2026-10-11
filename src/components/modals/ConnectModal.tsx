@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { 
   X, 
-  Wifi, 
-  CheckCircle2, 
   Cpu, 
   Activity, 
   Server, 
