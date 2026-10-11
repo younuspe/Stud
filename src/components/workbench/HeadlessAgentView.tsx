@@ -174,7 +174,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   }, [initialWorkspacePath, workspaceRoot]);
 
   // Each handoff calls the configured provider. No fabricated tool results or verification.
-  const executeAgentStep = async (index: number, priorArtifacts: Record<string, HunterAgentArtifact> = agentArtifacts): Promise<void> => {
+  const executeAgentStep = async (index: number, priorArtifacts: Record<string, HunterAgentArtifact> = agentArtifacts, objective: string = pipelineObjective): Promise<void> => {
     if (index >= agents.length) {
       setIsPipelineRunning(false);
       setIsPipelineComplete(true);
@@ -293,7 +293,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
         temperature: 0.2,
         messages: [
           { role: 'system', content: agent.id === 'coder' ? 'You are the Code Implementer in Supru Hunter. Return ONLY one valid JSON object with exactly these fields: path (relative path of one EXISTING file from the supplied workspace inventory), content (the COMPLETE replacement file content as a JSON string), reason (brief explanation). Do not use markdown fences or extra text. Never return a diff. Never claim that you wrote or tested the file. If a safe, useful edit cannot be proposed from the supplied context, return JSON with path empty and explain why in reason. Preserve unrelated code and conventions.' : 'You are the ' + agent.role + ' in Supru Hunter. Duties: ' + agent.duties.join('; ') + '. Boundaries: ' + agent.boundaries.join('; ') + '. You have no tools in this step. Do not claim to inspect files beyond the supplied workspace context, run commands, edit code, or verify tests. State what evidence/tools are still needed.' },
-          { role: 'user', content: 'User objective:\n' + pipelineObjective + '\n\nPrior agent outputs:\n' + (prior || '(No prior outputs.)') + '\n\nProvide your actual ' + agent.role + ' response for this objective.' }
+          { role: 'user', content: 'User objective:\n' + objective + '\n\nPrior agent outputs:\n' + (prior || '(No prior outputs.)') + '\n\nProvide your actual ' + agent.role + ' response for this objective.' }
         ]
       });
       if (agent.id === 'coder') {
@@ -352,7 +352,7 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
       setAgents((prev) => prev.map((item, i) => i === index ? { ...item, status: 'done' } : item));
       setTerminalLogs((prev) => [...prev, '[' + agent.id + '] Received ' + response.length + ' characters from the configured model. No tools executed in this handoff.']);
       soundFx.playClick();
-      if (!isPausedRef.current) await executeAgentStep(index + 1, { ...contextArtifacts, [agent.id]: artifact }); else setIsPipelineRunning(false);
+      if (!isPausedRef.current) await executeAgentStep(index + 1, { ...contextArtifacts, [agent.id]: artifact }, objective); else setIsPipelineRunning(false);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setAgents((prev) => prev.map((item, i) => i === index ? { ...item, status: 'failed' } : item));
@@ -363,13 +363,16 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
     }
   };
   // Run the sequential model-handoff chain with explicit human approval gates
-  const handleRunFullPipeline = (_autoApprove: boolean = false) => {
+  const handleRunFullPipeline = (objectiveOverride?: string | boolean) => {
     soundFx.playClick();
-    if (!pipelineObjective.trim()) {
+    const requestedObjective = typeof objectiveOverride === 'string' ? objectiveOverride.trim() : '';
+    const objective = requestedObjective || pipelineObjective.trim();
+    if (!objective) {
       setTerminalLogs((prev) => [...prev, 'Enter a task objective before starting Hunter.']);
       setIsPipelineRunning(false);
       return;
     }
+    if (requestedObjective) setPipelineObjective(requestedObjective);
     setAutoApproveGates(false);
     setIsZeroInteraction(false);
     setIsPipelinePaused(false);
@@ -379,9 +382,9 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
 
     // Reset agents to idle first
     setAgents((prev) => prev.map((ag) => ({ ...ag, status: 'idle' })));
-    setTerminalLogs((prev) => [...prev, '--- Starting model-analysis chain for: "' + pipelineObjective + '" ---', '[Execution policy] Every proposed file write pauses for explicit human approval. Model responses do not count as test or verification evidence.']);
+    setTerminalLogs((prev) => [...prev, '--- Starting model-analysis chain for: "' + objective + '" ---', '[Execution policy] Every proposed file write pauses for explicit human approval. Model responses do not count as test or verification evidence.']);
 
-    void executeAgentStep(0);
+    void executeAgentStep(0, agentArtifacts, objective);
   };
 
   // Step-by-step: execute single next pending agent
@@ -1670,8 +1673,8 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
       {isPillVisible && (
         <HunterFloatingPill
           onSendMessage={(msg) => {
-            handleRunTerminalCommand(`supru hunter --input "${msg}"`);
-            soundFx.playChime();
+            // Treat pill text as a model objective, never as shell source.
+            handleRunFullPipeline(msg);
           }}
           onOpenWorkbench={() => setActiveTab('workbench')}
           onSelectMilestone={(m) => setActiveMilestone(m as any)}
