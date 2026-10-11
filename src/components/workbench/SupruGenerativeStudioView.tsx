@@ -503,24 +503,13 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           return;
         }
       }
-      const directories = new Set<string>();
-      for (const file of pendingProjectFiles) {
-        const parts = file.path.split('/');
-        parts.pop();
-        for (let i = 1; i <= parts.length; i++) directories.add(parts.slice(0, i).join('/'));
-      }
-      for (const directory of [...directories].sort((a, b) => a.split('/').length - b.split('/').length)) {
-        await invoke<string>('create_workspace_directory', { workspaceRoot, relativePath: directory });
-      }
-      const applied: GeneratedProjectFile[] = [];
-      for (const file of pendingProjectFiles) {
-        await invoke<string>('write_workspace_file', {
-          workspaceRoot,
-          relativePath: file.path,
-          content: file.content,
-        });
-        applied.push(file);
-      }
+      // One native operation validates the full manifest, stages every file,
+      // and rolls back committed replacements if a later write fails.
+      await invoke<string>('write_workspace_files', {
+        workspaceRoot,
+        files: pendingProjectFiles.map((file) => ({ path: file.path, content: file.content })),
+      });
+      const applied: GeneratedProjectFile[] = [...pendingProjectFiles];
       setCurrentProjectFiles((previous) => {
         const merged = new Map(previous.map((file) => [file.path, file]));
         for (const file of applied) merged.set(file.path, file);
