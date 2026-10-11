@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 import { 
   GitBranch, 
   GitFork, 
@@ -55,45 +56,59 @@ export const GitHubView: React.FC<GitHubViewProps> = ({
     soundFx.playClick();
 
     try {
-      const res = await fetch('/api/github/repo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ owner: targetOwner, repo: targetRepo, token: token || undefined }),
-      });
-
-      const data = await res.json();
-      if (data.error) {
-        setErrorMessage(data.error);
-        setIsLoading(false);
-        return;
+      let data: any;
+      if (isTauri()) {
+        data = await invoke<any>('github_repo_info', {
+          owner: targetOwner,
+          repo: targetRepo,
+          token: token || null,
+        });
+      } else {
+        const res = await fetch('/api/github/repo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ owner: targetOwner, repo: targetRepo, token: token || undefined }),
+        });
+        data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || `GitHub repository request failed (HTTP ${res.status})`);
       }
 
       setRepoData(data);
-      fetchContents(targetOwner, targetRepo, '');
+      void fetchContents(targetOwner, targetRepo, '', data.defaultBranch || 'main');
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to connect to GitHub repository');
       setIsLoading(false);
     }
   };
 
-  const fetchContents = async (targetOwner = owner, targetRepo = repo, path = '') => {
+  const fetchContents = async (targetOwner = owner, targetRepo = repo, path = '', branch = repoData?.defaultBranch || 'main') => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/github/contents', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      let data: any;
+      if (isTauri()) {
+        data = await invoke<any>('github_contents', {
           owner: targetOwner,
           repo: targetRepo,
           path,
-          token: token || undefined,
-        }),
-      });
-
-      const data = await res.json();
-      if (data.error) {
-        setErrorMessage(data.error);
-      } else if (data.type === 'dir') {
+          branch,
+          token: token || null,
+        });
+      } else {
+        const res = await fetch('/api/github/contents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            owner: targetOwner,
+            repo: targetRepo,
+            path,
+            branch,
+            token: token || undefined,
+          }),
+        });
+        data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || `GitHub contents request failed (HTTP ${res.status})`);
+      }
+      if (data.type === 'dir') {
         setItems(data.items || []);
         setCurrentPath(path);
         setSelectedFile(null);
@@ -109,7 +124,7 @@ export const GitHubView: React.FC<GitHubViewProps> = ({
 
   const handleItemClick = (item: GitHubRepoItem) => {
     soundFx.playClick();
-    fetchContents(owner, repo, item.path);
+    fetchContents(owner, repo, item.path, repoData?.defaultBranch || 'main');
   };
 
   const handleNavigateUp = () => {
@@ -118,7 +133,7 @@ export const GitHubView: React.FC<GitHubViewProps> = ({
     const parts = currentPath.split('/');
     parts.pop();
     const newPath = parts.join('/');
-    fetchContents(owner, repo, newPath);
+    fetchContents(owner, repo, newPath, repoData?.defaultBranch || 'main');
   };
 
   const handleOpenInEditorClick = () => {
