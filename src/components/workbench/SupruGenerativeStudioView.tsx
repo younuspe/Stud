@@ -57,6 +57,11 @@ export type GenerativeMode = 'visual' | 'motion' | 'world3d' | 'atomic' | 'app' 
 type AppBuildMessage = { id: string; role: 'user' | 'assistant'; text: string; timestamp: number };
 type GeneratedProjectFile = { path: string; content: string };
 
+function appBuilderStorageKey(baseKey: string, workspaceRoot?: string): string {
+  const root = workspaceRoot?.trim();
+  return root ? `${baseKey}:${encodeURIComponent(root)}` : baseKey;
+}
+
 function parseGeneratedProject(responseText: string): { summary: string; files: GeneratedProjectFile[] } {
   const trimmed = responseText.trim();
   const withoutFence = trimmed.startsWith('```')
@@ -186,12 +191,14 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   const [seed, setSeed] = useState(42069);
   const [currentResultImage, setCurrentResultImage] = useState<string | null>(null);
   const [currentResultVideo, setCurrentResultVideo] = useState<string | null>(null);
-  const [currentResultApp, setCurrentResultApp] = useState<string | null>(() => readStudioStorage<string | null>('supru_studio_app_source_v1', null));
+  const builderWorkspaceRoot = workspaceRoot?.trim() || '';
+  const [loadedBuilderWorkspaceRoot, setLoadedBuilderWorkspaceRoot] = useState(builderWorkspaceRoot);
+  const [currentResultApp, setCurrentResultApp] = useState<string | null>(() => readStudioStorage<string | null>(appBuilderStorageKey('supru_studio_app_source_v1', builderWorkspaceRoot), null));
   const [pendingProjectFiles, setPendingProjectFiles] = useState<GeneratedProjectFile[]>([]);
   const [currentProjectFiles, setCurrentProjectFiles] = useState<GeneratedProjectFile[]>([]);
   const [isApplyingProject, setIsApplyingProject] = useState(false);
-  const [appGenerationSummary, setAppGenerationSummary] = useState<string | null>(() => readStudioStorage<string | null>('supru_studio_app_summary_v1', null));
-  const [appBuildMessages, setAppBuildMessages] = useState<AppBuildMessage[]>(() => readStudioStorage<AppBuildMessage[]>('supru_studio_app_chat_v1', []));
+  const [appGenerationSummary, setAppGenerationSummary] = useState<string | null>(() => readStudioStorage<string | null>(appBuilderStorageKey('supru_studio_app_summary_v1', builderWorkspaceRoot), null));
+  const [appBuildMessages, setAppBuildMessages] = useState<AppBuildMessage[]>(() => readStudioStorage<AppBuildMessage[]>(appBuilderStorageKey('supru_studio_app_chat_v1', builderWorkspaceRoot), []));
   const [autoGenerateRequested, setAutoGenerateRequested] = useState(false);
   const [manifestedArtifacts, setManifestedArtifacts] = useState<ManifestedArtifact[]>([]);
   const [copiedCode, setCopiedCode] = useState(false);
@@ -225,6 +232,19 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     }
   })();
 
+  // Keep app-builder conversation and generated artifacts isolated per selected project.
+  // Gate persistence during a workspace switch so the previous project's state cannot be written under the new path.
+  useEffect(() => {
+    if (loadedBuilderWorkspaceRoot === builderWorkspaceRoot) return;
+    setLoadedBuilderWorkspaceRoot(builderWorkspaceRoot);
+    setCurrentResultApp(readStudioStorage<string | null>(appBuilderStorageKey('supru_studio_app_source_v1', builderWorkspaceRoot), null));
+    setPendingProjectFiles([]);
+    setCurrentProjectFiles([]);
+    setAppGenerationSummary(readStudioStorage<string | null>(appBuilderStorageKey('supru_studio_app_summary_v1', builderWorkspaceRoot), null));
+    setAppBuildMessages(readStudioStorage<AppBuildMessage[]>(appBuilderStorageKey('supru_studio_app_chat_v1', builderWorkspaceRoot), []));
+    setGenerationError(null);
+  }, [builderWorkspaceRoot, loadedBuilderWorkspaceRoot]);
+
   // Persist app-builder work independently of the mounted workspace tab.
   // This prevents generated source and chat instructions disappearing when the user switches views.
   useEffect(() => {
@@ -234,20 +254,30 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     try { localStorage.setItem('supru_studio_prompt_v1', JSON.stringify(prompt)); } catch {}
   }, [prompt]);
   useEffect(() => {
+    if (loadedBuilderWorkspaceRoot !== builderWorkspaceRoot) return;
+    const key = appBuilderStorageKey('supru_studio_app_source_v1', builderWorkspaceRoot);
     try {
-      if (currentResultApp) localStorage.setItem('supru_studio_app_source_v1', JSON.stringify(currentResultApp));
-      else localStorage.removeItem('supru_studio_app_source_v1');
+      if (currentResultApp) localStorage.setItem(key, JSON.stringify(currentResultApp));
+      else localStorage.removeItem(key);
     } catch {}
-  }, [currentResultApp]);
+  }, [currentResultApp, builderWorkspaceRoot, loadedBuilderWorkspaceRoot]);
   useEffect(() => {
+    if (loadedBuilderWorkspaceRoot !== builderWorkspaceRoot) return;
+    const key = appBuilderStorageKey('supru_studio_app_summary_v1', builderWorkspaceRoot);
     try {
-      if (appGenerationSummary) localStorage.setItem('supru_studio_app_summary_v1', JSON.stringify(appGenerationSummary));
-      else localStorage.removeItem('supru_studio_app_summary_v1');
+      if (appGenerationSummary) localStorage.setItem(key, JSON.stringify(appGenerationSummary));
+      else localStorage.removeItem(key);
     } catch {}
-  }, [appGenerationSummary]);
+  }, [appGenerationSummary, builderWorkspaceRoot, loadedBuilderWorkspaceRoot]);
   useEffect(() => {
-    try { localStorage.setItem('supru_studio_app_chat_v1', JSON.stringify(appBuildMessages.slice(-60))); } catch {}
-  }, [appBuildMessages]);
+    if (loadedBuilderWorkspaceRoot !== builderWorkspaceRoot) return;
+    try {
+      localStorage.setItem(
+        appBuilderStorageKey('supru_studio_app_chat_v1', builderWorkspaceRoot),
+        JSON.stringify(appBuildMessages.slice(-60)),
+      );
+    } catch {}
+  }, [appBuildMessages, builderWorkspaceRoot, loadedBuilderWorkspaceRoot]);
 
   // Build-mode prompts from the floating pill explicitly enter App Builder and generate there.
   // This is separate from ordinary workspace prompts so a visual-mode prompt is never misrouted.
