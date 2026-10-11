@@ -63,6 +63,7 @@ import { resolveProviderConfig } from '../../lib/providerRegistry';
 interface HeadlessAgentViewProps {
   localConfig: import('../../types/workbench').LocalHostConfig;
   activeCustomModel?: ExternalAIModelConfig | null;
+  availableModels?: ExternalAIModelConfig[];
   onSendToChat: (report: string) => void;
   onOpenInEditor?: (fileName: string, content: string) => void;
   initialObjective?: string;
@@ -80,6 +81,7 @@ const PRESET_PIPELINE_OBJECTIVES = [
 export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
   localConfig,
   activeCustomModel,
+  availableModels = [],
   onSendToChat,
   onOpenInEditor,
   initialObjective,
@@ -188,9 +190,9 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
     setTerminalLogs((prev) => [...prev, '[Model handoff ' + (index + 1) + '/' + agents.length + '] ' + agent.id + ' (' + agent.role + ') resolving the active provider model.']);
     try {
       if (!isTauri()) throw new Error('Hunter model execution requires the packaged Tauri desktop app. No browser/server fallback is used.');
-      const selectedConfig = resolveProviderConfig(localConfig, activeCustomModel);
-      setAgents((prev) => prev.map((item) => ({ ...item, model: selectedConfig.modelName || 'No model selected' })));
-      setTerminalLogs((prev) => [...prev, '[Provider] ' + selectedConfig.provider + ' / ' + (selectedConfig.modelName || '(no model selected)') + ' is the actual model used for this handoff. Agent-specific model routing is not yet configured.']);
+      const selectedAgentProfile = availableModels.find((model) => model.id === agent.model);
+      const selectedConfig = resolveProviderConfig(localConfig, selectedAgentProfile || activeCustomModel);
+      setTerminalLogs((prev) => [...prev, '[Provider] Agent ' + agent.id + ' routed to ' + selectedConfig.provider + ' / ' + (selectedConfig.modelName || '(no model selected)') + (selectedAgentProfile ? ' using profile "' + selectedAgentProfile.name + '".' : ' using the active provider profile.')]);
       if (selectedConfig.provider === 'offline_core') throw new Error('No chat model is configured for Offline Core. Select Ollama, LM Studio, or a configured cloud/compatible provider.');
       if (!selectedConfig.modelName.trim()) throw new Error('Select a model in Provider Settings before running Hunter.');
       if (selectedConfig.provider === 'custom_local' && !selectedConfig.endpointUrl.trim()) throw new Error('Set the selected compatible provider base URL before running Hunter.');
@@ -1180,6 +1182,10 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
               {agents.map((ag) => {
                 const artifact = agentArtifacts[ag.id];
                 const isCurrent = currentRunningAgentIndex === agents.indexOf(ag);
+                const selectedAgentProfile = availableModels.find((model) => model.id === ag.model);
+                const agentModelLabel = selectedAgentProfile
+                  ? `${selectedAgentProfile.name} (${selectedAgentProfile.modelId})`
+                  : activeCustomModel?.modelId || localConfig.modelName || 'No model selected';
 
                 return (
                   <div
@@ -1214,8 +1220,26 @@ export const HeadlessAgentView: React.FC<HeadlessAgentViewProps> = ({
                           </span>
                         </div>
                         <span className="text-[10px] text-gray-400 font-mono">
-                          ID: <strong className="text-gray-200">{ag.id}</strong> • Model: <strong className="text-[#c49a6c]">{ag.model}</strong>
+                          ID: <strong className="text-gray-200">{ag.id}</strong> • Active route: <strong className="text-[#c49a6c]">{agentModelLabel}</strong>
                         </span>
+                        <select
+                          aria-label={`Model for ${ag.role}`}
+                          value={selectedAgentProfile?.id || '__active__'}
+                          disabled={isPipelineRunning || ag.status === 'waiting_approval'}
+                          onChange={(event) => {
+                            const profileId = event.target.value;
+                            setAgents((prev) => prev.map((item) => item.id === ag.id
+                              ? { ...item, model: profileId === '__active__' ? 'Active provider model (runtime)' : profileId }
+                              : item));
+                          }}
+                          className="mt-1 max-w-full rounded-md border border-white/10 bg-[#09090c] px-2 py-1 text-[10px] text-gray-200 outline-none focus:border-[#c49a6c]/60 disabled:opacity-50"
+                          title="Select the real provider profile used when this agent runs"
+                        >
+                          <option value="__active__">Use active model: {activeCustomModel?.modelId || localConfig.modelName || 'Not configured'}</option>
+                          {availableModels.map((model) => (
+                            <option key={model.id} value={model.id}>{model.name} — {model.modelId}</option>
+                          ))}
+                        </select>
                       </div>
 
                       <button
