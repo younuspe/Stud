@@ -6,7 +6,6 @@ import {
   Server, 
   Sparkles,
   Zap,
-  RefreshCw
 } from 'lucide-react';
 import { soundFx } from '../../utils/audio';
 
