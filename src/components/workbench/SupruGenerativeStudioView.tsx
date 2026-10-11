@@ -45,6 +45,8 @@ interface SupruGenerativeStudioViewProps {
   onRunInTerminal?: (cmd: string) => void;
   onOpenImageStudio?: (imageUrl?: string) => void;
   onOpenVeoStudio?: (imageUrl?: string) => void;
+  externalBuildPrompt?: { id: string; text: string } | null;
+  onClearExternalBuildPrompt?: () => void;
 }
 
 export type GenerativeMode = 'visual' | 'motion' | 'world3d' | 'atomic' | 'app' | 'audio';
@@ -108,6 +110,8 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   onRunInTerminal,
   onOpenImageStudio,
   onOpenVeoStudio,
+  externalBuildPrompt = null,
+  onClearExternalBuildPrompt,
 }) => {
   const [activeMode, setActiveMode] = useState<GenerativeMode>(() => {
     const saved = readStudioStorage<GenerativeMode>('supru_studio_mode_v1', 'visual');
@@ -183,6 +187,18 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   useEffect(() => {
     try { localStorage.setItem('supru_studio_app_chat_v1', JSON.stringify(appBuildMessages.slice(-60))); } catch {}
   }, [appBuildMessages]);
+
+  // Build-mode prompts from the floating pill explicitly enter App Builder and generate there.
+  // This is separate from ordinary workspace prompts so a visual-mode prompt is never misrouted.
+  useEffect(() => {
+    const text = externalBuildPrompt?.text?.trim();
+    if (!text) return;
+    setActiveMode('app');
+    setPrompt(text);
+    setGenerationError(null);
+    setAutoGenerateRequested(true);
+    onClearExternalBuildPrompt?.();
+  }, [externalBuildPrompt?.id]);
 
   // Floating-pill prompts should respect the mode the user is currently using.
   // Only auto-run when App Builder is already selected; never silently switch a
