@@ -6,6 +6,125 @@ use std::time::Instant;
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
 
+fn validate_github_slug(value: &str, label: &str) -> Result<(), String> {
+    if value.is_empty() || value.len() > 100
+        || !value.chars().all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')) {
+        return Err(format!("Invalid GitHub {label}."));
+    }
+    Ok(())
+}
+
+async fn github_api_request(url: reqwest::Url, token: Option<&str>) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(25))
+        .user_agent("Supru-AI-Desktop")
+        .build()
+        .map_err(|error| format!("Could not initialize GitHub client: {error}"))?;
+    let mut request = client.get(url).header("Accept", "application/vnd.github+json");
+    if let Some(token) = token.map(str::trim).filter(|value| !value.is_empty()) {
+        request = request.bearer_auth(token);
+    }
+    let response = request.send().await.map_err(|error| format!("GitHub request failed: {error}"))?;
+    let status = response.status();
+    let body = response.text().await.map_err(|error| format!("Could not read GitHub response: {error}"))?;
+    let data: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|_| format!("GitHub returned HTTP {status} with a non-JSON response."))?;
+    if !status.is_success() {
+        let message = data.get("message").and_then(|value| value.as_str()).unwrap_or("Unknown GitHub API error");
+        return Err(format!("GitHub returned HTTP {status}: {message}"));
+    }
+    Ok(data)
+}
+
+#[tauri::command]
+async fn github_repo_info(owner: String, repo: String, token: Option<String>) -> Result<serde_json::Value, String> {
+    validate_github_slug(owner.trim(), "owner")?;
+    validate_github_slug(repo.trim(), "repository name")?;
+    let url = reqwest::Url::parse(&format!(
+        "https://api.github.com/repos/{}/{}",
+        owner.trim(), repo.trim()
+    )).map_err(|error| format!("Invalid GitHub repository URL: {error}"))?;
+    let data = github_api_request(url, token.as_deref()).await?;
+    Ok(serde_json::json!({
+        "id": data.get("id"),
+        "name": data.get("name"),
+        "fullName": data.get("full_name"),
+        "description": data.get("description"),
+        "defaultBranch": data.get("default_branch"),
+        "stars": data.get("stargazers_count"),
+        "forks": data.get("forks_count"),
+        "openIssues": data.get("open_issues_count"),
+        "htmlUrl": data.get("html_url")
+    }))
+}
+
+#[tauri::command]
+async fn github_contents(
+    owner: String,
+    repo: String,
+    path: Option<String>,
+    branch: Option<String>,
+    token: Option<String>,
+) -> Result<serde_json::Value, String> {
+    validate_github_slug(owner.trim(), "owner")?;
+    validate_github_slug(repo.trim(), "repository name")?;
+    let requested_path = path.unwrap_or_default();
+    if requested_path.starts_with('/') || requested_path.split('/').any(|part| part == "." || part == "..") {
+        return Err("GitHub content path must be relative and cannot contain traversal segments.".into());
+    }
+    let branch = branch.filter(|value| !value.trim().is_empty()).unwrap_or_else(|| "main".into());
+    if branch.len() > 250 || branch.chars().any(char::is_control) {
+        return Err("Invalid GitHub branch name.".into());
+    }
+    let mut url = reqwest::Url::parse("https://api.github.com/")
+        .map_err(|error| format!("Could not initialize GitHub URL: {error}"))?;
+    {
+        let mut segments = url.path_segments_mut()
+            .map_err(|_| "Could not construct GitHub contents URL.".to_string())?;
+        segments.pop_if_empty().push("repos").push(owner.trim()).push(repo.trim()).push("contents");
+        for segment in requested_path.split('/').filter(|segment| !segment.is_empty()) {
+            segments.push(segment);
+        }
+    }
+    url.query_pairs_mut().append_pair("ref", &branch);
+    let data = github_api_request(url, token.as_deref()).await?;
+    if let Some(items) = data.as_array() {
+        let mapped: Vec<serde_json::Value> = items.iter().map(|item| serde_json::json!({
+            "name": item.get("name"),
+            "path": item.get("path"),
+            "type": item.get("type"),
+            "size": item.get("size"),
+            "downloadUrl": item.get("download_url")
+        })).collect();
+        return Ok(serde_json::json!({ "type": "dir", "items": mapped }));
+    }
+    let name = data.get("name").and_then(|value| value.as_str()).unwrap_or("").to_string();
+    let file_path = data.get("path").and_then(|value| value.as_str()).unwrap_or("").to_string();
+    let size = data.get("size").and_then(|value| value.as_u64()).unwrap_or(0);
+    if size > 512 * 1024 {
+        return Err("GitHub file exceeds the 512 KiB editor preview limit.".into());
+    }
+    let encoded = data.get("content").and_then(|value| value.as_str()).unwrap_or("").replace('\n', "");
+    let decoded = if data.get("encoding").and_then(|value| value.as_str()) == Some("base64") {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.decode(encoded.as_bytes())
+            .map_err(|error| format!("Could not decode GitHub file content: {error}"))?
+    } else {
+        Vec::new()
+    };
+    let file_content = String::from_utf8(decoded)
+        .map_err(|_| "GitHub file is not valid UTF-8 text.".to_string())?;
+    Ok(serde_json::json!({
+        "type": "file",
+        "name": name,
+        "path": file_path,
+        "content": file_content,
+        "size": size,
+        "sha": data.get("sha")
+    }))
+}
+
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TerminalExecutionResult {
@@ -995,7 +1114,7 @@ fn delete_secret(secret_id: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![execute_terminal_command, execute_sandboxed_command, chat_completion, test_provider_connection, store_secret, get_secret, delete_secret, generate_image, choose_workspace_folder, list_workspace_files, read_workspace_file, create_workspace_directory, write_workspace_file, write_workspace_files])
+        .invoke_handler(tauri::generate_handler![execute_terminal_command, execute_sandboxed_command, chat_completion, test_provider_connection, github_repo_info, github_contents, store_secret, get_secret, delete_secret, generate_image, choose_workspace_folder, list_workspace_files, read_workspace_file, create_workspace_directory, write_workspace_file, write_workspace_files])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
