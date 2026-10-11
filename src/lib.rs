@@ -602,7 +602,12 @@ async fn choose_workspace_folder(app: tauri::AppHandle) -> Result<Option<String>
 }
 
 #[tauri::command]
-async fn generate_image(prompt: String, aspect_ratio: String, api_key: Option<String>) -> Result<String, String> {
+async fn generate_image(
+    prompt: String,
+    aspect_ratio: String,
+    api_key: Option<String>,
+    source_image: Option<String>,
+) -> Result<String, String> {
     let prompt = prompt.trim();
     let key = api_key.as_deref().unwrap_or("").trim();
     if prompt.is_empty() { return Err("Image prompt cannot be empty.".into()); }
@@ -617,11 +622,26 @@ async fn generate_image(prompt: String, aspect_ratio: String, api_key: Option<St
         .timeout(Duration::from_secs(120))
         .build()
         .map_err(|e| format!("Could not initialize image provider client: {e}"))?;
+    let mut parts = vec![serde_json::json!({"text": prompt})];
+    if let Some(source) = source_image.as_deref().filter(|value| !value.trim().is_empty()) {
+        let (metadata, data) = source.split_once(',')
+            .ok_or_else(|| "Image editing requires an uploaded image encoded as a data URL.".to_string())?;
+        let mime_type = metadata.strip_prefix("data:")
+            .and_then(|value| value.strip_suffix(";base64"))
+            .filter(|value| value.starts_with("image/"))
+            .ok_or_else(|| "Image editing accepts base64 data URLs for image files only.".to_string())?;
+        if data.is_empty() || data.len() > 12 * 1024 * 1024 {
+            return Err("Source image data is empty or exceeds the 12 MiB encoded limit.".into());
+        }
+        parts.push(serde_json::json!({
+            "inlineData": {"mimeType": mime_type, "data": data}
+        }));
+    }
     let response = client
         .post("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent")
         .query(&[("key", key)])
         .json(&serde_json::json!({
-            "contents": [{"parts": [{"text": prompt}]}],
+            "contents": [{"parts": parts}],
             "generationConfig": {
                 "responseModalities": ["TEXT", "IMAGE"],
                 "imageConfig": {"aspectRatio": ratio}
