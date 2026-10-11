@@ -520,44 +520,78 @@ export default function App() {
     let cancelled = false;
 
     const refreshProviderStatus = async () => {
+      let selectedModel = localConfig.modelName;
+      let hasCredential = Boolean(localConfig.apiKey);
       try {
+        const selectedConfig = resolveProviderConfig(localConfig, activeCustomModel);
+        selectedModel = selectedConfig.modelName || 'No model selected';
+        hasCredential = Boolean(selectedConfig.apiKey);
         if (isTauri()) {
           const data = await invoke<{ status: string; message: string; models: string[] }>(
             'test_provider_connection',
             {
-              provider: localConfig.provider,
-              endpointUrl: localConfig.endpointUrl,
-              modelName: localConfig.modelName,
-              apiKey: localConfig.apiKey || null,
+              provider: selectedConfig.provider,
+              endpointUrl: selectedConfig.endpointUrl,
+              modelName: selectedConfig.modelName,
+              apiKey: selectedConfig.apiKey,
             }
           );
           if (cancelled) return;
           setServerStatus((previous) => ({
             ...previous,
             status: data.status,
-            hasApiKey: Boolean(localConfig.apiKey),
-            model: localConfig.modelName,
+            hasApiKey: hasCredential,
+            model: selectedModel,
           }));
           setIsConnected(data.status === 'online');
           return;
         }
 
-        const res = await fetch('/api/status');
-        if (!res.ok) throw new Error(`Status request failed (HTTP ${res.status})`);
+        const res = await fetch('/api/studio/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: selectedConfig.provider,
+            endpointUrl: selectedConfig.endpointUrl,
+            modelId: selectedConfig.modelName,
+            apiKey: selectedConfig.apiKey || undefined,
+          }),
+        });
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `Provider test failed (HTTP ${res.status})`);
         if (cancelled) return;
-        setServerStatus(data);
-        setIsConnected(data.status === 'online' && Boolean(data.hasApiKey));
-      } catch {
+        setServerStatus((previous) => ({
+          ...previous,
+          status: data.status || 'offline',
+          hasApiKey: hasCredential,
+          model: selectedModel,
+        }));
+        setIsConnected(data.status === 'online');
+      } catch (error) {
         if (cancelled) return;
         setIsConnected(false);
-        setServerStatus((previous) => ({ ...previous, status: 'offline', hasApiKey: false }));
+        setServerStatus((previous) => ({
+          ...previous,
+          status: 'offline',
+          hasApiKey: hasCredential,
+          model: selectedModel,
+        }));
       }
     };
 
     void refreshProviderStatus();
     return () => { cancelled = true; };
-  }, [localConfig.provider, localConfig.endpointUrl, localConfig.modelName, localConfig.apiKey]);
+  }, [
+    localConfig.provider,
+    localConfig.endpointUrl,
+    localConfig.modelName,
+    localConfig.apiKey,
+    activeCustomModel?.id,
+    activeCustomModel?.provider,
+    activeCustomModel?.modelId,
+    activeCustomModel?.endpointUrl,
+    activeCustomModel?.apiKey,
+  ]);
 
   const activeThread = threads.find((t) => t.id === activeThreadId) || null;
   const activeMessages = activeThread?.messages || [];
@@ -1317,7 +1351,44 @@ export default function App() {
         isOpen={isConnectModalOpen}
         onClose={() => setIsConnectModalOpen(false)}
         isConnected={isConnected}
-        onToggleConnect={() => setIsConnected(!isConnected)}
+        onTestConnection={async () => {
+          const started = performance.now();
+          const selectedConfig = resolveProviderConfig(localConfig, activeCustomModel);
+          let result: { status: string; message?: string; models?: string[] };
+          if (isTauri()) {
+            result = await invoke<{ status: string; message: string; models: string[] }>(
+              'test_provider_connection',
+              {
+                provider: selectedConfig.provider,
+                endpointUrl: selectedConfig.endpointUrl,
+                modelName: selectedConfig.modelName,
+                apiKey: selectedConfig.apiKey,
+              }
+            );
+          } else {
+            const response = await fetch('/api/studio/test-connection', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                provider: selectedConfig.provider,
+                endpointUrl: selectedConfig.endpointUrl,
+                modelId: selectedConfig.modelName,
+                apiKey: selectedConfig.apiKey || undefined,
+              }),
+            });
+            result = await response.json();
+            if (!response.ok) throw new Error(result.message || `Provider test failed (HTTP ${response.status})`);
+          }
+          const latencyMs = Math.round(performance.now() - started);
+          setIsConnected(result.status === 'online');
+          setServerStatus((previous) => ({
+            ...previous,
+            status: result.status,
+            hasApiKey: Boolean(selectedConfig.apiKey),
+            model: selectedConfig.modelName || 'No model selected',
+          }));
+          return { status: result.status, message: result.message, latencyMs };
+        }}
         serverInfo={serverStatus}
       />
 
