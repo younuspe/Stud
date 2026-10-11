@@ -528,15 +528,18 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
         }
       } else if (activeMode === 'app') {
         const appPrompt = [
-          'Create a complete, usable web application from the following user specification.',
-          'Return a complete self-contained HTML5 document with embedded CSS and JavaScript.',
-          'Implement the real interactions described; do not use placeholder buttons or fake success states.',
-          'Use accessible semantic markup, responsive layout, input validation, and visible error/empty states.',
-          'Do not require external dependencies unless explicitly requested.',
-          'The generated source will be shown in a sandboxed iframe and opened in an editor only on user action.',
+          'Build or modify a real multi-file software project from the user's request.',
+          'Do not default to a static HTML prototype. Use the requested language and framework; if the user requests TypeScript, create TypeScript source files.',
+          'Return ONLY one valid JSON object with this exact shape: {"summary":"brief explanation","files":[{"path":"relative/path.ext","content":"complete file contents"}]}. No Markdown fences or commentary outside JSON.',
+          'Include all new or changed files needed for the requested feature, with complete contents. Keep existing working behavior unless asked to change it. For follow-up comments, modify the existing project files rather than starting over.',
+          'Use relative paths only. Do not include secrets, .git, node_modules, target, lockfile churn, or generated build artifacts. Do not claim code was built, run, or tested.',
+          'For a requested office/business app, implement real form state, validation, persistence appropriate to the requested architecture, and clear error states; do not falsely claim localStorage is a production backend.',
           '',
-          'Application specification:',
+          'User request:',
           prompt,
+          '',
+          'Existing project files currently known to Supru:',
+          JSON.stringify(currentProjectFiles),
         ].join('\n');
         let generatedCode = '';
         let providerUsed = '';
@@ -572,7 +575,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           messages: [
             {
               role: 'system',
-              content: 'You are Supru Generative Studio App Builder. Return one complete, self-contained HTML5 document. Output raw HTML only, not Markdown fences or commentary. Implement real interactions, accessible responsive layout, validation, and useful empty/error states. No placeholder buttons, fake success states, external dependencies, or secret credentials. Treat the latest user message as a requested change to the existing app when source is provided. Preserve working features unless the user asks to change them. Never claim the code was executed or tested.'
+              content: 'You are Supru Generative Studio native project builder. Create real project files, not automatically a single HTML prototype. Follow the requested language/framework (including TypeScript when requested). Return exactly one JSON object shaped as {"summary":"...","files":[{"path":"relative/path","content":"complete file contents"}]}. Include complete contents for every new or changed file, never claim tests/builds ran, never include secrets, and never say files were written because Supru will ask for approval before writing. When existing project files are provided, apply the user\'s latest comment to them and preserve unrelated working features.'
             },
             ...appBuildMessages.slice(-12).map((turn) => ({ role: turn.role, content: turn.text })),
             {
@@ -581,27 +584,26 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
             }
           ]
         });
-        generatedCode = extractCompleteHtml(response);
-        if (!generatedCode) {
-          throw new Error('The selected model did not return a complete HTML document. The previous app source was preserved. Try asking for the complete HTML document only.');
-        }
-        setCurrentResultApp(generatedCode);
-        const buildSummary = `Updated by ${modelUsed} via ${providerUsed}. Source is saved locally; runtime testing has not been performed.`;
+        const project = parseGeneratedProject(response);
+        setPendingProjectFiles(project.files);
+        const htmlEntry = project.files.find((file) => file.path.toLowerCase() === 'index.html' || file.path.toLowerCase().endsWith('.html'));
+        if (htmlEntry) setCurrentResultApp(htmlEntry.content);
+        const buildSummary = `Prepared ${project.files.length} project file(s) from ${modelUsed} via ${providerUsed}. Review the list and apply to a selected workspace; nothing has been written yet.`;
         setAppGenerationSummary(buildSummary);
         setAppBuildMessages((previous) => [...previous, {
           id: `assistant-${Date.now()}`,
           role: 'assistant' as const,
-          text: `Generated and saved the updated HTML source using ${modelUsed} (${providerUsed}). Use Preview to inspect it, or Open source in editor to continue editing. It has not been automatically tested.`,
+          text: `Prepared ${project.files.length} file(s): ${project.files.map((file) => file.path).join(', ')}. ${project.summary} Review and apply them to your selected workspace. Build and runtime tests have not been run.`,
           timestamp: Date.now(),
         }].slice(-60));
         setManifestedArtifacts((prev) => [{
           id: `app-${Date.now()}`,
           type: 'app',
-          title: prompt.slice(0, 36) || 'Generated App',
+          title: prompt.slice(0, 36) || 'Generated Project',
           prompt,
-          codeSnippet: generatedCode,
+          codeSnippet: JSON.stringify(project, null, 2),
           timestamp: Date.now(),
-          metadata: { language: 'html', provider: providerUsed, model: modelUsed || 'unknown' },
+          metadata: { language: project.files.some((file) => /\.tsx?$/.test(file.path)) ? 'typescript' : 'multi-file', provider: providerUsed, model: modelUsed || 'unknown' },
         }, ...prev]);
       } else {
         setGenerationError(`The ${activeMode} mode currently provides a local interactive preview; it does not call a generation model yet.`);
