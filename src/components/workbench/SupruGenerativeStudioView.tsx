@@ -606,6 +606,74 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           setGenerationError(`Video generation failed (${res.status}). ${message.slice(0, 240)}`.trim());
         }
       } else if (activeMode === 'app') {
+        if (!isTauri()) {
+          throw new Error('App Builder requires the installed Supru desktop app; browser/server generation is intentionally disabled.');
+        }
+        if (!workspaceRoot.trim()) {
+          throw new Error('Open Project Folder and select the project directory before asking Supru to build or modify the app.');
+        }
+
+        // Read the real selected workspace so follow-up comments modify the existing project,
+        // not just the last HTML preview or a stale in-memory list.
+        const listedPaths = await invoke<string[]>('list_workspace_files', {
+          workspaceRoot,
+          relativeDir: null,
+        });
+        const safeTextExtensions = new Set([
+          '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.html', '.css', '.scss',
+          '.md', '.toml', '.yaml', '.yml', '.py', '.rs', '.go', '.java', '.kt', '.swift',
+          '.vue', '.svelte', '.sql', '.sh', '.xml', '.plist', '.gradle', '.properties',
+        ]);
+        const isSafeContextPath = (value: string) => {
+          const path = value.replace(/\\/g, '/');
+          const lower = path.toLowerCase();
+          const base = lower.split('/').pop() || '';
+          if (/(^|\\/)\\.env(?:\\.|$)/i.test(path) ||
+              /(^|\\/)(?:secrets?|credentials?)(?:\\.|$)/i.test(path) ||
+              /(^|\\/)(?:\.npmrc|\.pypirc|\.netrc|id_rsa|id_ed25519)(?:$|\\.)/i.test(path) ||
+              /\\.(?:pem|key|p12|pfx|keystore|jks|sqlite|db|lock|map|wasm|png|jpe?g|gif|webp|ico|icns|pdf|zip|gz|dmg|mp4|mov|mp3|wav)$/i.test(path) ||
+              ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lockb', 'cargo.lock', 'poetry.lock'].includes(base)) return false;
+          const dot = base.lastIndexOf('.');
+          return dot > 0 && safeTextExtensions.has(base.slice(dot));
+        };
+        const priority = (path: string) => {
+          const p = path.toLowerCase();
+          if (/^(package\\.json|index\\.html|vite\\.config\\.[^/]+|tsconfig\\.json|cargo\\.toml|pyproject\\.toml|requirements\\.txt)$/.test(p)) return 0;
+          if (/^(src\\/)?(app|main|index|entry|lib)\\.[^/]+$/.test(p)) return 1;
+          if (/^(src\\/)?(app|main|index)\\//.test(p)) return 2;
+          if (/^(src|app|pages|components|lib|routes)\\//.test(p)) return 3;
+          return 4;
+        };
+        const candidatePaths = listedPaths
+          .filter((path) => isSafeContextPath(path))
+          .sort((a, b) => priority(a) - priority(b) || a.localeCompare(b))
+          .slice(0, 40);
+        const workspaceProjectFiles: GeneratedProjectFile[] = [];
+        let workspaceContextChars = 0;
+        for (const relativePath of candidatePaths) {
+          if (workspaceProjectFiles.length >= 24 || workspaceContextChars >= 100000) break;
+          try {
+            const content = await invoke<string>('read_workspace_file', { workspaceRoot, relativePath });
+            if (!content || content.length > 30000 || workspaceContextChars + content.length > 100000) continue;
+            workspaceProjectFiles.push({ path: relativePath.replace(/\\/g, '/'), content });
+            workspaceContextChars += content.length;
+          } catch {
+            // Binary, unreadable, or concurrently changed files are omitted from model context.
+          }
+        }
+        const projectContextMap = new Map<string, GeneratedProjectFile>();
+        for (const file of [...currentProjectFiles, ...workspaceProjectFiles, ...pendingProjectFiles]) {
+          projectContextMap.set(file.path, file);
+        }
+        const projectFilesForPrompt: GeneratedProjectFile[] = [];
+        let projectContextChars = 0;
+        for (const file of [...projectContextMap.values()].sort((a, b) => priority(a.path) - priority(b.path) || a.path.localeCompare(b.path))) {
+          if (projectFilesForPrompt.length >= 24 || projectContextChars >= 100000) break;
+          if (file.content.length > 30000 || projectContextChars + file.content.length > 100000) continue;
+          projectFilesForPrompt.push(file);
+          projectContextChars += file.content.length;
+        }
+
         const appPrompt = [
           "Build or modify a real multi-file software project from the user's request.",
           'Do not default to a static HTML prototype. Use the requested language and framework; if the user requests TypeScript, create TypeScript source files.',
@@ -618,17 +686,13 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           prompt,
           '',
           'Existing project files currently known to Supru:',
-          JSON.stringify(currentProjectFiles),
+          JSON.stringify(projectFilesForPrompt),
         ].join('\n');
         let generatedCode = '';
         let providerUsed = '';
         let modelUsed = '';
         const userTurn: AppBuildMessage = { id: `user-${Date.now()}`, role: 'user', text: prompt.trim(), timestamp: Date.now() };
         setAppBuildMessages((previous) => [...previous, userTurn].slice(-60));
-
-        if (!isTauri()) {
-          throw new Error('App Builder requires the installed Supru desktop app so it can call the selected provider through the native Rust bridge. Browser/server mode is intentionally not used.');
-        }
 
         const selectedConfig = resolveProviderConfig(localConfig, activeCustomModel);
         const { provider: selectedProvider, endpointUrl: selectedEndpoint, modelName: selectedModel, apiKey: selectedKey } = selectedConfig;
@@ -659,7 +723,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
             ...appBuildMessages.slice(-12).map((turn) => ({ role: turn.role, content: turn.text })),
             {
               role: 'user',
-              content: appPrompt + (currentResultApp ? '\n\nExisting source to improve:\n' + currentResultApp : '')
+              content: appPrompt
             }
           ]
         });
