@@ -610,9 +610,20 @@ export default function App() {
   const handleSendMessage = async (text: string, attachment?: Attachment) => {
     if (!text.trim() && !attachment) return;
 
-    // Natural-language development requests open Hunter instead of being treated
-    // as ordinary Q&A. Hunter still requires a project folder and explicit approval
-    // before it writes any proposed file changes.
+    // Explicit app-creation requests should enter the real project builder, not
+    // receive a generic planning answer. The builder prepares a multi-file manifest
+    // and asks for approval before writing anything to the selected workspace.
+    const appCreationRequest = /\b(?:build|create|develop|generate|scaffold|make)\s+(?:(?:me|us)\s+)?(?:(?:a|an|the)\s+)?(?:[\w-]+\s+){0,6}(?:app|application|website|web\s+app|mobile\s+app|desktop\s+app|project|dashboard|online\s+store|shop|platform)\b/i.test(text)
+      || /\b(?:i want|i need)\s+(?:you to\s+)?(?:build|create|develop|make|generate)\b/i.test(text)
+      || /\bturn\s+(?:this|that|my idea)\s+into\s+(?:an?\s+)?(?:app|application|website|project)\b/i.test(text);
+    if (appCreationRequest && !attachment) {
+      setExternalBuildPrompt({ id: `build-prompt-${Date.now()}`, text: text.trim() });
+      setWorkspaceView('generative');
+      return;
+    }
+
+    // Natural-language repair/debug requests go to Hunter instead of ordinary Q&A.
+    // Hunter requires a project folder and explicit approval before writing changes.
     const developmentRequest = /\b(?:\/fix|\/debug|self[- ]develop|fix (?:it|this|that|the issue|the bug|the connection|the model connection|my project|my code)|debug (?:this|that|the issue|my project|my code)|repair (?:this|that|the issue|my project|my code)|investigate (?:this|that) bug|change the code|edit the project|make (?:this|that|the app) work)\b/i.test(text);
     if (developmentRequest && !attachment) {
       setAgentInitialObjective(text.trim());
