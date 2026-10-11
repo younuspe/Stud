@@ -1,0 +1,36 @@
+name: NVIDIA API smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: NVIDIA NIM model ID to test
+        required: false
+        type: string
+        default: nvidia/nemotron-3.5-lightning-30b-a3b
+
+permissions:
+  contents: read
+
+jobs:
+  test-nvidia-api:
+    name: Test NVIDIA NIM connectivity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install OpenAI-compatible client
+        run: python -m pip install --disable-pip-version-check "openai>=1.30,<3"
+
+      - name: Send a minimal request to NVIDIA NIM
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          NVIDIA_MODEL: ${{ inputs.model }}
+        run: python scripts/nvidia_api_smoke_test.py
