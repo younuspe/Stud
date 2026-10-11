@@ -215,6 +215,23 @@ export default function App() {
     setStudioWindows(DEFAULT_STUDIO_WINDOWS);
   };
 
+  // Entering Supru Code must always reveal its editor and Copilot windows, even if
+  // an older saved layout accidentally left every window closed.
+  useEffect(() => {
+    if (workspaceView !== 'editor') return;
+    setStudioWindows((prev) => {
+      const editor = prev.editor || DEFAULT_STUDIO_WINDOWS.editor;
+      const generator = prev.generator || DEFAULT_STUDIO_WINDOWS.generator;
+      if (editor.isOpen && generator.isOpen) return prev;
+      return {
+        ...DEFAULT_STUDIO_WINDOWS,
+        ...prev,
+        editor: { ...editor, isOpen: true, isUndocked: false },
+        generator: { ...generator, isOpen: true, isUndocked: false },
+      };
+    });
+  }, [workspaceView]);
+
   // File buffer for opening in Supru Code
   const [activeFileBuffer, setActiveFileBuffer] = useState<{ name: string; content: string; workspacePath?: string } | null>(null);
 
