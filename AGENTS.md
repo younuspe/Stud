@@ -32,5 +32,23 @@ chat, terminal (CLI), agent (Hunter), github (Warrior), orchestrator (Akhada),
 editor (Code Editor), generative (AI Studio), plus Galaxy/Topology.
 
 ## Testing
-Headless e2e harnesses live in `/tmp/ptest/` (puppeteer-core + /usr/bin/chromium).
-They click module buttons by visible `<span>` text and assert real API traffic.
+Headless e2e harnesses live in `/tmp/audit/` (puppeteer-core + `/usr/bin/chromium`,
+launch with `--no-sandbox --disable-dev-shm-usage`). They click module buttons by
+visible `<span>` text and assert real API traffic. Recreate with
+`npm i puppeteer-core@23` if the directory is missing.
+
+## Security posture
+Command-executing endpoints (`/api/terminal/execute`, `/api/agent/step`,
+`/api/orchestrator/tool`) are gated to local/private callers by
+`requireLocal()` in `server.ts`; set `SUPRU_ALLOW_REMOTE_EXEC=1` to opt out
+(only behind an authenticated proxy). GitHub routes validate owner/repo/branch/
+path segments. Provider `endpointUrl` is screened by `isSafeEndpointUrl()`.
+
+## Known blockers
+Pushing to `origin` (github.com/younuspe/Stud) fails with 403. The injected
+`GITHUB_TOKEN` is a GitHub App installation token with **read-only** contents
+access: repo metadata reports `push: true` (installation permission) but every
+write — git push, `POST /git/refs`, `PUT /contents` — returns
+"Resource not accessible by integration". A fine-grained PAT with Contents:
+Read+Write (or a write-enabled App install) is required. Local commits are
+safe and ready to push.
