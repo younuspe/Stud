@@ -39,6 +39,7 @@ import { useSpeechListener } from '../../utils/useSpeechListener';
 
 interface SupruGenerativeStudioViewProps {
   localConfig: import('../../types/workbench').LocalHostConfig;
+  workspaceRoot?: string;
   activeCustomModel?: import('../../types/workbench').ExternalAIModelConfig | null;
   onSendToChat?: (content: string, imageUrl?: string) => void;
   onOpenInEditor?: (fileName: string, content: string) => void;
@@ -52,6 +53,43 @@ interface SupruGenerativeStudioViewProps {
 export type GenerativeMode = 'visual' | 'motion' | 'world3d' | 'atomic' | 'app' | 'audio';
 
 type AppBuildMessage = { id: string; role: 'user' | 'assistant'; text: string; timestamp: number };
+type GeneratedProjectFile = { path: string; content: string };
+
+function parseGeneratedProject(responseText: string): { summary: string; files: GeneratedProjectFile[] } {
+  const trimmed = responseText.trim();
+  const withoutFence = trimmed.startsWith('```')
+    ? trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+    : trimmed;
+  const firstBrace = withoutFence.indexOf('{');
+  const lastBrace = withoutFence.lastIndexOf('}');
+  if (firstBrace < 0 || lastBrace <= firstBrace) {
+    throw new Error('The model did not return a project manifest. Ask it to return the required JSON object; no files were written.');
+  }
+  let parsed: any;
+  try { parsed = JSON.parse(withoutFence.slice(firstBrace, lastBrace + 1)); }
+  catch { throw new Error('The model returned invalid project JSON. No files were written.'); }
+  if (!Array.isArray(parsed.files) || parsed.files.length < 1 || parsed.files.length > 40) {
+    throw new Error('Project manifest must contain between 1 and 40 files. No files were written.');
+  }
+  const seen = new Set<string>();
+  let totalBytes = 0;
+  const files: GeneratedProjectFile[] = parsed.files.map((item: any) => {
+    const filePath = String(item?.path || '').replace(/\\/g, '/').trim();
+    const parts = filePath.split('/');
+    if (!filePath || filePath.startsWith('/') || /^[A-Za-z]:/.test(filePath) ||
+        parts.some((part) => !part || part === '.' || part === '..' || ['.git', 'node_modules', 'target'].includes(part)) ||
+        typeof item?.content !== 'string') {
+      throw new Error(`Unsafe or invalid project file entry: ${filePath || '(missing path)'}. No files were written.`);
+    }
+    if (seen.has(filePath)) throw new Error(`Duplicate project path: ${filePath}. No files were written.`);
+    seen.add(filePath);
+    if (item.content.length > 1024 * 1024) throw new Error(`File ${filePath} exceeds the 1 MiB limit.`);
+    totalBytes += item.content.length;
+    return { path: filePath, content: item.content };
+  });
+  if (totalBytes > 5 * 1024 * 1024) throw new Error('Generated project exceeds the 5 MiB total limit. No files were written.');
+  return { summary: String(parsed.summary || 'Project changes are ready for review.'), files };
+}
 
 function readStudioStorage<T>(key: string, fallback: T): T {
   try {
@@ -104,6 +142,7 @@ const PROMPT_SUGGESTIONS = [
 
 export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps> = ({
   localConfig,
+  workspaceRoot = '',
   activeCustomModel = null,
   onSendToChat,
   onOpenInEditor,
@@ -129,6 +168,9 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   const [currentResultImage, setCurrentResultImage] = useState<string | null>(null);
   const [currentResultVideo, setCurrentResultVideo] = useState<string | null>(null);
   const [currentResultApp, setCurrentResultApp] = useState<string | null>(() => readStudioStorage<string | null>('supru_studio_app_source_v1', null));
+  const [pendingProjectFiles, setPendingProjectFiles] = useState<GeneratedProjectFile[]>([]);
+  const [currentProjectFiles, setCurrentProjectFiles] = useState<GeneratedProjectFile[]>([]);
+  const [isApplyingProject, setIsApplyingProject] = useState(false);
   const [appGenerationSummary, setAppGenerationSummary] = useState<string | null>(() => readStudioStorage<string | null>('supru_studio_app_summary_v1', null));
   const [appBuildMessages, setAppBuildMessages] = useState<AppBuildMessage[]>(() => readStudioStorage<AppBuildMessage[]>('supru_studio_app_chat_v1', []));
   const [autoGenerateRequested, setAutoGenerateRequested] = useState(false);
