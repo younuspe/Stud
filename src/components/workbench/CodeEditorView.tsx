@@ -79,7 +79,7 @@ interface CodeEditorViewProps {
   localConfig: LocalHostConfig;
   onOpenLocalSettings: () => void;
   onTriggerAgent: (objective: string) => void;
-  activeFileBuffer?: { name: string; content: string } | null;
+  activeFileBuffer?: { name: string; content: string; workspacePath?: string } | null;
   workspaceRoot?: string;
   // Window management props
   windows?: Record<StudioWindowId, StudioWindowState>;
@@ -632,7 +632,7 @@ export class SupruPipeline {
           setProjectFileNotice('No supported text/code files were found in this folder. Binary assets are not opened in the code editor.');
           return;
         }
-        const currentPath = activeProjectPath && readablePaths.includes(activeProjectPath) ? activeProjectPath : readablePaths[0];
+        const currentPath = activeFileBuffer?.workspacePath && readablePaths.includes(activeFileBuffer.workspacePath) ? activeFileBuffer.workspacePath : activeProjectPath && readablePaths.includes(activeProjectPath) ? activeProjectPath : readablePaths[0];
         const source = await invoke<string>('read_workspace_file', { workspaceRoot, relativePath: currentPath });
         if (cancelled) return;
         const id = `workspace-file:${currentPath}`;
@@ -709,24 +709,42 @@ export class SupruPipeline {
   const activeFile = files.find((f) => f.id === activeFileId) || files[0];
   const lineCount = activeFile.content.split('\n').length;
 
-  // If a file was sent from GitHub or CLI
+  // Open generated files as actual project files when Studio saved them into the selected workspace.
+  // Other imported files remain temporary editor tabs until the user saves/downloads them.
   useEffect(() => {
-    if (activeFileBuffer) {
-      const existing = files.find((f) => f.name === activeFileBuffer.name);
-      if (existing) {
-        setActiveFileId(existing.id);
-      } else {
-        const ext = activeFileBuffer.name.split('.').pop() || 'html';
-        const lang = ext === 'html' ? 'html' : ext === 'ts' ? 'typescript' : ext === 'js' ? 'javascript' : ext === 'py' ? 'python' : 'html';
-        const newFile: EditorFile = {
-          id: `file-imported-${Date.now()}`,
-          name: activeFileBuffer.name,
-          language: lang,
-          content: activeFileBuffer.content,
-        };
-        setFiles((prev) => [...prev, newFile]);
-        setActiveFileId(newFile.id);
-      }
+    if (!activeFileBuffer) return;
+    if (activeFileBuffer.workspacePath && workspaceRoot) {
+      const relativePath = activeFileBuffer.workspacePath;
+      const id = `workspace-file:${relativePath}`;
+      const newFile: EditorFile = {
+        id,
+        name: relativePath,
+        language: languageForPath(relativePath),
+        content: activeFileBuffer.content,
+        isModified: false,
+      };
+      setFiles((prev) => [...prev.filter((item) => item.id !== id), newFile]);
+      setProjectPaths((prev) => prioritizeProjectPaths(Array.from(new Set([...prev, relativePath]))));
+      setActiveProjectPath(relativePath);
+      setActiveFileId(id);
+      setProjectFileNotice(`Saved and opened ${relativePath} in the selected project.`);
+      return;
+    }
+
+    const existing = files.find((f) => f.name === activeFileBuffer.name);
+    if (existing) {
+      setActiveFileId(existing.id);
+    } else {
+      const ext = activeFileBuffer.name.split('.').pop() || 'html';
+      const lang = ext === 'html' ? 'html' : ext === 'ts' ? 'typescript' : ext === 'js' ? 'javascript' : ext === 'py' ? 'python' : 'html';
+      const newFile: EditorFile = {
+        id: `file-imported-${Date.now()}`,
+        name: activeFileBuffer.name,
+        language: lang,
+        content: activeFileBuffer.content,
+      };
+      setFiles((prev) => [...prev, newFile]);
+      setActiveFileId(newFile.id);
     }
   }, [activeFileBuffer]);
 
