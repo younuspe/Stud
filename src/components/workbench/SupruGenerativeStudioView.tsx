@@ -1160,7 +1160,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                     <div className="flex flex-wrap items-center gap-2">
                       <Monitor size={14} className="text-emerald-300" />
                       <span className="font-bold text-white">App Builder · Native AI</span>
-                      <span className="text-gray-400">HTML / CSS / JavaScript</span>
+                      <span className="text-gray-400">Multi-file projects · TypeScript / React / HTML</span>
                     </div>
                     <span className="truncate text-[10px] text-emerald-200" title={activeProviderInfo.endpoint}>
                       Model: {activeProviderInfo.model} · Provider: {activeProviderInfo.provider}
@@ -1204,8 +1204,38 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                   </div>
                 )}
                 {appGenerationSummary && (
-                  <p className="text-xs text-gray-400">{appGenerationSummary} Generated code has not been tested automatically.</p>
+                  <p className="text-xs text-gray-400">{appGenerationSummary}</p>
                 )}
+                <div className="rounded-xl border border-white/10 bg-black/30 p-3">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-bold text-white">Project files</div>
+                    <div className="text-[10px] text-gray-400">{workspaceRoot ? `Workspace: ${workspaceRoot}` : 'No project folder selected'}</div>
+                  </div>
+                  {pendingProjectFiles.length > 0 ? (
+                    <>
+                      <div className="mb-3 max-h-36 space-y-1 overflow-y-auto">
+                        {pendingProjectFiles.map((file) => (
+                          <div key={file.path} className="flex items-center gap-2 rounded-md bg-white/[0.04] px-2 py-1.5 font-mono text-[10px] text-emerald-100">
+                            <Code2 size={12} className="shrink-0 text-emerald-300" />
+                            <span className="truncate">{file.path}</span>
+                            <span className="ml-auto shrink-0 text-gray-500">{file.content.length.toLocaleString()} chars</span>
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleApplyProjectFiles}
+                        disabled={isApplyingProject || !workspaceRoot}
+                        className="w-full rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-3 py-2 text-xs font-bold text-emerald-100 hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {isApplyingProject ? 'Applying files…' : `Review and apply ${pendingProjectFiles.length} file(s) to workspace`}
+                      </button>
+                      <p className="mt-2 text-[10px] text-gray-500">Existing files trigger an overwrite confirmation. Supru does not delete unrelated files. Build and test separately before relying on the result.</p>
+                    </>
+                  ) : (
+                    <p className="text-[10px] text-gray-500">Describe an app or a change. Supru will prepare a multi-file project proposal; files are not written until you apply them here.</p>
+                  )}
+                </div>
                 {currentResultApp ? (
                   <iframe
                     title="Generated application sandbox preview"
@@ -1218,7 +1248,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                   <div className="flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-emerald-500/25 bg-black/20 p-8 text-center">
                     <Monitor size={30} className="mb-3 text-emerald-300" />
                     <h3 className="mb-2 text-lg font-bold text-white">Build an Application</h3>
-                    <p className="mb-4 max-w-md text-xs leading-relaxed text-gray-400">Describe the app you want in the prompt panel, then generate a real editable HTML/CSS/JavaScript artifact with a sandboxed preview.</p>
+                    <p className="mb-4 max-w-md text-xs leading-relaxed text-gray-400">Describe an application or request a change by chat. Supru prepares editable project files, including TypeScript when requested, then asks before writing them into your selected workspace.</p>
                     <button type="button" onClick={handleManifest} disabled={isSynthesizing || !prompt.trim()} className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-xs font-bold text-emerald-200 disabled:opacity-50">Generate application</button>
                   </div>
                 )}
