@@ -1360,8 +1360,13 @@ export default function App() {
           onOpenVeoStudio={() => handleOpenVeoStudio()}
           onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
           onBuildRequest={(text) => {
-            setExternalBuildPrompt({ id: `build-prompt-${Date.now()}`, text });
-            setWorkspaceView('generative');
+            setExternalEditorPrompt({ id: `build-prompt-${Date.now()}`, text });
+            setStudioWindows((prev) => ({
+              ...prev,
+              editor: { ...prev.editor, isOpen: true, isUndocked: false },
+              generator: { ...prev.generator, isOpen: true, isUndocked: false },
+            }));
+            setWorkspaceView('editor');
           }}
           activeModelName={activeCustomModel?.modelId || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'gemini-3.8-flash')}
         />
