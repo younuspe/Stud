@@ -162,7 +162,7 @@ export const FloatingChatPill: React.FC<FloatingChatPillProps> = ({
   // Ecosystem Hub Navigation options
   const ECOSYSTEM_TABS: { id: WorkspaceView; label: string; icon: React.ReactNode; desc: string; badge?: string }[] = [
     { id: 'generative', label: 'Generative Studio', icon: <Sparkles size={16} className="text-pink-400" />, desc: '4D World-States, Liquid Canvas, Image, Video & Audio Genesis', badge: 'Genesis' },
-    { id: 'editor', label: 'Supru Code', icon: <Code2 size={16} className="text-amber-400" />, desc: 'Interactive Code Studio, Monaco Editor & Live HTML Sandbox', badge: 'Core' },
+    { id: 'editor', label: 'Coder · Supru Code', icon: <Code2 size={16} className="text-amber-400" />, desc: 'Build and modify applications through AI chat comments, edit source, and preview changes in the desktop IDE', badge: 'Build' },
     { id: 'chat', label: 'Supru Chat', icon: <Sparkles size={16} className="text-amber-300" />, desc: 'Conversational Neural AI Engine with Multimodal Vision', badge: 'Chat' },
     { id: 'terminal', label: 'Supru CLI', icon: <Terminal size={16} className="text-emerald-400" />, desc: 'Full bash terminal with direct system access & execution' },
     { id: 'agent', label: 'Supru Hunter', icon: <Bot size={16} className="text-purple-400" />, desc: 'Autonomous Sovereign AI Agent with web search & inspection' },
@@ -502,11 +502,11 @@ export const FloatingChatPill: React.FC<FloatingChatPillProps> = ({
             setIsBuildMode((current) => !current);
           }}
           aria-pressed={isBuildMode}
-          title={isBuildMode ? 'Turn off Build by Chat mode' : 'Build or modify an app by describing changes in chat'}
+          title={isBuildMode ? 'Coder mode is on: prompts go to Supru Code Copilot for code changes' : 'Build by Chat: send a prompt to Supru Code Copilot and apply the returned code'}
           className={`flex shrink-0 items-center gap-1 rounded-xl border px-2 py-1.5 text-[10px] font-bold transition-colors ${isBuildMode ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-300' : 'border-white/10 bg-white/[0.03] text-gray-400 hover:border-emerald-400/40 hover:text-emerald-300'}`}
         >
           <Code2 size={13} />
-          <span className="hidden sm:inline">{isBuildMode ? 'Build ON' : 'Build'}</span>
+          <span className="hidden sm:inline">{isBuildMode ? 'Coder ON' : 'Build by Chat'}</span>
         </button>
 
         {/* Context Badge for current workspace */}
