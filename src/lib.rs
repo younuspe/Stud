@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), deny(unsafe_code))]
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Instant;
 use tokio::process::Command;
@@ -315,6 +315,152 @@ async fn write_workspace_file(workspace_root: String, relative_path: String, con
         return Err(format!("Could not commit file atomically: {error}"));
     }
     Ok(format!("Wrote {} bytes to {}", content.len(), target.strip_prefix(&root).unwrap_or(&target).display()))
+}
+
+
+#[derive(Deserialize)]
+struct WorkspaceFileWrite {
+    path: String,
+    content: String,
+}
+
+/// Apply a reviewed multi-file project change as one recoverable operation.
+/// All paths are validated before any file is committed. If a later rename
+/// fails, already replaced files are restored and newly created files removed.
+#[tauri::command]
+async fn write_workspace_files(
+    workspace_root: String,
+    files: Vec<WorkspaceFileWrite>,
+) -> Result<String, String> {
+    use std::collections::HashSet;
+
+    if files.is_empty() || files.len() > 40 {
+        return Err("A project write must contain between 1 and 40 files.".into());
+    }
+    let root = PathBuf::from(workspace_root).canonicalize()
+        .map_err(|e| format!("Workspace root is unavailable: {e}"))?;
+    if !root.is_dir() {
+        return Err("Workspace root must be a directory.".into());
+    }
+
+    let mut seen = HashSet::new();
+    let mut total_bytes = 0usize;
+    let mut validated = Vec::with_capacity(files.len());
+    for file in files {
+        let relative = PathBuf::from(file.path.trim());
+        if relative.as_os_str().is_empty() || relative.is_absolute()
+            || relative.components().any(|component| !matches!(component, std::path::Component::Normal(_))) {
+            return Err(format!("Unsafe project path: {}.", file.path));
+        }
+        if relative.components().any(|component| matches!(component,
+            std::path::Component::Normal(name) if matches!(name.to_string_lossy().as_ref(), ".git" | "node_modules" | "target"))) {
+            return Err(format!("Writes inside .git, node_modules, and target are blocked: {}.", file.path));
+        }
+        let normalized = relative.to_string_lossy().replace('\\', "/");
+        if !seen.insert(normalized.clone()) {
+            return Err(format!("Duplicate project path: {normalized}."));
+        }
+        if file.content.len() > 1024 * 1024 {
+            return Err(format!("File {normalized} exceeds the 1 MiB write limit."));
+        }
+        total_bytes = total_bytes.saturating_add(file.content.len());
+        if total_bytes > 5 * 1024 * 1024 {
+            return Err("Generated project exceeds the 5 MiB total write limit.".into());
+        }
+        validated.push((normalized, relative, file.content));
+    }
+
+    let mut staged: Vec<(PathBuf, PathBuf, Option<Vec<u8>>)> = Vec::with_capacity(validated.len());
+    for (normalized, relative, file_content) in &validated {
+        let parent_relative = relative.parent().unwrap_or_else(|| std::path::Path::new(""));
+        let mut parent = root.clone();
+        for component in parent_relative.components() {
+            let std::path::Component::Normal(name) = component else {
+                return Err(format!("Unsafe parent path for {normalized}."));
+            };
+            parent.push(name);
+            if parent.exists() {
+                let metadata = std::fs::symlink_metadata(&parent)
+                    .map_err(|e| format!("Could not inspect parent directory for {normalized}: {e}"))?;
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(format!("Symlink or non-directory parent is blocked for {normalized}."));
+                }
+            } else {
+                std::fs::create_dir(&parent)
+                    .map_err(|e| format!("Could not create parent directory for {normalized}: {e}"))?;
+            }
+            let canonical_parent = parent.canonicalize()
+                .map_err(|e| format!("Could not resolve parent directory for {normalized}: {e}"))?;
+            if !canonical_parent.starts_with(&root) {
+                return Err(format!("Parent directory escapes the selected workspace: {normalized}."));
+            }
+            parent = canonical_parent;
+        }
+        let canonical_parent = parent.canonicalize()
+            .map_err(|e| format!("Could not resolve parent directory for {normalized}: {e}"))?;
+        if !canonical_parent.starts_with(&root) {
+            return Err(format!("Parent directory escapes the selected workspace: {normalized}."));
+        }
+        let file_name = relative.file_name()
+            .ok_or_else(|| format!("Project path must include a filename: {normalized}."))?;
+        let target = canonical_parent.join(file_name);
+        let backup = if target.exists() {
+            let metadata = std::fs::symlink_metadata(&target)
+                .map_err(|e| format!("Could not inspect target {normalized}: {e}"))?;
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err(format!("Symlink or non-regular target is blocked: {normalized}."));
+            }
+            Some(std::fs::read(&target)
+                .map_err(|e| format!("Could not back up existing file {normalized}: {e}"))?)
+        } else {
+            None
+        };
+        let temp = canonical_parent.join(format!(
+            ".supru-batch-{}-{}.tmp",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
+        ));
+        if let Err(error) = std::fs::write(&temp, file_content) {
+            for (_, staged_temp, _) in &staged { let _ = std::fs::remove_file(staged_temp); }
+            return Err(format!("Could not stage {normalized}: {error}"));
+        }
+        staged.push((target, temp, backup));
+    }
+
+    let mut committed: Vec<usize> = Vec::new();
+    for index in 0..staged.len() {
+        let (target, temp, _) = &staged[index];
+        if let Err(error) = std::fs::rename(temp, target) {
+            for (_, pending_temp, _) in staged.iter().skip(index + 1) {
+                let _ = std::fs::remove_file(pending_temp);
+            }
+            let mut rollback_errors = Vec::new();
+            for committed_index in committed.into_iter().rev() {
+                let (committed_target, _, backup) = &staged[committed_index];
+                match backup {
+                    Some(original) => {
+                        if let Err(rollback_error) = std::fs::write(committed_target, original) {
+                            rollback_errors.push(format!("{}: {}", validated[committed_index].0, rollback_error));
+                        }
+                    }
+                    None => {
+                        if let Err(rollback_error) = std::fs::remove_file(committed_target) {
+                            rollback_errors.push(format!("{}: {}", validated[committed_index].0, rollback_error));
+                        }
+                    }
+                }
+            }
+            let rollback_note = if rollback_errors.is_empty() {
+                " Previously committed files were rolled back.".to_string()
+            } else {
+                format!(" Rollback also encountered errors: {}.", rollback_errors.join("; "))
+            };
+            return Err(format!("Could not commit {}: {}.{}", validated[index].0, error, rollback_note));
+        }
+        committed.push(index);
+    }
+
+    Ok(format!("Applied {} project file(s) to the selected workspace.", validated.len()))
 }
 
 
@@ -849,7 +995,7 @@ fn delete_secret(secret_id: String) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![execute_terminal_command, execute_sandboxed_command, chat_completion, test_provider_connection, store_secret, get_secret, delete_secret, generate_image, choose_workspace_folder, list_workspace_files, read_workspace_file, create_workspace_directory, write_workspace_file])
+        .invoke_handler(tauri::generate_handler![execute_terminal_command, execute_sandboxed_command, chat_completion, test_provider_connection, store_secret, get_secret, delete_secret, generate_image, choose_workspace_folder, list_workspace_files, read_workspace_file, create_workspace_directory, write_workspace_file, write_workspace_files])
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
