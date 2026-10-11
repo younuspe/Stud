@@ -32,10 +32,21 @@ chat, terminal (CLI), agent (Hunter), github (Warrior), orchestrator (Akhada),
 editor (Code Editor), generative (AI Studio), plus Galaxy/Topology.
 
 ## Testing
+Unit/integration tests use Vitest + supertest: `npm test` (22 tests) covers the
+provider catalog, `normalizeProvider`/`isSafeEndpointUrl`, server route
+validation and 404/400 handling, security headers, and the logger. Add new
+suites under `tests/`.
+
 Headless e2e harnesses live in `/tmp/audit/` (puppeteer-core + `/usr/bin/chromium`,
 launch with `--no-sandbox --disable-dev-shm-usage`). They click module buttons by
 visible `<span>` text and assert real API traffic. Recreate with
 `npm i puppeteer-core@23` if the directory is missing.
+
+## Logging
+`src/utils/logger.ts` is the single logging entry point (debug/info/warn/error).
+Level is controlled by `LOG_LEVEL` (server) or `VITE_LOG_LEVEL` (browser);
+production builds default to `warn`. Do not call `console.*` directly in app or
+server code — `console.*` only appears inside generated/sandboxed code strings.
 
 ## Security posture
 Command-executing endpoints (`/api/terminal/execute`, `/api/agent/step`,
@@ -43,6 +54,9 @@ Command-executing endpoints (`/api/terminal/execute`, `/api/agent/step`,
 `requireLocal()` in `server.ts`; set `SUPRU_ALLOW_REMOTE_EXEC=1` to opt out
 (only behind an authenticated proxy). GitHub routes validate owner/repo/branch/
 path segments. Provider `endpointUrl` is screened by `isSafeEndpointUrl()`.
+`server.ts` applies `helmet` defaults and `express-rate-limit`: 120 req/min per
+IP across `/api`, with a tighter 20/min budget on AI, exec, and key-test routes.
+CSP is intentionally left off (Vite inline scripts + Studio sandboxed iframes).
 
 ## Known blockers
 Pushing to `origin` (github.com/younuspe/Stud) fails with 403. The injected
