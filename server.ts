@@ -1102,14 +1102,15 @@ app.post('/api/github/repo', async (req, res) => {
 });
 
 app.post('/api/github/contents', async (req, res) => {
-  const { owner, repo, path: filePath = '', branch = 'main', token } = req.body;
+  const { owner, repo, path: filePath = '', token } = req.body;
+  let branch = req.body.branch;
   if (!owner || !repo) {
     return res.status(400).json({ error: 'owner and repo are required' });
   }
   if (!GITHUB_SEGMENT.test(owner) || !GITHUB_SEGMENT.test(repo)) {
     return res.status(400).json({ error: 'Invalid owner or repo name' });
   }
-  if (typeof branch !== 'string' || !GITHUB_SEGMENT.test(branch)) {
+  if (branch !== undefined && (typeof branch !== 'string' || !GITHUB_SEGMENT.test(branch))) {
     return res.status(400).json({ error: 'Invalid branch name' });
   }
   const safePath = String(filePath).split('/').filter(Boolean);
@@ -1125,6 +1126,19 @@ app.post('/api/github/contents', async (req, res) => {
     };
     if (token) {
       headers.Authorization = `Bearer ${token}`;
+    }
+
+    // Resolve the repo's real default branch rather than assuming "main";
+    // plenty of repos still use "master".
+    if (!branch) {
+      const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+      if (repoRes.ok) {
+        const repoData = await repoRes.json().catch(() => ({}));
+        if (typeof repoData.default_branch === 'string' && GITHUB_SEGMENT.test(repoData.default_branch)) {
+          branch = repoData.default_branch;
+        }
+      }
+      if (!branch) branch = 'main';
     }
 
     const url = `https://api.github.com/repos/${owner}/${repo}/contents/${cleanPath}?ref=${encodeURIComponent(branch)}`;

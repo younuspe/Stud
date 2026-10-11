@@ -44,6 +44,7 @@ export const GitHubView: React.FC<GitHubViewProps> = ({
   const [currentPath, setCurrentPath] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [repoData, setRepoData] = useState<any>(null);
+  const [branch, setBranch] = useState('');
   const [items, setItems] = useState<GitHubRepoItem[]>([]);
   const [selectedFile, setSelectedFile] = useState<{ name: string; content: string } | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -69,14 +70,15 @@ export const GitHubView: React.FC<GitHubViewProps> = ({
       }
 
       setRepoData(data);
-      fetchContents(targetOwner, targetRepo, '');
+      setBranch(data.defaultBranch || '');
+      fetchContents(targetOwner, targetRepo, '', data.defaultBranch || '');
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to connect to GitHub repository');
       setIsLoading(false);
     }
   };
 
-  const fetchContents = async (targetOwner = owner, targetRepo = repo, path = '') => {
+  const fetchContents = async (targetOwner = owner, targetRepo = repo, path = '', targetBranch = branch) => {
     setIsLoading(true);
     try {
       const res = await fetch('/api/github/contents', {
@@ -86,6 +88,7 @@ export const GitHubView: React.FC<GitHubViewProps> = ({
           owner: targetOwner,
           repo: targetRepo,
           path,
+          branch: targetBranch || undefined,
           token: token || undefined,
         }),
       });

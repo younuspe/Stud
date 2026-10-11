@@ -62,6 +62,14 @@ describe('GitHub route input validation', () => {
     const res = await request(app).post('/api/github/repo').send({});
     expect(res.status).toBe(400);
   });
+
+  it('accepts a request without an explicit branch (resolved server-side)', async () => {
+    // No branch must not 400: the handler resolves the repo default branch.
+    const res = await request(app)
+      .post('/api/github/contents')
+      .send({ owner: 'x', repo: 'y', path: 'README.md' });
+    expect(res.status).not.toBe(400);
+  });
 });
 
 describe('terminal execute validation', () => {
