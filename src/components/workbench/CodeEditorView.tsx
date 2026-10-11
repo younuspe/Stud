@@ -547,6 +547,7 @@ export class SupruPipeline {
   const [projectPaths, setProjectPaths] = useState<string[]>([]);
   const [activeProjectPath, setActiveProjectPath] = useState<string | null>(null);
   const [isProjectFileLoading, setIsProjectFileLoading] = useState(false);
+  const [loadedWorkspaceRoot, setLoadedWorkspaceRoot] = useState('');
   const [projectFileNotice, setProjectFileNotice] = useState<string | null>(null);
 
   const isReadableProjectPath = (path: string) => {
@@ -624,8 +625,10 @@ export class SupruPipeline {
       setProjectPaths([]);
       setActiveProjectPath(null);
       setProjectFileNotice(null);
+      setLoadedWorkspaceRoot('');
       return;
     }
+    setLoadedWorkspaceRoot('');
     setIsProjectFileLoading(true);
     setProjectFileNotice(null);
     setActiveProjectPath(null);
@@ -656,7 +659,10 @@ export class SupruPipeline {
         if (!cancelled) setProjectFileNotice(`Could not read project folder: ${String(error)}`);
       })
       .finally(() => {
-        if (!cancelled) setIsProjectFileLoading(false);
+        if (!cancelled) {
+          setIsProjectFileLoading(false);
+          setLoadedWorkspaceRoot(workspaceRoot);
+        }
       });
     return () => { cancelled = true; };
   // Loading is intentionally triggered only when the selected root changes.
@@ -1028,18 +1034,16 @@ export class SupruPipeline {
 
   // Listen for incoming external prompt from FloatingChatPill or other actions
   useEffect(() => {
-    if (externalPrompt && externalPrompt.text && externalPrompt.text.trim()) {
-      if (!windows.generator?.isOpen) {
-        onToggleWindow?.('generator');
-      }
-      if (drawerHeight < 280) {
-        setDrawerHeight(340);
-      }
-      setActiveAiTab('copilot');
-      handleSendCopilotMessage(externalPrompt.text.trim());
-      onClearExternalPrompt?.();
-    }
-  }, [externalPrompt]);
+    if (!externalPrompt || !externalPrompt.text.trim()) return;
+    // Do not send a build prompt against a stale demo tab while the selected
+    // project is still loading. Wait until this exact workspace has resolved.
+    if (workspaceRoot && loadedWorkspaceRoot !== workspaceRoot) return;
+    if (!windows.generator?.isOpen) onToggleWindow?.('generator');
+    if (drawerHeight < 280) setDrawerHeight(340);
+    setActiveAiTab('copilot');
+    handleSendCopilotMessage(externalPrompt.text.trim());
+    onClearExternalPrompt?.();
+  }, [externalPrompt, loadedWorkspaceRoot, workspaceRoot]);
 
   // Auto-scroll Copilot messages to bottom
   useEffect(() => {
