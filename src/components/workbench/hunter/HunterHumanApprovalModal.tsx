@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   Lock
 } from 'lucide-react';
+import { ModalShell } from '../../ui/Modal';
 import { HunterApprovalRequest } from '../../../types/workbench';
 import { soundFx } from '../../../utils/audio';
 
@@ -39,8 +40,8 @@ export const HunterHumanApprovalModal: React.FC<HunterHumanApprovalModalProps> =
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-      <div className="relative w-full max-w-lg rounded-2xl border border-[#ff6b6b]/40 bg-[#161618] p-5 shadow-2xl text-xs font-sans">
+    <ModalShell isOpen onClose={onClose} ariaLabel="Human approval required">
+      <div className="w-full rounded-2xl border border-[#ff6b6b]/40 bg-[#161618] p-5 shadow-2xl text-xs font-sans">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/[0.08] pb-3">
           <div className="flex items-center gap-2.5">
@@ -163,6 +164,6 @@ export const HunterHumanApprovalModal: React.FC<HunterHumanApprovalModalProps> =
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };

@@ -35,6 +35,9 @@ const FloatingChatPill = lazy(() => import('./components/FloatingChatPill').then
 import { ChatThread, Message, PersonaType, UserSettings, Attachment, ServerStatus } from './types/chat';
 import { WorkspaceView, LocalHostConfig, CodingSpaceLayout, StudioWindowId, StudioWindowState, ExternalAIModelConfig } from './types/workbench';
 import { soundFx } from './utils/audio';
+import { useToast } from './components/ui/Toast';
+import { ConfirmDialog } from './components/ui/ConfirmDialog';
+import { LoadingFallback } from './components/ui/LoadingFallback';
 
 const STORAGE_KEY_THREADS = 'supru_ai_threads_v1';
 const STORAGE_KEY_SETTINGS = 'supru_ai_settings_v1';
@@ -263,6 +266,16 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const toast = useToast();
+
+  // Pending destructive action awaiting confirmation.
+  const [pendingConfirm, setPendingConfirm] = useState<null | {
+    title: string;
+    description?: string;
+    confirmLabel?: string;
+    destructive?: boolean;
+    onConfirm: () => void;
+  }>(null);
 
   // Server diagnostics
   const [serverStatus, setServerStatus] = useState<ServerStatus>({
@@ -328,22 +341,37 @@ export default function App() {
         }));
       }
     }
+
+    toast.success('Model added', `${model.name} is ready to use.`);
   };
 
   const handleDeleteCustomModel = (id: string) => {
-    setCustomModels((prev) => {
-      const next = prev.filter((m) => m.id !== id);
-      try {
-        localStorage.setItem('supru_custom_models', JSON.stringify(next));
-      } catch {}
-      return next;
+    const target = customModels.find((m) => m.id === id);
+    setPendingConfirm({
+      title: 'Remove this model?',
+      description: target
+        ? `"${target.name}" will be removed from your saved models.`
+        : 'This model will be removed from your saved models.',
+      confirmLabel: 'Remove',
+      destructive: true,
+      onConfirm: () => {
+        setCustomModels((prev) => {
+          const next = prev.filter((m) => m.id !== id);
+          try {
+            localStorage.setItem('supru_custom_models', JSON.stringify(next));
+          } catch {}
+          return next;
+        });
+        if (activeCustomModel?.id === id) {
+          setActiveCustomModel(null);
+          try {
+            localStorage.removeItem('supru_active_custom_model');
+          } catch {}
+        }
+        toast.success('Model removed');
+        setPendingConfirm(null);
+      },
     });
-    if (activeCustomModel?.id === id) {
-      setActiveCustomModel(null);
-      try {
-        localStorage.removeItem('supru_active_custom_model');
-      } catch {}
-    }
   };
 
   // Creative Studio Modals (gemini-3.1-flash-image-preview & veo-3.1-fast-generate-preview)
@@ -505,11 +533,26 @@ export default function App() {
   };
 
   const handleDeleteThread = (id: string) => {
-    setThreads((prev) => prev.filter((t) => t.id !== id));
-    if (activeThreadId === id) {
-      const remaining = threads.filter((t) => t.id !== id);
-      setActiveThreadId(remaining.length > 0 ? remaining[0].id : null);
-    }
+    const target = threads.find((t) => t.id === id);
+    setPendingConfirm({
+      title: 'Delete this conversation?',
+      description: target
+        ? `"${target.title}" and its ${target.messages.length} message${
+            target.messages.length === 1 ? '' : 's'
+          } will be removed. This cannot be undone.`
+        : 'This conversation will be permanently removed.',
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => {
+        setThreads((prev) => prev.filter((t) => t.id !== id));
+        if (activeThreadId === id) {
+          const remaining = threads.filter((t) => t.id !== id);
+          setActiveThreadId(remaining.length > 0 ? remaining[0].id : null);
+        }
+        toast.success('Conversation deleted');
+        setPendingConfirm(null);
+      },
+    });
   };
 
   const handleRenameThread = (id: string, newTitle: string) => {
@@ -526,9 +569,24 @@ export default function App() {
 
   const handleClearCurrentChat = () => {
     if (!activeThreadId) return;
-    setThreads((prev) =>
-      prev.map((t) => (t.id === activeThreadId ? { ...t, messages: [], updatedAt: Date.now() } : t))
-    );
+    const target = threads.find((t) => t.id === activeThreadId);
+    if (!target || target.messages.length === 0) {
+      toast.info('Nothing to clear', 'This conversation is already empty.');
+      return;
+    }
+    setPendingConfirm({
+      title: 'Clear this conversation?',
+      description: `All ${target.messages.length} messages in "${target.title}" will be removed. The conversation itself is kept.`,
+      confirmLabel: 'Clear messages',
+      destructive: true,
+      onConfirm: () => {
+        setThreads((prev) =>
+          prev.map((t) => (t.id === activeThreadId ? { ...t, messages: [], updatedAt: Date.now() } : t))
+        );
+        toast.success('Conversation cleared');
+        setPendingConfirm(null);
+      },
+    });
   };
 
   const handleSendMessage = async (text: string, attachment?: Attachment) => {
@@ -724,6 +782,7 @@ export default function App() {
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
+        toast.error('Generation failed', 'The model could not be reached. Check your provider settings and try again.');
         setThreads((prev) =>
           prev.map((t) =>
             t.id === targetThreadId
@@ -812,21 +871,26 @@ export default function App() {
       activeFileBuffer?.content ||
       `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title>Supru Project</title>\n</head>\n<body>\n  <h1>Welcome to Supru Ecosystem</h1>\n</body>\n</html>`;
     const fileName = activeFileBuffer?.name || 'supru-project.html';
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    soundFx.playChime();
+    try {
+      const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      soundFx.playChime();
+      toast.success('File downloaded', fileName);
+    } catch {
+      toast.error('Download failed', 'The file could not be saved. Please try again.');
+    }
   };
 
   return (
     <div className="flex h-screen w-full flex-col bg-[#08080a] text-[#f1f2f6] overflow-hidden">
-      <Suspense fallback={<div className="flex h-full w-full items-center justify-center bg-[#08080a] text-sm text-gray-400">Loading Supru workspace…</div>}>
+      <Suspense fallback={<LoadingFallback />}>
       {/* UNIFIED 2027 STUDIO HEADER (File, Edit, View, Windows Dropdown, Models, Presets, View Switcher) */}
       <StudioHeader
         onToggleSidebar={() => setSidebarMobileOpen(!sidebarMobileOpen)}
@@ -1192,6 +1256,17 @@ export default function App() {
         onDeleteModel={handleDeleteCustomModel}
         existingModels={customModels}
         activeModelId={activeCustomModel?.id}
+      />
+
+      {/* Confirmation gate for destructive actions */}
+      <ConfirmDialog
+        isOpen={pendingConfirm !== null}
+        title={pendingConfirm?.title ?? ''}
+        description={pendingConfirm?.description}
+        confirmLabel={pendingConfirm?.confirmLabel}
+        destructive={pendingConfirm?.destructive}
+        onConfirm={() => pendingConfirm?.onConfirm()}
+        onCancel={() => setPendingConfirm(null)}
       />
 
       {/* Get Code Export Modal */}

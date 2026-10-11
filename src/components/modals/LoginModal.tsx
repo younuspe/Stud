@@ -9,6 +9,7 @@ import {
   Sparkles,
   ShieldCheck
 } from 'lucide-react';
+import { ModalShell } from '../ui/Modal';
 import { UserSettings } from '../../types/chat';
 import { soundFx } from '../../utils/audio';
 
@@ -27,9 +28,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 }) => {
   const [name, setName] = useState(userSettings.userName || 'Ahvan Traveller');
   const [email, setEmail] = useState(userSettings.userEmail || 'younuspe@gmail.com');
-
-  if (!isOpen) return null;
-
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     soundFx.playMeowChime();
@@ -51,8 +49,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
-      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-[#2b2b3a] bg-[#121218] p-6 shadow-2xl">
+    <ModalShell isOpen={isOpen} onClose={onClose} ariaLabel="Sign in">
+      <div className="w-full overflow-hidden rounded-3xl border border-[#2b2b3a] bg-[#121218] p-6 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#22222d] pb-4">
           <div className="flex items-center gap-2.5">
@@ -142,6 +140,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };

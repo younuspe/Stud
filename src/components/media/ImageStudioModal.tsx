@@ -15,6 +15,7 @@ import {
   Send,
   Check
 } from 'lucide-react';
+import { ModalShell } from '../ui/Modal';
 import { ImageAspectRatio, ImageItem } from '../../types/media';
 import { soundFx } from '../../utils/audio';
 import { logger } from '../../utils/logger';
@@ -45,9 +46,6 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
   const [history, setHistory] = useState<ImageItem[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  if (!isOpen) return null;
-
   const stylePresets = [
     { label: 'Cyberpunk Feline', promptSuffix: ', sleek obsidian fur, glowing amber neon eyes, rainy neo-tokyo cyberpunk street, octane render 8k' },
     { label: 'Cinematic Noir', promptSuffix: ', dramatic chiaroscuro volumetric lighting, 35mm film grain, moody atmosphere, masterpiece' },
@@ -129,8 +127,8 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-6 backdrop-blur-md">
-      <div className="relative flex h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-amber-500/30 bg-[#101016] shadow-2xl">
+    <ModalShell isOpen={isOpen} onClose={onClose} ariaLabel="Image studio">
+      <div className="flex h-[92vh] w-full flex-col overflow-hidden rounded-3xl border border-amber-500/30 bg-[#101016] shadow-2xl">
         {/* Top Header */}
         <div className="flex items-center justify-between border-b border-[#20202d] px-6 py-4 bg-[#14141c]">
           <div className="flex items-center gap-3">
@@ -464,6 +462,6 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };

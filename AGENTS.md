@@ -34,10 +34,30 @@ chat, terminal (CLI), agent (Hunter), github (Warrior), orchestrator (Akhada),
 editor (Code Editor), generative (AI Studio), plus Galaxy/Topology.
 
 ## Testing
-Unit/integration tests use Vitest + supertest: `npm test` (23 tests) covers the
+Unit/integration tests use Vitest + supertest: `npm test` (35 tests) covers the
 provider catalog, `normalizeProvider`/`isSafeEndpointUrl`, server route
 validation and 404/400 handling, security headers, the GitHub default-branch
-resolution, and the logger. Add new suites under `tests/`.
+resolution, the logger, the HTML sanitizer, and the `ModalShell` dialog
+semantics (portal, Escape, focus trap, focus restore). Add new suites under
+`tests/`. DOM suites opt into jsdom with a `// @vitest-environment jsdom`
+pragma; `vitest.config.ts` keeps `esbuild.jsx = 'automatic'` so JSX needs no
+React import.
+
+## UI primitives
+- `src/components/ui/Modal.tsx` — `ModalShell`, the single accessible dialog
+  (portal, Escape, backdrop dismissal, Tab trap, focus restore, scroll lock).
+  All modals render through it.
+- `src/components/ui/ConfirmDialog.tsx` — destructive-action confirmation,
+  built on `ModalShell`.
+- `src/components/ui/Toast.tsx` — `ToastProvider`/`useToast` for transient
+  success/error/warning/info feedback (portal, auto-dismiss, aria-live).
+- `src/components/ui/ErrorBoundary.tsx` — catches render crashes so one faulty
+  module cannot blank the app.
+- `src/components/ui/LoadingFallback.tsx` — branded Suspense fallback.
+- `src/utils/sanitize.ts` — `sanitizeHtml`; required before any
+  `dangerouslySetInnerHTML`.
+- `src/utils/clipboard.ts` — `copyText` with a `execCommand` fallback; use it
+  instead of `navigator.clipboard` so copies work in non-secure contexts.
 
 Headless e2e harnesses live in `/tmp/audit/` (puppeteer-core + `/usr/bin/chromium`,
 launch with `--no-sandbox --disable-dev-shm-usage`). They click module buttons by

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { TerminalCommandResult, LocalHostConfig } from '../../types/workbench';
 import { soundFx } from '../../utils/audio';
+import { copyText } from '../../utils/clipboard';
 
 interface TerminalViewProps {
   localConfig: LocalHostConfig;
@@ -251,7 +252,7 @@ API Key:  ${localConfig.provider === 'gemini_cloud' ? 'Configured or fallback' :
   };
 
   const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
+    copyText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 1500);
   };

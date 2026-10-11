@@ -38,6 +38,8 @@ import { MarkdownRenderer } from '../MarkdownRenderer';
 import { getProviderMeta, FREE_MODEL_PRESETS } from '../../lib/providers';
 import type { LocalHostConfig, ExternalAIModelConfig } from '../../types/workbench';
 import { logger } from '../../utils/logger';
+import { sanitizeHtml } from '../../utils/sanitize';
+import { copyText } from '../../utils/clipboard';
 
 interface SupruGenerativeStudioViewProps {
   onSendToChat?: (content: string, imageUrl?: string) => void;
@@ -570,7 +572,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
             onClick={() => {
               soundFx.playClick();
               const snippet = `// Supru AI Studio — integration snippet\nfetch('/api/studio/chat', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({\n    messages: [{ role: 'user', content: 'Hello' }],\n    provider: '${selectedModel?.provider}',\n    modelId: '${selectedModel?.modelId}',\n  }),\n});`;
-              navigator.clipboard.writeText(snippet);
+              copyText(snippet);
               if (onOpenInEditor) onOpenInEditor('supru-studio-client.ts', snippet);
             }}
             className="hidden sm:flex items-center gap-1 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-gray-300 hover:text-white hover:bg-white/[0.06] transition-all"
@@ -680,7 +682,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                               {turn.provider}{turn.model ? ` · ${turn.model}` : ''}
                             </span>
                             <button
-                              onClick={() => { navigator.clipboard.writeText(turn.content); soundFx.playClick(); }}
+                              onClick={() => { copyText(turn.content); soundFx.playClick(); }}
                               className="ml-auto flex items-center gap-1 hover:text-white"
                             >
                               <Copy size={11} /> Copy
@@ -869,13 +871,13 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                 {mediaMode === 'atomic' && (
                   <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 lg:flex-row">
                     <div className="flex flex-1 items-center justify-center rounded-2xl border border-white/[0.08] bg-black/40 p-6">
-                      <div dangerouslySetInnerHTML={{ __html: atomicComponent }} />
+                      <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(atomicComponent) }} />
                     </div>
                     <div className="flex w-full flex-col rounded-2xl border border-white/[0.08] bg-[#0c0c16] p-4 text-xs font-mono lg:w-96">
                       <div className="mb-3 flex items-center justify-between border-b border-white/[0.06] pb-2">
                         <span className="flex items-center gap-1.5 font-bold text-purple-400"><Code2 size={13} /> Generated HTML</span>
                         <button
-                          onClick={() => { navigator.clipboard.writeText(atomicComponent); setCopiedCode(true); setTimeout(() => setCopiedCode(false), 2000); }}
+                          onClick={() => { copyText(atomicComponent); setCopiedCode(true); setTimeout(() => setCopiedCode(false), 2000); }}
                           className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-white"
                         >
                           {copiedCode ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}

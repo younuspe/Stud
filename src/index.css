@@ -1,36 +1,113 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------ */
+/*  Design tokens                                                      */
+/*  Tailwind v4 `@theme` registers animations/utilities so classes like */
+/*  `animate-fadeIn` resolve instead of silently doing nothing.         */
+/* ------------------------------------------------------------------ */
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-void: #050508;
+  --color-void-soft: #08080a;
+  --color-surface: #0e0e16;
+  --color-surface-2: #121218;
+  --color-hairline: rgba(255, 255, 255, 0.08);
+
+  --animate-fadeIn: fadeIn 180ms ease-out both;
+  --animate-scaleIn: scaleIn 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-slideUp: slideUp 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-shimmer: shimmer 2.2s linear infinite;
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes scaleIn {
+    from { opacity: 0; transform: scale(0.96) translateY(6px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shimmer {
+    from { background-position: -200% 0; }
+    to { background-position: 200% 0; }
+  }
+}
+
 @layer base {
   * {
     box-sizing: border-box;
   }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
   body {
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background-color: #050508;
+    font-family: var(--font-sans);
+    background-color: var(--color-void);
     color: #f3f4f8;
     overflow-x: hidden;
     letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-  code, pre {
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
+
+  code, pre, kbd, samp {
+    font-family: var(--font-mono);
+  }
+
+  /* Visible, consistent keyboard focus across the whole app. */
+  :focus-visible {
+    outline: 2px solid rgba(245, 158, 11, 0.85);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  ::selection {
+    background: rgba(245, 158, 11, 0.3);
+    color: #fde68a;
+  }
+
+  input, textarea, button, select {
+    font: inherit;
+  }
+
+  /* Respect users who ask for less motion. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
-/* 2027 Spatial Ambient Background */
+/* ------------------------------------------------------------------ */
+/*  Surface / ambience utilities                                       */
+/* ------------------------------------------------------------------ */
 .bg-spatial-void {
-  background-color: #050508;
-  background-image: 
+  background-color: var(--color-void);
+  background-image:
     radial-gradient(circle at 15% 15%, rgba(245, 158, 11, 0.05) 0%, transparent 40%),
     radial-gradient(circle at 85% 85%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
     radial-gradient(circle at 50% 50%, rgba(251, 191, 36, 0.02) 0%, transparent 60%);
 }
 
-/* Glassmorphism 2027 */
 .glass-panel-2027 {
   background: rgba(14, 14, 22, 0.72);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--color-hairline);
 }
 
 .glass-dock-2027 {
@@ -41,10 +118,27 @@
   box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.7), 0 0 20px -5px rgba(245, 158, 11, 0.12);
 }
 
-/* Custom sleek scrollbar */
+/* Elevated card used by high-end panels and modal bodies. */
+.surface-card {
+  background: linear-gradient(180deg, rgba(20, 20, 30, 0.9) 0%, rgba(13, 13, 20, 0.92) 100%);
+  border: 1px solid var(--color-hairline);
+  box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.85);
+}
+
+.hairline {
+  border-color: var(--color-hairline);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Scrollbars                                                         */
+/* ------------------------------------------------------------------ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -52,12 +146,17 @@
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
   border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(245, 158, 11, 0.4);
+  background-clip: padding-box;
 }
 
-/* Amber and gold glow utilities */
+/* ------------------------------------------------------------------ */
+/*  Glow + gradient helpers                                            */
+/* ------------------------------------------------------------------ */
 .glow-amber-subtle {
   box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.2);
 }
@@ -69,11 +168,46 @@
 .text-gradient-amber {
   background: linear-gradient(135deg, #fef08a 0%, #fbbf24 40%, #f59e0b 80%, #d97706 100%);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
 .bg-cat-gradient {
   background: radial-gradient(circle at 70% 30%, rgba(217, 119, 6, 0.18) 0%, rgba(17, 17, 24, 0.8) 60%, rgba(10, 10, 15, 0.95) 100%);
 }
 
+/* Shimmering placeholder used while a stream is warming up. */
+.shimmer-text {
+  background: linear-gradient(90deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.9) 50%, rgba(255,255,255,0.35) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: var(--animate-shimmer);
+}
 
+/* Thin scroll region that hides the native bar entirely. */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Themed scroll region used by long modal/panel bodies. */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 158, 11, 0.35) transparent;
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(245, 158, 11, 0.28);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 158, 11, 0.5);
+}

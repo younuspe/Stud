@@ -25,6 +25,7 @@ import {
   PROTOCOL_SECTIONS
 } from '../../../skills/sovereignSingularityProtocol';
 import { soundFx } from '../../../utils/audio';
+import { copyText } from '../../../utils/clipboard';
 
 interface SovereignProtocolTabProps {
   onSendToChat?: (text: string) => void;
@@ -121,7 +122,7 @@ export const SovereignProtocolTab: React.FC<SovereignProtocolTabProps> = ({
   // Copy full skill.md
   const handleCopyProtocol = () => {
     soundFx.playClick();
-    navigator.clipboard.writeText(SOVEREIGN_SINGULARITY_PROTOCOL);
+    copyText(SOVEREIGN_SINGULARITY_PROTOCOL);
     setHasCopiedProtocol(true);
     setTimeout(() => setHasCopiedProtocol(false), 2000);
   };

@@ -9,8 +9,10 @@ import {
   Sparkles,
   Link2
 } from 'lucide-react';
+import { ModalShell } from '../ui/Modal';
 import { ChatThread } from '../../types/chat';
 import { soundFx } from '../../utils/audio';
+import { copyText } from '../../utils/clipboard';
 
 interface ShareModalProps {
   isOpen: boolean;
@@ -25,13 +27,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedMarkdown, setCopiedMarkdown] = useState(false);
-
-  if (!isOpen) return null;
-
   const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(currentUrl);
+    copyText(currentUrl);
     setCopiedLink(true);
     soundFx.playClick();
     setTimeout(() => setCopiedLink(false), 2000);
@@ -43,7 +42,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
       .map((m) => `### ${m.role === 'user' ? 'User' : 'Supru Ecosystem'}\n\n${m.content}\n`)
       .join('\n---\n\n');
 
-    navigator.clipboard.writeText(md);
+    copyText(md);
     setCopiedMarkdown(true);
     soundFx.playClick();
     setTimeout(() => setCopiedMarkdown(false), 2000);
@@ -63,8 +62,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
-      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-[#2b2b3a] bg-[#121218] p-6 shadow-2xl">
+    <ModalShell isOpen={isOpen} onClose={onClose} ariaLabel="Share conversation">
+      <div className="w-full overflow-hidden rounded-3xl border border-[#2b2b3a] bg-[#121218] p-6 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#22222d] pb-4">
           <div className="flex items-center gap-2.5">
@@ -154,6 +153,6 @@ export const ShareModal: React.FC<ShareModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };

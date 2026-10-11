@@ -16,8 +16,10 @@ import {
   Laptop,
   MonitorCheck
 } from 'lucide-react';
+import { ModalShell } from '../ui/Modal';
 import { soundFx } from '../../utils/audio';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
+import { copyText } from '../../utils/clipboard';
 
 interface MacOSInstallModalProps {
   isOpen: boolean;
@@ -35,14 +37,11 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
   const [activeInstallTab, setActiveInstallTab] = useState<'laptop' | 'terminal' | 'download'>('laptop');
 
   const { isInstalled, isMac, triggerInstall } = usePWAInstall();
-
-  if (!isOpen) return null;
-
   const terminalInstallCmd = `curl -fsSL ${window.location.origin}/api/install/macos | bash`;
 
   const handleCopyCmd = () => {
     soundFx.playClick();
-    navigator.clipboard.writeText(terminalInstallCmd);
+    copyText(terminalInstallCmd);
     setCopiedTerminal(true);
     setTimeout(() => setCopiedTerminal(false), 2000);
   };
@@ -80,8 +79,8 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4 backdrop-blur-xl animate-fadeIn select-none">
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-white/[0.15] bg-[#0c0c14]/95 shadow-[0_25px_60px_rgba(0,0,0,0.9)] backdrop-blur-3xl">
+    <ModalShell isOpen={isOpen} onClose={onClose} ariaLabel="Install the macOS app">
+      <div className="w-full overflow-hidden rounded-3xl border border-white/[0.15] bg-[#0c0c14]/95 shadow-[0_25px_60px_rgba(0,0,0,0.9)] backdrop-blur-3xl">
         {/* macOS Window Titlebar with Traffic Lights */}
         <div className="flex items-center justify-between border-b border-white/[0.08] bg-[#141420]/90 px-4 py-3">
           <div className="flex items-center gap-2">
@@ -321,7 +320,6 @@ export const MacOSInstallModal: React.FC<MacOSInstallModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };
-

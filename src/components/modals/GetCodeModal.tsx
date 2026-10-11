@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { X, Copy, Check, Code2, Terminal, FileCode, CheckCircle2 } from 'lucide-react';
+import { ModalShell } from '../ui/Modal';
 import { ExternalAIModelConfig, StudioModelSettings } from '../../types/workbench';
 import { soundFx } from '../../utils/audio';
+import { copyText } from '../../utils/clipboard';
 
 interface GetCodeModalProps {
   isOpen: boolean;
@@ -20,9 +22,6 @@ export const GetCodeModal: React.FC<GetCodeModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'typescript' | 'python' | 'curl' | 'rest'>('typescript');
   const [copied, setCopied] = useState(false);
-
-  if (!isOpen) return null;
-
   const promptText = currentPrompt || 'Build a modern responsive web applet';
 
   const snippets: Record<string, string> = {
@@ -53,6 +52,7 @@ main().catch(console.error);
 from google import genai
 from google.genai import types
 import os
+import { copyText } from '../../utils/clipboard';
 
 client = genai.Client(
     api_key=os.environ.get("GEMINI_API_KEY", "${activeModel.apiKey || 'YOUR_API_KEY'}")
@@ -106,15 +106,15 @@ x-goog-api-key: \${GEMINI_API_KEY}
   };
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(snippets[activeTab]);
+    copyText(snippets[activeTab]);
     soundFx.playClick();
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
-      <div className="relative w-full max-w-2xl rounded-2xl border border-amber-500/30 bg-[#0e0e15] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+    <ModalShell isOpen={isOpen} onClose={onClose} ariaLabel="Export code">
+      <div className="w-full rounded-2xl border border-amber-500/30 bg-[#0e0e15] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#1f1f2e] bg-[#12121b] px-5 py-3.5">
           <div className="flex items-center gap-2.5">
@@ -217,6 +217,6 @@ x-goog-api-key: \${GEMINI_API_KEY}
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };

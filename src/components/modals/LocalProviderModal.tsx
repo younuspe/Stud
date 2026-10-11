@@ -13,6 +13,7 @@ import {
   ExternalLink,
   ShieldCheck
 } from 'lucide-react';
+import { ModalShell } from '../ui/Modal';
 import { LocalHostConfig, AIProviderType } from '../../types/workbench';
 import { soundFx } from '../../utils/audio';
 
@@ -32,9 +33,6 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
   const [testMessage, setTestMessage] = useState<string>('');
   const [detectedModels, setDetectedModels] = useState<string[]>([]);
-
-  if (!isOpen) return null;
-
   const providers: {
     id: AIProviderType;
     name: string;
@@ -127,8 +125,8 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
-      <div className="relative w-full max-w-xl overflow-hidden rounded-3xl border border-amber-500/30 bg-[#121218] p-6 shadow-2xl">
+    <ModalShell isOpen={isOpen} onClose={onClose} ariaLabel="Local provider configuration">
+      <div className="w-full overflow-hidden rounded-3xl border border-amber-500/30 bg-[#121218] p-6 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#22222d] pb-4">
           <div className="flex items-center gap-2.5">
@@ -302,6 +300,6 @@ export const LocalProviderModal: React.FC<LocalProviderModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };

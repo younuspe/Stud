@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Workflow
 } from 'lucide-react';
+import { ModalShell } from '../ui/Modal';
 import { WorkspaceView } from '../../types/workbench';
 import { soundFx } from '../../utils/audio';
 
@@ -34,8 +35,6 @@ export const SupruTeamModal: React.FC<SupruTeamModalProps> = ({
   onOpenImageStudio,
   onOpenVeoStudio,
 }) => {
-  if (!isOpen) return null;
-
   const team = [
     {
       id: 'generative',
@@ -120,8 +119,8 @@ export const SupruTeamModal: React.FC<SupruTeamModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-3 sm:p-4 backdrop-blur-md">
-      <div className="relative w-full max-w-3xl overflow-hidden rounded-3xl border border-amber-500/30 bg-[#101017] p-5 sm:p-6 shadow-2xl">
+    <ModalShell isOpen={isOpen} onClose={onClose} ariaLabel="Supru team">
+      <div className="w-full overflow-hidden rounded-3xl border border-amber-500/30 bg-[#101017] p-5 sm:p-6 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#20202e] pb-4">
           <div className="flex items-center gap-3">
@@ -211,6 +210,6 @@ export const SupruTeamModal: React.FC<SupruTeamModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };

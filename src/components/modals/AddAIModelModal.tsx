@@ -19,6 +19,7 @@ import {
   Unlock,
   Radio
 } from 'lucide-react';
+import { ModalShell } from '../ui/Modal';
 import { ExternalAIModelConfig } from '../../types/workbench';
 import { FREE_MODEL_PRESETS, PROVIDER_CATALOG, PROVIDER_ORDER, getProviderMeta } from '../../lib/providers';
 import { soundFx } from '../../utils/audio';
@@ -106,9 +107,6 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
     message: string;
     latencyMs?: number;
   } | null>(null);
-
-  if (!isOpen) return null;
-
   const handleApplyPreset = (preset: typeof MODEL_PRESETS[0]) => {
     soundFx.playClick();
     setName(preset.name);
@@ -191,8 +189,8 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md animate-fadeIn">
-      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto custom-scrollbar rounded-3xl border border-amber-500/30 bg-[#0c0c14] p-5 sm:p-7 shadow-[0_20px_60px_rgba(0,0,0,0.85)]">
+    <ModalShell isOpen={isOpen} onClose={onClose} ariaLabel="Add AI models">
+      <div className="w-full max-h-[90vh] overflow-y-auto custom-scrollbar rounded-3xl border border-amber-500/30 bg-[#0c0c14] p-5 sm:p-7 shadow-[0_20px_60px_rgba(0,0,0,0.85)]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
           <div className="flex items-center gap-3">
@@ -550,6 +548,6 @@ export const AddAIModelModal: React.FC<AddAIModelModalProps> = ({
           </div>
         )}
       </div>
-    </div>
+    </ModalShell>
   );
 };

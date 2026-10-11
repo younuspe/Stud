@@ -10,6 +10,7 @@ import {
   Zap,
   RefreshCw
 } from 'lucide-react';
+import { ModalShell } from '../ui/Modal';
 import { soundFx } from '../../utils/audio';
 
 interface ConnectModalProps {
@@ -34,9 +35,6 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
 }) => {
   const [isPinging, setIsPinging] = useState(false);
   const [pingLatency, setPingLatency] = useState<number | null>(42);
-
-  if (!isOpen) return null;
-
   const handleTestPing = async () => {
     setIsPinging(true);
     soundFx.playClick();
@@ -54,8 +52,8 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
-      <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-amber-500/30 bg-[#121218] p-6 shadow-2xl">
+    <ModalShell isOpen={isOpen} onClose={onClose} ariaLabel="Server connection">
+      <div className="w-full overflow-hidden rounded-3xl border border-amber-500/30 bg-[#121218] p-6 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#22222d] pb-4">
           <div className="flex items-center gap-2.5">
@@ -169,6 +167,6 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };

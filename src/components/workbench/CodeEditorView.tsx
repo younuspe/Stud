@@ -58,6 +58,7 @@ import { FloatingWindow } from './FloatingWindow';
 import { soundFx } from '../../utils/audio';
 import { useSpeechListener } from '../../utils/useSpeechListener';
 import { PRESET_TEMPLATES } from './editor/presetTemplates';
+import { copyText } from '../../utils/clipboard';
 import { buildSandboxHtml } from './editor/sandbox';
 import { useSplitResize } from './editor/useSplitResize';
 
@@ -356,7 +357,7 @@ export class SupruPipeline {
   };
 
   const handleCopyCode = () => {
-    navigator.clipboard.writeText(activeFile.content);
+    copyText(activeFile.content);
     setCopied(true);
     soundFx.playClick();
     setTimeout(() => setCopied(false), 1500);
@@ -572,7 +573,7 @@ export class SupruPipeline {
 
   // Copy code snippet to clipboard
   const handleCopySnippet = (snippet: string, id: string) => {
-    navigator.clipboard.writeText(snippet);
+    copyText(snippet);
     setCopiedSnippetId(id);
     soundFx.playClick();
     setTimeout(() => setCopiedSnippetId(null), 2000);

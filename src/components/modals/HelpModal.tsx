@@ -9,18 +9,16 @@ import {
   Cat, 
   Lightbulb 
 } from 'lucide-react';
+import { ModalShell } from '../ui/Modal';
 
 interface HelpModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
-      <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-[#2b2b3a] bg-[#121218] p-6 shadow-2xl">
+export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {return (
+    <ModalShell isOpen={isOpen} onClose={onClose} ariaLabel="Help and documentation">
+      <div className="w-full overflow-hidden rounded-3xl border border-[#2b2b3a] bg-[#121218] p-6 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#22222d] pb-4">
           <div className="flex items-center gap-2.5">
@@ -113,6 +111,6 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };

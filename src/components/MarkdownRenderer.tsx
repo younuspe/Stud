@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Check, Copy, Terminal, Play, Sparkles, ExternalLink } from 'lucide-react';
 import { soundFx } from '../utils/audio';
+import { copyText } from '../utils/clipboard';
 
 interface MarkdownRendererProps {
   content: string;
@@ -50,8 +51,9 @@ const CodeBlock: React.FC<{
 }> = ({ code, language, onOpenInEditor }) => {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(code);
+  const handleCopy = async () => {
+    const ok = await copyText(code);
+    if (!ok) return;
     setCopied(true);
     soundFx.playClick();
     setTimeout(() => setCopied(false), 2000);

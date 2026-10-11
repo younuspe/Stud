@@ -465,12 +465,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 return (
                   <div
                     key={thread.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-current={isActive ? 'true' : undefined}
+                    aria-label={`Open conversation ${thread.title || 'Untitled Stream'}`}
                     onClick={() => {
                       soundFx.playClick();
                       onChangeWorkspaceView('chat');
                       onSelectThread(thread.id);
                     }}
-                    className={`group relative flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium cursor-pointer transition-all ${
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        soundFx.playClick();
+                        onChangeWorkspaceView('chat');
+                        onSelectThread(thread.id);
+                      }
+                    }}
+                    className={`group relative flex items-center justify-between rounded-lg px-2.5 py-1.5 text-xs font-medium cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70 ${
                       isActive
                         ? 'bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/30'
                         : 'text-gray-400 hover:bg-white/[0.04] hover:text-white'
@@ -484,7 +496,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <span className="truncate">{thread.title || 'Untitled Stream'}</span>
                     </div>
 
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0 ml-1">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -493,6 +505,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         className={`p-1 rounded hover:bg-white/10 ${
                           thread.isPinned ? 'text-amber-400' : 'text-gray-500 hover:text-white'
                         }`}
+                        aria-label={thread.isPinned ? `Unpin ${thread.title}` : `Pin ${thread.title}`}
                         title={thread.isPinned ? 'Unpin' : 'Pin'}
                       >
                         <Pin size={10} className={thread.isPinned ? 'fill-amber-400' : ''} />
@@ -500,6 +513,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <button
                         onClick={(e) => handleStartRename(thread, e)}
                         className="p-1 rounded text-gray-500 hover:bg-white/10 hover:text-white"
+                        aria-label={`Rename ${thread.title}`}
                         title="Rename"
                       >
                         <Edit3 size={10} />
@@ -510,6 +524,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           onDeleteThread(thread.id);
                         }}
                         className="p-1 rounded text-gray-500 hover:bg-rose-500/20 hover:text-rose-400"
+                        aria-label={`Delete ${thread.title}`}
                         title="Delete"
                       >
                         <Trash2 size={10} />
@@ -580,6 +595,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onOpenSettings();
             }}
             title="Preferences"
+            aria-label="Open preferences"
             className="p-2 rounded-xl text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors"
           >
             <Settings size={15} />
@@ -591,6 +607,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onOpenLocalSettings();
             }}
             title="AI Engine Models & Endpoints"
+            aria-label="AI engine models and endpoints"
             className="p-2 rounded-xl text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
           >
             <Server size={15} />
@@ -602,6 +619,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onOpenSupruTeam();
             }}
             title="Supru Team Ecosystem"
+            aria-label="Supru team ecosystem"
             className="p-2 rounded-xl text-gray-500 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
           >
             <Users size={15} />
@@ -613,6 +631,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onOpenHelp();
             }}
             title="Documentation & Help"
+            aria-label="Documentation and help"
             className="p-2 rounded-xl text-gray-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition-colors"
           >
             <HelpCircle size={15} />
@@ -625,6 +644,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onOpenMacOSInstall();
               }}
               title="Install Native macOS Desktop App (.dmg)"
+              aria-label="Install the native macOS desktop app"
               className="p-2 rounded-xl text-gray-500 hover:text-white hover:bg-white/[0.08] transition-colors"
             >
               <Apple size={15} />

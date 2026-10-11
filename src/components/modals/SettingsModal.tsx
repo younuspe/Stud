@@ -8,6 +8,7 @@ import {
   Check,
   RotateCcw
 } from 'lucide-react';
+import { ModalShell } from '../ui/Modal';
 import { PersonaType, UserSettings } from '../../types/chat';
 import { soundFx } from '../../utils/audio';
 
@@ -26,8 +27,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onUpdateSettings,
   onResetSettings,
 }) => {
-  if (!isOpen) return null;
-
   const personas: { id: PersonaType; title: string; desc: string; icon: string }[] = [
     {
       id: 'supru_cat',
@@ -62,8 +61,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
-      <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-[#2b2b3a] bg-[#121218] p-6 shadow-2xl">
+    <ModalShell isOpen={isOpen} onClose={onClose} ariaLabel="Supru settings">
+      <div className="w-full overflow-hidden rounded-3xl border border-[#2b2b3a] bg-[#121218] p-6 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#22222d] pb-4">
           <div className="flex items-center gap-2.5">
@@ -201,6 +200,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };

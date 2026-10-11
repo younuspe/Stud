@@ -18,6 +18,7 @@ import {
   Eye,
   Cat
 } from 'lucide-react';
+import { ModalShell } from '../ui/Modal';
 import { VideoAspectRatio, VideoItem } from '../../types/media';
 import { soundFx } from '../../utils/audio';
 import { logger } from '../../utils/logger';
@@ -69,9 +70,6 @@ export const VeoVideoModal: React.FC<VeoVideoModalProps> = ({
       }
     };
   }, []);
-
-  if (!isOpen) return null;
-
   const motionPresets = [
     { label: 'Cinematic Dolly & Float', text: 'Fluid cinematic camera dolly forward with ambient dust motes and soft atmospheric lighting' },
     { label: 'Subtle Gaze & Blink', text: 'Gentle lifelike feline breathing, graceful blink, and subtle ear twitch with cinematic depth of field' },
@@ -214,8 +212,8 @@ export const VeoVideoModal: React.FC<VeoVideoModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 sm:p-6 backdrop-blur-md">
-      <div className="relative flex h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-amber-500/30 bg-[#101016] shadow-2xl">
+    <ModalShell isOpen={isOpen} onClose={onClose} ariaLabel="Video studio">
+      <div className="flex h-[92vh] w-full flex-col overflow-hidden rounded-3xl border border-amber-500/30 bg-[#101016] shadow-2xl">
         {/* Top Header */}
         <div className="flex items-center justify-between border-b border-[#20202d] px-6 py-4 bg-[#14141c]">
           <div className="flex items-center gap-3">
@@ -555,6 +553,6 @@ export const VeoVideoModal: React.FC<VeoVideoModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };

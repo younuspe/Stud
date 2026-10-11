@@ -14,6 +14,7 @@ import {
 import { Message } from '../types/chat';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { soundFx } from '../utils/audio';
+import { copyText } from '../utils/clipboard';
 
 interface ChatMessageItemProps {
   message: Message;
@@ -40,8 +41,9 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
 
   const isUser = message.role === 'user';
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(message.content);
+  const handleCopy = async () => {
+    const ok = await copyText(message.content);
+    if (!ok) return;
     setCopied(true);
     soundFx.playClick();
     setTimeout(() => setCopied(false), 2000);
@@ -174,6 +176,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
               <button
                 onClick={handleCopy}
                 className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-medium hover:bg-white/[0.08] hover:text-white transition-colors"
+                aria-label={copied ? 'Response copied' : 'Copy response'}
                 title="Copy response"
               >
                 {copied ? (
@@ -194,6 +197,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-medium hover:bg-white/[0.08] transition-colors ${
                   isSpeaking ? 'text-amber-400 bg-amber-500/10' : 'hover:text-white'
                 }`}
+                aria-label={isSpeaking ? 'Stop reading aloud' : 'Read response aloud'}
                 title={isSpeaking ? 'Stop speaking' : 'Read aloud with AI voice'}
               >
                 {isSpeaking ? <VolumeX size={13} /> : <Volume2 size={13} />}
@@ -207,6 +211,7 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                     onRegenerate();
                   }}
                   className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-medium hover:bg-white/[0.08] hover:text-white transition-colors"
+                  aria-label="Regenerate response"
                   title="Regenerate response"
                 >
                   <RotateCcw size={13} />
@@ -224,6 +229,8 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 className={`p-1.5 rounded-lg hover:bg-white/[0.08] transition-colors ${
                   feedback === 'up' ? 'text-emerald-400 bg-emerald-500/10' : 'hover:text-white'
                 }`}
+                aria-label="Mark response as accurate"
+                aria-pressed={feedback === 'up'}
                 title="Accurate response"
               >
                 <ThumbsUp size={13} />
@@ -237,6 +244,8 @@ export const ChatMessageItem: React.FC<ChatMessageItemProps> = ({
                 className={`p-1.5 rounded-lg hover:bg-white/[0.08] transition-colors ${
                   feedback === 'down' ? 'text-rose-400 bg-rose-500/10' : 'hover:text-white'
                 }`}
+                aria-label="Mark response as needing improvement"
+                aria-pressed={feedback === 'down'}
                 title="Needs improvement"
               >
                 <ThumbsDown size={13} />

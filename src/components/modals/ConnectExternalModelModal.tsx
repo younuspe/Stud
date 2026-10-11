@@ -13,6 +13,7 @@ import {
   ExternalLink,
   ShieldCheck
 } from 'lucide-react';
+import { ModalShell } from '../ui/Modal';
 import { ExternalAIModelConfig, StudioModelSettings } from '../../types/workbench';
 import { getProviderMeta } from '../../lib/providers';
 import { soundFx } from '../../utils/audio';
@@ -47,9 +48,6 @@ export const ConnectExternalModelModal: React.FC<ConnectExternalModelModalProps>
   
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ status: 'online' | 'offline'; message: string; latencyMs?: number } | null>(null);
-
-  if (!isOpen) return null;
-
   const currentSelected = modelsList.find(m => m.id === selectedModelId) || activeModel;
   const currentMeta = getProviderMeta(currentSelected.provider);
 
@@ -130,8 +128,8 @@ export const ConnectExternalModelModal: React.FC<ConnectExternalModelModalProps>
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
-      <div className="relative w-full max-w-2xl rounded-2xl border border-amber-500/30 bg-[#0e0e15] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <ModalShell isOpen={isOpen} onClose={onClose} ariaLabel="Connect external model">
+      <div className="w-full rounded-2xl border border-amber-500/30 bg-[#0e0e15] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-[#1f1f2e] bg-[#12121b] px-5 py-3.5">
           <div className="flex items-center gap-2.5">
@@ -365,6 +363,6 @@ export const ConnectExternalModelModal: React.FC<ConnectExternalModelModalProps>
           </div>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };

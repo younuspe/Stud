@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { CellularNode, EphemeralIsolationWard } from '../../types/workbench';
 import { soundFx } from '../../utils/audio';
+import { copyText } from '../../utils/clipboard';
 
 interface StratifiedTopologyViewProps {
   onSendToChat?: (text: string) => void;
@@ -469,7 +470,7 @@ export const StratifiedTopologyView: React.FC<StratifiedTopologyViewProps> = ({
 
   // Copy helper
   const handleCopy = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
+    copyText(text);
     setCopiedText(label);
     soundFx.playClick();
     setTimeout(() => setCopiedText(null), 1800);
