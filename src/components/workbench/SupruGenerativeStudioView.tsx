@@ -95,12 +95,12 @@ function sandboxPreviewDocument(source: string): string {
   // Generated HTML is untrusted. Keep its origin opaque in the iframe and deny
   // outbound requests, remote scripts, nested frames, plugins, and form posts.
   const policy = '<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; script-src &#39;unsafe-inline&#39;; style-src &#39;unsafe-inline&#39; data:; img-src data: blob:; font-src data:; connect-src &#39;none&#39;; frame-src &#39;none&#39;; object-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;">';
-  const head = source.match(/<head(?:\\s[^>]*)?>/i);
+  const head = source.match(/<head[^>]*>/i);
   if (head && typeof head.index === 'number') {
     const end = head.index + head[0].length;
     return source.slice(0, end) + policy + source.slice(end);
   }
-  const html = source.match(/<html(?:\\s[^>]*)?>/i);
+  const html = source.match(/<html[^>]*>/i);
   if (html && typeof html.index === 'number') {
     const end = html.index + html[0].length;
     return source.slice(0, end) + '<head>' + policy + '</head>' + source.slice(end);
