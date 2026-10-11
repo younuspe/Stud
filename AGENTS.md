@@ -6,8 +6,10 @@ the API and the Vite app on `PORT` (default 3000).
 ## Commands
 - `npm run dev` — start Express + Vite (`tsx server.ts`), log to stdout.
 - `npm run build` — `vite build`.
+- `NODE_ENV=production npm start` — serve the built `dist/` with SPA fallback.
 - `npm run lint` / `npx tsc --noEmit` — typecheck (must stay at 0 errors).
-- `npm run tauri:dev|build|init` — desktop shell.
+- `npm run tauri:dev|build|init` — desktop shell. No `src-tauri/` is committed
+  and the image has no Rust toolchain, so run `npm run tauri:init` first.
 
 ## Architecture
 - `server.ts` — all API routes (chat, stream, image/video, terminal, github,
@@ -32,15 +34,22 @@ chat, terminal (CLI), agent (Hunter), github (Warrior), orchestrator (Akhada),
 editor (Code Editor), generative (AI Studio), plus Galaxy/Topology.
 
 ## Testing
-Unit/integration tests use Vitest + supertest: `npm test` (22 tests) covers the
+Unit/integration tests use Vitest + supertest: `npm test` (23 tests) covers the
 provider catalog, `normalizeProvider`/`isSafeEndpointUrl`, server route
-validation and 404/400 handling, security headers, and the logger. Add new
-suites under `tests/`.
+validation and 404/400 handling, security headers, the GitHub default-branch
+resolution, and the logger. Add new suites under `tests/`.
 
 Headless e2e harnesses live in `/tmp/audit/` (puppeteer-core + `/usr/bin/chromium`,
 launch with `--no-sandbox --disable-dev-shm-usage`). They click module buttons by
 visible `<span>` text and assert real API traffic. Recreate with
-`npm i puppeteer-core@23` if the directory is missing.
+`npm i puppeteer-core@23` if the directory is missing. All 8 modules (Chat,
+AI Studio, Code, CLI, Hunter, Warrior, Akhada, Galaxy) load with zero console
+errors; Chat, AI Studio, Code Copilot, and Warrior were exercised end-to-end.
+
+## Reply attribution
+Assistant chat messages carry the `provider`/`model` that produced them (from the
+final `{done:true}` SSE frame) and the header renders those values. Never
+hard-code a model name on a reply — the active provider varies per user.
 
 ## Logging
 `src/utils/logger.ts` is the single logging entry point (debug/info/warn/error).
