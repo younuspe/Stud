@@ -16,7 +16,7 @@ interface ConnectModalProps {
   isOpen: boolean;
   onClose: () => void;
   isConnected: boolean;
-  onToggleConnect: () => void;
+  onTestConnection: () => Promise<{ status: string; message?: string; latencyMs?: number }>;
   serverInfo: {
     status: string;
     hasApiKey: boolean;
@@ -29,25 +29,30 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
   isOpen,
   onClose,
   isConnected,
-  onToggleConnect,
+  onTestConnection,
   serverInfo,
 }) => {
   const [isPinging, setIsPinging] = useState(false);
-  const [pingLatency, setPingLatency] = useState<number | null>(42);
+  const [pingLatency, setPingLatency] = useState<number | null>(null);
+  const [connectionMessage, setConnectionMessage] = useState('Test the selected model to verify a live connection.');
 
   if (!isOpen) return null;
 
   const handleTestPing = async () => {
+    if (isPinging) return;
     setIsPinging(true);
+    setPingLatency(null);
+    setConnectionMessage('Sending a live request to the selected model…');
     soundFx.playClick();
-    const start = performance.now();
+    const started = performance.now();
     try {
-      await fetch('/api/status');
-      const diff = Math.round(performance.now() - start);
-      setPingLatency(diff);
-      soundFx.playMeowChime();
-    } catch {
-      setPingLatency(120);
+      const result = await onTestConnection();
+      setPingLatency(result.latencyMs ?? Math.round(performance.now() - started));
+      setConnectionMessage(result.message || (result.status === 'online' ? 'Live model request succeeded.' : 'The selected model did not respond successfully.'));
+      if (result.status === 'online') soundFx.playMeowChime();
+    } catch (error) {
+      setPingLatency(Math.round(performance.now() - started));
+      setConnectionMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setIsPinging(false);
     }
@@ -87,26 +92,20 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
               />
               <div>
                 <div className="text-sm font-semibold text-white">
-                  {isConnected ? 'Neural Synapse Active' : 'Disconnected'}
+                  {isConnected ? 'Model request verified' : 'Model not verified'}
                 </div>
                 <div className="text-xs text-gray-400">
-                  {isConnected ? 'Connected to Gemini 3.8 Flash' : 'Tap to reconnect'}
+                  {serverInfo.model || 'No model selected'}
                 </div>
               </div>
             </div>
 
             <button
-              onClick={() => {
-                soundFx.playClick();
-                onToggleConnect();
-              }}
-              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-all border ${
-                isConnected
-                  ? 'border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
-                  : 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
-              }`}
+              onClick={() => void handleTestPing()}
+              disabled={isPinging}
+              className="rounded-full border border-emerald-500/40 bg-emerald-500/15 px-4 py-1.5 text-xs font-semibold text-emerald-300 transition-all hover:bg-emerald-500/25 disabled:cursor-wait disabled:opacity-60"
             >
-              {isConnected ? 'Disconnect' : 'Connect'}
+              {isPinging ? 'Testing…' : 'Test Model'}
             </button>
           </div>
 
@@ -126,7 +125,7 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
                 <span>Roundtrip Ping</span>
               </div>
               <div className="font-semibold text-white">
-                {pingLatency ? `${pingLatency} ms` : 'Testing...'}
+                {pingLatency === null ? 'Not tested' : `${pingLatency} ms`}
               </div>
             </div>
 
@@ -135,7 +134,7 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
                 <Server size={14} className="text-sky-400" />
                 <span>Server Runtime</span>
               </div>
-              <div className="font-semibold text-white">Express + Vite (Full-stack)</div>
+              <div className="font-semibold text-white">Tauri Desktop + Rust</div>
             </div>
 
             <div className="rounded-2xl border border-[#20202d] bg-[#15151f] p-3.5 space-y-1">
@@ -144,7 +143,7 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
                 <span>API Status</span>
               </div>
               <div className="font-semibold text-emerald-400">
-                {serverInfo.hasApiKey ? 'Secrets Key Active' : 'Intelligent Core Active'}
+                {serverInfo.hasApiKey ? 'API key configured' : 'No cloud key (local may not need one)'}
               </div>
             </div>
           </div>
@@ -152,14 +151,9 @@ export const ConnectModal: React.FC<ConnectModalProps> = ({
 
         {/* Footer Actions */}
         <div className="flex items-center justify-between border-t border-[#22222d] pt-4">
-          <button
-            onClick={handleTestPing}
-            disabled={isPinging}
-            className="flex items-center gap-2 rounded-xl bg-[#1e1e2b] px-3.5 py-2 text-xs font-medium text-gray-200 transition-colors hover:bg-[#28283a] hover:text-white"
-          >
-            <RefreshCw size={13} className={isPinging ? 'animate-spin' : ''} />
-            <span>Test Connection Ping</span>
-          </button>
+          <div className="max-w-[65%] text-[11px] leading-relaxed text-gray-400" role="status" aria-live="polite">
+            {connectionMessage}
+          </div>
 
           <button
             onClick={onClose}
