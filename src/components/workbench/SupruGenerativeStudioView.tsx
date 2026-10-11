@@ -32,7 +32,8 @@ import {
   Eye,
   Camera,
   Cpu,
-  Monitor
+  Monitor,
+  FolderOpen
 } from 'lucide-react';
 import { soundFx } from '../../utils/audio';
 import { useSpeechListener } from '../../utils/useSpeechListener';
@@ -40,6 +41,7 @@ import { useSpeechListener } from '../../utils/useSpeechListener';
 interface SupruGenerativeStudioViewProps {
   localConfig: import('../../types/workbench').LocalHostConfig;
   workspaceRoot?: string;
+  onOpenWorkspaceFolder?: () => void | Promise<void>;
   activeCustomModel?: import('../../types/workbench').ExternalAIModelConfig | null;
   onSendToChat?: (content: string, imageUrl?: string) => void;
   onOpenInEditor?: (fileName: string, content: string) => void;
@@ -159,6 +161,7 @@ const PROMPT_SUGGESTIONS = [
 export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps> = ({
   localConfig,
   workspaceRoot = '',
+  onOpenWorkspaceFolder,
   activeCustomModel = null,
   onSendToChat,
   onOpenInEditor,
@@ -1235,7 +1238,19 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                       Model: {activeProviderInfo.model} · Provider: {activeProviderInfo.provider}
                     </span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundFx.playClick();
+                        if (onOpenWorkspaceFolder) void onOpenWorkspaceFolder();
+                      }}
+                      className="flex items-center gap-1.5 rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-100 hover:bg-emerald-500/20"
+                      title="Choose the project directory to create or modify files"
+                    >
+                      <FolderOpen size={12} />
+                      {workspaceRoot ? 'Change Project Folder' : 'Open Project Folder'}
+                    </button>
                     {currentResultApp && (
                       <button
                         type="button"
