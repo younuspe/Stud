@@ -478,6 +478,13 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
   useEffect(() => {
     try { localStorage.setItem('supru_code_copilot_messages_v1', JSON.stringify(copilotMessages.slice(-40))); } catch {}
   }, [copilotMessages]);
+
+  const handleClearCopilotHistory = () => {
+    if (isCopilotThinking) return;
+    setCopilotMessages([]);
+    try { localStorage.removeItem('supru_code_copilot_messages_v1'); } catch {}
+    setAppliedNotice('Supru Code Copilot conversation history cleared.');
+  };
   const [copilotInput, setCopilotInput] = useState('');
   const [isCopilotThinking, setIsCopilotThinking] = useState(false);
   const [appliedNotice, setAppliedNotice] = useState<string | null>(null);
@@ -1145,12 +1152,31 @@ export class SupruPipeline {
   };
 
   // 1-Click apply generated code snippet directly to active file in editor
-  const handleApplySnippet = (snippet: string) => {
+  const handleApplySnippet = async (snippet: string) => {
     handleUpdateContent(snippet);
     setIframeKey(Date.now());
     soundFx.playChime();
-    setAppliedNotice(`Applied code update directly to ${activeFile.name}!`);
-    setTimeout(() => setAppliedNotice(null), 3500);
+
+    if (workspaceRoot && activeProjectPath && activeFileId === `workspace-file:${activeProjectPath}`) {
+      try {
+        const result = await invoke<string>('write_workspace_file', {
+          workspaceRoot,
+          relativePath: activeProjectPath,
+          content: snippet,
+        });
+        setFiles((current) => current.map((item) =>
+          item.id === activeFileId ? { ...item, content: snippet, isModified: false } : item
+        ));
+        setProjectFileNotice(result || `Saved ${activeProjectPath}`);
+        setAppliedNotice(`Applied and saved changes to ${activeProjectPath}.`);
+      } catch (error) {
+        setProjectFileNotice(`The generated code is in the editor buffer, but saving failed: ${String(error)}`);
+        setAppliedNotice(`Changes are in the editor buffer only; ${activeProjectPath} was not saved.`);
+      }
+    } else {
+      setAppliedNotice(`Applied code to the editor buffer for ${activeFile.name}. Select a project file to save changes to disk.`);
+    }
+    setTimeout(() => setAppliedNotice(null), 5000);
   };
 
   // Copy code snippet to clipboard
@@ -1708,6 +1734,16 @@ export class SupruPipeline {
 
         {/* Action buttons & window controls */}
         <div className="flex items-center gap-1.5" ref={directivesRef}>
+          <button
+            type="button"
+            onClick={handleClearCopilotHistory}
+            disabled={isCopilotThinking || copilotMessages.length === 0}
+            className="flex items-center gap-1 rounded-md border border-white/[0.08] bg-[#141422] px-2 py-0.5 text-[10.5px] text-gray-400 hover:border-rose-400/40 hover:text-rose-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title="Delete the saved Supru Code Copilot conversation"
+          >
+            <Trash2 size={11} />
+            <span>Clear history</span>
+          </button>
           {/* Directives Dropdown Menu */}
           <div className="relative">
             <button
@@ -1909,7 +1945,7 @@ export class SupruPipeline {
                             title="Apply this code directly to your active editor file"
                           >
                             <CheckCircle2 size={11} />
-                            <span>Apply to Editor</span>
+                            <span>Apply & Save</span>
                           </button>
                         </div>
                       </div>
