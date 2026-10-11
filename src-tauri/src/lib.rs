@@ -1,0 +1,494 @@
+#![cfg_attr(not(debug_assertions), deny(unsafe_code))]
+
+use std::{path::PathBuf, sync::Mutex, time::Duration};
+use tauri::Manager;
+
+#[cfg(not(debug_assertions))]
+use std::{
+    net::{SocketAddr, TcpStream},
+    process::{Child, Command, Stdio},
+    thread,
+    time::Instant,
+};
+
+#[cfg(not(debug_assertions))]
+struct BackendProcess(Mutex<Child>);
+
+/// Packaged builds cannot execute the TypeScript API server directly, so the
+/// desktop bundle ships a Node runtime plus an esbuild-compiled `server.mjs`
+/// (see `scripts/build-desktop-backend.mjs`). Start it before showing a window
+/// and fail loudly if it never comes up. Returns the origin to load.
+#[cfg(not(debug_assertions))]
+fn start_backend(app: &mut tauri::App) -> Result<String, Box<dyn std::error::Error>> {
+    use tauri::path::BaseDirectory;
+
+    const API_PORT: u16 = 43127;
+
+    let resource_dir = app.path().resource_dir()?;
+    let node = app.path().resolve("node", BaseDirectory::Resource)?;
+    let server = app.path().resolve("server.mjs", BaseDirectory::Resource)?;
+    let static_dir = app.path().resolve("dist", BaseDirectory::Resource)?;
+
+    if !node.is_file() {
+        return Err(format!("Bundled Node runtime is missing: {}", node.display()).into());
+    }
+    if !server.is_file() {
+        return Err(format!("Bundled API server is missing: {}", server.display()).into());
+    }
+    if !static_dir.is_dir() {
+        return Err(format!("Bundled web assets are missing: {}", static_dir.display()).into());
+    }
+
+    let address = SocketAddr::from(([127, 0, 0, 1], API_PORT));
+    if TcpStream::connect_timeout(&address, Duration::from_millis(100)).is_ok() {
+        return Err(format!(
+            "Supru API port {API_PORT} is already in use; close the conflicting process and restart Supru."
+        )
+        .into());
+    }
+
+    let mut child = Command::new(&node)
+        .arg(&server)
+        .current_dir(&resource_dir)
+        .env("NODE_ENV", "production")
+        .env("PORT", API_PORT.to_string())
+        .env("SUPRU_HOST", "127.0.0.1")
+        .env("SUPRU_STATIC_DIR", &static_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+
+    let deadline = Instant::now() + Duration::from_secs(12);
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Err(format!("Supru API server exited during startup: {status}").into());
+        }
+        if TcpStream::connect_timeout(&address, Duration::from_millis(200)).is_ok() {
+            break;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("Supru API server did not start within 12 seconds".into());
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    app.manage(BackendProcess(Mutex::new(child)));
+    Ok(format!("http://127.0.0.1:{API_PORT}"))
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceEntry {
+    path: String,
+    name: String,
+    is_dir: bool,
+    size: u64,
+}
+
+struct SelectedWorkspace(Mutex<Option<PathBuf>>);
+
+fn restore_saved_workspace(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let saved_path = app.path().app_data_dir()?.join("workspace-root.txt");
+    if let Ok(saved) = std::fs::read_to_string(saved_path) {
+        if let Ok(root) = canonical_workspace_root(saved.trim()) {
+            let state = app.state::<SelectedWorkspace>();
+            let mut selected = state
+                .0
+                .lock()
+                .map_err(|_| "Workspace state is unavailable.".to_string())?;
+            *selected = Some(root);
+        }
+    }
+    Ok(())
+}
+
+fn selected_workspace_root(workspace: &SelectedWorkspace) -> Result<PathBuf, String> {
+    workspace
+        .0
+        .lock()
+        .map_err(|_| "Workspace state is unavailable.".to_string())?
+        .as_ref()
+        .cloned()
+        .ok_or_else(|| "Open a workspace folder first.".to_string())
+}
+
+fn canonical_workspace_root(root: &str) -> Result<PathBuf, String> {
+    let canonical = std::path::Path::new(root)
+        .canonicalize()
+        .map_err(|error| format!("Cannot open workspace folder: {error}"))?;
+    if !canonical.is_dir() {
+        return Err("The selected workspace is not a directory.".into());
+    }
+    Ok(canonical)
+}
+
+/// Reject absolute paths and any `..` component so a command can never escape
+/// the folder the user explicitly opened.
+fn safe_relative_path(relative_path: &str) -> Result<PathBuf, String> {
+    use std::path::{Component, Path};
+    let relative = Path::new(relative_path);
+    if relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(
+            "The path must be relative to the selected workspace and cannot contain '..'.".into(),
+        );
+    }
+    Ok(relative.to_path_buf())
+}
+
+#[tauri::command]
+fn restore_workspace(
+    app: tauri::AppHandle,
+    workspace: tauri::State<'_, SelectedWorkspace>,
+) -> Result<Option<String>, String> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let saved_path = data_dir.join("workspace-root.txt");
+    if !saved_path.is_file() {
+        return Ok(None);
+    }
+    let saved = std::fs::read_to_string(&saved_path).map_err(|error| error.to_string())?;
+    let root = match canonical_workspace_root(saved.trim()) {
+        Ok(root) => root,
+        Err(_) => return Ok(None),
+    };
+    *workspace
+        .0
+        .lock()
+        .map_err(|_| "Workspace state is unavailable.".to_string())? = Some(root.clone());
+    Ok(Some(root.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+fn select_workspace(
+    app: tauri::AppHandle,
+    workspace: tauri::State<'_, SelectedWorkspace>,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let Some(selected) = app.dialog().file().blocking_pick_folder() else {
+        return Ok(None);
+    };
+    let selected_path = selected.into_path().map_err(|error| error.to_string())?;
+    let root = canonical_workspace_root(&selected_path.to_string_lossy())?;
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(&data_dir).map_err(|error| error.to_string())?;
+    std::fs::write(
+        data_dir.join("workspace-root.txt"),
+        root.to_string_lossy().as_bytes(),
+    )
+    .map_err(|error| format!("Could not persist workspace selection: {error}"))?;
+    *workspace
+        .0
+        .lock()
+        .map_err(|_| "Workspace state is unavailable.".to_string())? = Some(root.clone());
+    Ok(Some(root.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+fn workspace_list(
+    workspace: tauri::State<'_, SelectedWorkspace>,
+) -> Result<Vec<WorkspaceEntry>, String> {
+    let root = selected_workspace_root(&workspace)?;
+    let ignored = [
+        ".git",
+        "node_modules",
+        "target",
+        "dist",
+        ".next",
+        ".venv",
+        "venv",
+    ];
+    let mut entries = Vec::new();
+
+    for entry in walkdir::WalkDir::new(&root)
+        .max_depth(8)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|entry| {
+            entry.depth() == 0
+                || !ignored
+                    .iter()
+                    .any(|part| entry.file_name().to_string_lossy().as_ref() == *part)
+        })
+        .filter_map(Result::ok)
+    {
+        if entry.depth() == 0 {
+            continue;
+        }
+        let path = entry.path();
+        let relative = path.strip_prefix(&root).map_err(|error| error.to_string())?;
+        if relative.components().any(|component| {
+            let part = component.as_os_str().to_string_lossy();
+            ignored.iter().any(|ignored_part| part.as_ref() == *ignored_part)
+        }) {
+            continue;
+        }
+        if entry.file_type().is_symlink() {
+            continue;
+        }
+        let is_dir = entry.file_type().is_dir();
+        if !is_dir && !entry.file_type().is_file() {
+            continue;
+        }
+        let metadata = entry.metadata().map_err(|error| error.to_string())?;
+        entries.push(WorkspaceEntry {
+            path: relative.to_string_lossy().replace('\\', "/"),
+            name: path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            is_dir,
+            size: metadata.len(),
+        });
+        if entries.len() >= 1500 {
+            break;
+        }
+    }
+
+    entries.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.path.to_lowercase().cmp(&b.path.to_lowercase()))
+    });
+    Ok(entries)
+}
+
+#[tauri::command]
+fn workspace_read_file(
+    workspace: tauri::State<'_, SelectedWorkspace>,
+    relative_path: String,
+) -> Result<String, String> {
+    use std::fs;
+    let root = selected_workspace_root(&workspace)?;
+    let relative = safe_relative_path(&relative_path)?;
+    let target = root.join(relative);
+    let canonical_target = target
+        .canonicalize()
+        .map_err(|error| format!("Cannot open file: {error}"))?;
+    if !canonical_target.starts_with(&root) {
+        return Err("The requested file is outside the selected workspace.".into());
+    }
+    let metadata = fs::metadata(&canonical_target).map_err(|error| error.to_string())?;
+    if !metadata.is_file() {
+        return Err("Only files can be opened in the editor.".into());
+    }
+    if metadata.len() > 5 * 1024 * 1024 {
+        return Err("Files larger than 5 MB cannot be opened in the editor.".into());
+    }
+    fs::read_to_string(canonical_target)
+        .map_err(|error| format!("File is not readable UTF-8 text: {error}"))
+}
+
+#[tauri::command]
+fn workspace_write_file(
+    workspace: tauri::State<'_, SelectedWorkspace>,
+    relative_path: String,
+    content: String,
+) -> Result<(), String> {
+    use std::fs::{self, OpenOptions};
+    use std::io::Write;
+    if content.len() > 5 * 1024 * 1024 {
+        return Err("Files larger than 5 MB cannot be saved from the editor.".into());
+    }
+
+    let root = selected_workspace_root(&workspace)?;
+    let relative = safe_relative_path(&relative_path)?;
+    if relative.as_os_str().is_empty() || relative.file_name().is_none() {
+        return Err("A file name is required.".into());
+    }
+    let target = root.join(&relative);
+    let parent = target
+        .parent()
+        .ok_or("The file path has no parent directory.")?;
+    let canonical_parent = parent
+        .canonicalize()
+        .map_err(|error| format!("Parent folder does not exist: {error}"))?;
+    if !canonical_parent.starts_with(&root) {
+        return Err("The requested file is outside the selected workspace.".into());
+    }
+
+    if let Ok(metadata) = fs::symlink_metadata(&target) {
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err("Refusing to overwrite a symlink or non-file path.".into());
+        }
+    }
+
+    // Write to a sibling temp file then rename, so an interrupted save never
+    // truncates the user's file.
+    let temporary = canonical_parent.join(format!(".supru-tmp-{}", uuid::Uuid::new_v4()));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|error| format!("Cannot create temporary save file: {error}"))?;
+    if let Err(error) = file
+        .write_all(content.as_bytes())
+        .and_then(|_| file.sync_all())
+    {
+        let _ = fs::remove_file(&temporary);
+        return Err(format!("Cannot write file: {error}"));
+    }
+    drop(file);
+    if let Err(error) = fs::rename(&temporary, &target) {
+        let _ = fs::remove_file(&temporary);
+        return Err(format!("Cannot replace target file: {error}"));
+    }
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceCommandResult {
+    stdout: String,
+    stderr: String,
+    exit_code: i32,
+    duration_ms: u64,
+}
+
+#[tauri::command]
+fn open_build_page() -> Result<(), String> {
+    const BUILD_PAGE: &str = "https://github.com/younuspe/Stud/actions";
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("/usr/bin/open")
+            .arg(BUILD_PAGE)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("Could not open GitHub Actions: {error}"))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", BUILD_PAGE])
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("Could not open GitHub Actions: {error}"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = BUILD_PAGE;
+        Err("Opening the build page is supported on macOS and Windows only.".into())
+    }
+}
+
+#[tauri::command]
+async fn run_workspace_command(
+    workspace: tauri::State<'_, SelectedWorkspace>,
+    command: String,
+) -> Result<WorkspaceCommandResult, String> {
+    use std::process::Stdio;
+    use std::time::Instant;
+
+    if command.trim().is_empty() {
+        return Err("Enter a command before running it.".into());
+    }
+    if command.len() > 4096 {
+        return Err("Commands longer than 4096 characters are not allowed.".into());
+    }
+
+    let root = selected_workspace_root(&workspace)?;
+    let started = Instant::now();
+    let inherited_path = std::env::var("PATH").unwrap_or_default();
+    let search_path =
+        format!("/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:{inherited_path}");
+
+    #[cfg(target_os = "windows")]
+    let (program, flag) = ("cmd", "/C");
+    #[cfg(not(target_os = "windows"))]
+    let (program, flag) = ("/bin/sh", "-c");
+
+    let mut process = tokio::process::Command::new(program);
+    process
+        .arg(flag)
+        .arg(&command)
+        .current_dir(&root)
+        .env("PATH", search_path)
+        .stdin(Stdio::null())
+        .kill_on_drop(true);
+
+    let output = tokio::time::timeout(Duration::from_secs(120), process.output())
+        .await
+        .map_err(|_| "Command timed out after 120 seconds.".to_string())?
+        .map_err(|error| format!("Could not start command: {error}"))?;
+
+    let mut stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let mut stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    stdout.truncate(64 * 1024);
+    stderr.truncate(64 * 1024);
+
+    Ok(WorkspaceCommandResult {
+        stdout,
+        stderr,
+        exit_code: output.status.code().unwrap_or(128),
+        duration_ms: started.elapsed().as_millis().min(u64::MAX as u128) as u64,
+    })
+}
+
+/// Starts the native Supru desktop shell.
+///
+/// Development loads the Vite/Express dev server via `devUrl`. Packaged builds
+/// start the bundled Node runtime + API server first, then point the window at
+/// it so the webview, the static assets, and the `/api` routes share one origin.
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let builder = tauri::Builder::default()
+        .manage(SelectedWorkspace(Mutex::new(None)))
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![
+            select_workspace,
+            restore_workspace,
+            workspace_list,
+            workspace_read_file,
+            workspace_write_file,
+            run_workspace_command,
+            open_build_page
+        ]);
+
+    let builder = builder.setup(|app| {
+        restore_saved_workspace(app)?;
+        #[cfg(not(debug_assertions))]
+        {
+            let api_origin = start_backend(app)?;
+            let url = api_origin
+                .parse()
+                .map_err(|error| format!("Invalid API origin {api_origin}: {error}"))?;
+            let window = app
+                .get_webview_window("main")
+                .ok_or("The main window was not created.")?;
+            window.navigate(url)?;
+        }
+        Ok::<(), Box<dyn std::error::Error>>(())
+    });
+
+    let app = builder
+        .build(tauri::generate_context!())
+        .expect("failed to start Supru desktop application");
+
+    app.run(|_app_handle, _event| {
+        #[cfg(not(debug_assertions))]
+        if matches!(_event, tauri::RunEvent::Exit) {
+            if let Some(backend) = _app_handle.try_state::<BackendProcess>() {
+                if let Ok(mut child) = backend.0.lock() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+    });
+}

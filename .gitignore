@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Tauri / desktop packaging
+src-tauri/target/
+src-tauri/gen/
+src-tauri/resources/
+src-tauri/dist-server/

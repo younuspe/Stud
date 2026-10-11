@@ -1,5 +1,4 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
@@ -22,6 +21,9 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+// The desktop shell binds the API to loopback; the web server keeps the previous
+// all-interfaces default so container/remote previews still work.
+const HOST = process.env.SUPRU_HOST || '0.0.0.0';
 
 // Security headers. CSP is disabled because Vite injects inline scripts and the
 // Studio renders generated HTML in sandboxed iframes; the rest of the helmet
@@ -2283,20 +2285,35 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 // Vite middleware or static serving
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    // Imported lazily so a packaged build (no node_modules) never resolves vite.
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
+    // The desktop bundle places the server under `dist-server/`, one level below
+    // the built assets, so resolve `dist` relative to either location.
+    const staticDir = process.env.SUPRU_STATIC_DIR
+      ? path.resolve(process.env.SUPRU_STATIC_DIR)
+      : fs.existsSync(path.resolve(__dirname, 'dist'))
+        ? path.resolve(__dirname, 'dist')
+        : path.resolve(__dirname, '..', 'dist');
+    const indexFile = path.join(staticDir, 'index.html');
+    if (!fs.existsSync(indexFile)) {
+      throw new Error(
+        `Built web assets were not found at ${staticDir}. Run "npm run build" before starting in production.`,
+      );
+    }
+    app.use(express.static(staticDir));
     app.get('*', (req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      res.sendFile(indexFile);
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`Supru AI server active at http://0.0.0.0:${PORT}`);
+  app.listen(PORT, HOST, () => {
+    logger.info(`Supru AI server active at http://${HOST}:${PORT}`);
   });
 }
 

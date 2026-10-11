@@ -1,0 +1,36 @@
+[package]
+name = "supru-core"
+version = "0.1.0"
+edition = "2021"
+description = "Supru Ecosystem - native desktop shell"
+
+[lib]
+name = "supru_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "supru"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0", features = [] }
+tauri-plugin-fs = "2.0"
+tauri-plugin-shell = "2.0"
+tauri-plugin-dialog = "2.0"
+tauri-plugin-process = "2.0"
+tauri-plugin-opener = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["process", "time", "macros"] }
+walkdir = "2.0"
+uuid = { version = "1.0", features = ["v4"] }
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1
+panic = "abort"
+strip = true

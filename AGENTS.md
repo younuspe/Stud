@@ -67,7 +67,30 @@ path segments. Provider `endpointUrl` is screened by `isSafeEndpointUrl()`.
 IP across `/api`, with a tighter 20/min budget on AI, exec, and key-test routes.
 CSP is intentionally left off (Vite inline scripts + Studio sandboxed iframes).
 
+## Desktop (Tauri) build
+
+`src-tauri/` is a Tauri 2 shell (`supru-core`) that wraps the same web app.
+
+- `npm run tauri:dev` — native window pointing at the Vite dev server (`devUrl`).
+- `npm run build:desktop` — builds the web app, copies the Node runtime to
+  `src-tauri/resources/node`, and bundles `server.ts` to
+  `src-tauri/dist-server/server.mjs` with esbuild.
+- `npm run tauri:build` — produces installers under
+  `src-tauri/target/release/bundle/` (deb/AppImage on Linux, dmg, nsis).
+
+Packaged runtime: `lib.rs` starts the bundled Node + `server.mjs` on
+`127.0.0.1:43127` (`SUPRU_HOST`/`SUPRU_STATIC_DIR` set), waits for it, then
+navigates the window to that origin so static assets and `/api` share one origin
+— relative `fetch('/api/...')` calls need no rewrite. The server binds loopback
+in desktop mode and `0.0.0.0` otherwise. The bundle ships `dist`, `node`, and
+`server.mjs` as resources; `resources/` and `dist-server/` are gitignored.
+
+A stray root-level `tauri.conf.json` used to shadow the real config; it was
+removed. The real config lives at `src-tauri/tauri.conf.json` and paths inside it
+(`frontendDist`, icons, resources) resolve relative to `src-tauri/`.
+
 ## Known blockers
+
 Pushing to `origin` (github.com/younuspe/Stud) fails with 403. The injected
 `GITHUB_TOKEN` is a GitHub App installation token with **read-only** contents
 access: repo metadata reports `push: true` (installation permission) but every
