@@ -693,6 +693,7 @@ export class SupruPipeline {
 
   // Preview Execution State
   const [iframeKey, setIframeKey] = useState(Date.now());
+  const previewIframeRef = useRef<HTMLIFrameElement | null>(null);
   const [isAutoRun, setIsAutoRun] = useState(true);
   const [consoleLogs, setConsoleLogs] = useState<ConsoleLogEntry[]>([
     { id: '1', level: 'info', message: '🐾 Supru Live Preview Sandbox initialized. Ready to execute.', timestamp: Date.now() }
@@ -762,6 +763,9 @@ export class SupruPipeline {
   // Listen for console logs & runtime errors from inside the sandbox iframe
   useEffect(() => {
     function handleIframeMessage(e: MessageEvent) {
+      // Sandboxed srcDoc has an opaque origin, so origin checks are insufficient.
+      // Only accept messages from the actual preview frame, never another window.
+      if (!previewIframeRef.current || e.source !== previewIframeRef.current.contentWindow) return;
       if (e.data && e.data.source === 'supru-sandbox') {
         if (e.data.type === 'log') {
           setConsoleLogs((prev) => [
@@ -1157,25 +1161,27 @@ export class SupruPipeline {
     setTimeout(() => setCopiedSnippetId(null), 2000);
   };
 
-  // Generate sandboxed HTML with injected console logger
+  // Generate a network-restricted preview document with an opaque sandbox origin.
   const sandboxHtml = useMemo(() => {
+    const escapeHtml = (value: string) => value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+    const csp = '<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; script-src &#39;unsafe-inline&#39;; style-src &#39;unsafe-inline&#39; data:; img-src data: blob:; font-src data:; connect-src &#39;none&#39;; frame-src &#39;none&#39;; object-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;">';
+
     if (activeFile.language !== 'html') {
       return `<!DOCTYPE html>
 <html>
-<head>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>body { background: #0b0b12; color: #f1f2f6; font-family: monospace; padding: 24px; }</style>
+<head>${csp}
+  <style>body { background: #0b0b12; color: #f1f2f6; font-family: monospace; padding: 24px; } .panel { max-width: 720px; margin: auto; border: 1px solid #27272a; border-radius: 12px; background: #12121a; padding: 20px; } .label { color: #fbbf24; font-size: 12px; font-weight: bold; margin-bottom: 12px; } pre { background: #0009; color: #fde68a; padding: 16px; border-radius: 8px; overflow: auto; white-space: pre; font-size: 12px; }</style>
 </head>
 <body>
-  <div class="max-w-xl mx-auto border border-gray-800 rounded-xl bg-[#12121a] p-5 shadow-xl">
-    <div class="flex items-center gap-2 mb-3 text-amber-400 font-bold text-xs uppercase">
-      <span>📄</span>
-      <span>${activeFile.name} (${activeFile.language.toUpperCase()})</span>
-    </div>
-    <p class="text-xs text-gray-400 mb-4">
-      Non-HTML file active. You can run it via Supru CLI or switch to an HTML file to see real-time UI previews.
-    </p>
-    <pre class="bg-black/60 p-4 rounded-lg text-xs text-amber-200 overflow-x-auto whitespace-pre leading-relaxed">${activeFile.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+  <div class="panel">
+    <div class="label">📄 ${escapeHtml(activeFile.name)} (${escapeHtml(activeFile.language.toUpperCase())})</div>
+    <p>Non-HTML file active. Use the project runner to execute this file, or open an HTML file to preview UI.</p>
+    <pre>${escapeHtml(activeFile.content)}</pre>
   </div>
 </body>
 </html>`;
@@ -1186,7 +1192,10 @@ export class SupruPipeline {
         (function() {
           const sendLog = (level, args) => {
             try {
-              const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+              const msg = args.map(a => {
+                if (typeof a === 'string') return a;
+                try { return JSON.stringify(a); } catch (_) { return String(a); }
+              }).join(' ');
               window.parent.postMessage({ source: 'supru-sandbox', type: 'log', level, message: msg }, '*');
             } catch(e) {}
           };
@@ -1199,18 +1208,24 @@ export class SupruPipeline {
           console.warn = (...args) => { origWarn(...args); sendLog('warn', args); };
           console.error = (...args) => { origError(...args); sendLog('error', args); };
           window.onerror = function(msg, url, line) {
-            window.parent.postMessage({ source: 'supru-sandbox', type: 'error', message: msg + ' (Line ' + line + ')' }, '*');
+            window.parent.postMessage({ source: 'supru-sandbox', type: 'error', message: String(msg) + ' (Line ' + line + ')' }, '*');
             return false;
           };
         })();
       </script>
     `;
-
-    return activeFile.content.includes('<head>')
-      ? activeFile.content.replace('<head>', `<head>${interceptor}`)
-      : `${interceptor}${activeFile.content}`;
+    const headMatch = activeFile.content.match(/<head(?:\s[^>]*)?>/i);
+    if (headMatch && typeof headMatch.index === 'number') {
+      const headEnd = headMatch.index + headMatch[0].length;
+      return activeFile.content.slice(0, headEnd) + csp + interceptor + activeFile.content.slice(headEnd);
+    }
+    const htmlMatch = activeFile.content.match(/<html(?:\s[^>]*)?>/i);
+    if (htmlMatch && typeof htmlMatch.index === 'number') {
+      const htmlEnd = htmlMatch.index + htmlMatch[0].length;
+      return activeFile.content.slice(0, htmlEnd) + '<head>' + csp + interceptor + '</head>' + activeFile.content.slice(htmlEnd);
+    }
+    return '<!DOCTYPE html><html><head>' + csp + interceptor + '</head><body>' + activeFile.content + '</body></html>';
   }, [activeFile.content, activeFile.language, activeFile.name]);
-
 
   // ==========================================================
   // DRAGGABLE HORIZONTAL SPLITTER (Between Editor & Preview)
@@ -1578,10 +1593,12 @@ export class SupruPipeline {
             }`}
           >
             <iframe
+              ref={previewIframeRef}
               key={iframeKey}
               srcDoc={sandboxHtml}
               title="Supru Live Sandbox"
-              sandbox="allow-scripts allow-modals allow-forms allow-same-origin"
+              sandbox="allow-scripts allow-modals"
+              referrerPolicy="no-referrer"
               className="h-full w-full border-none bg-black"
             />
           </div>
