@@ -1,5 +1,30 @@
 # Supru Desktop — Deep Audit and Unified Product Plan
 
+## Source-verified update — 2026-10-11
+
+This update supersedes any older finding below that conflicts with the current source.
+
+### Confirmed working paths
+- The product remains an installable Tauri 2 + Rust desktop app with a bundled React UI. It is not a browser-hosted product; a webview is the normal Tauri UI surface.
+- Native chat and provider testing route through Rust. The shared resolver supports Gemini, Anthropic, Ollama, LM Studio, OpenAI, DeepSeek, Groq, and arbitrary OpenAI-compatible endpoints. The user has confirmed a live NVIDIA Nemotron generation succeeded.
+- The Code Editor can read, edit, and save text files inside the selected workspace through bounded Rust commands. HTML previews run in an iframe; non-HTML files are shown as source rather than compiled and executed.
+- Generative Studio App mode calls the selected native model, parses a bounded multi-file manifest, previews an HTML entry when present, and requires review/confirmation before writing files. Floating-pill Build mode routes to this App Builder flow.
+- Provider secrets are migrated to macOS Keychain; persisted model metadata omits API-key fields after migration.
+- The macOS workflow type-checks the frontend and provider server, runs provider-registry and Rust URL tests, builds the frontend and unsigned DMG, and smoke-tests that the packaged executable starts. It does not automate UI flows or perform a live authenticated provider test.
+
+### Fixes in the current audit pass
+- Code Editor preview now uses an opaque-origin sandbox without allow-same-origin, blocks outbound network requests by CSP, and accepts console messages only from its own iframe.
+- Generative Studio HTML preview receives the same network-restricting CSP and remains in a scripts-only sandbox.
+- Hunter's UI no longer advertises zero-interaction execution or fictional per-agent model names. Runtime logs identify the one active model actually used.
+
+### Still incomplete — do not claim these are fixed
+- Hunter is an eight-step sequential model-handoff chain, not a true multi-model parallel orchestrator. Each role currently uses the same selected provider/model. The Coder proposes one existing-file replacement and waits for approval; Researcher/Planner/Architect/Reviewer/Judge do not have their listed tools wired as real tools. Judge deliberately remains blocked pending real verification; no Z3 solver is invoked.
+- There is no three-coder parallel execution, model assignment per role, conflict-aware merge, durable task ledger/checkpoint-resume, or transactional multi-file rollback yet.
+- Generative Studio App mode creates project-file proposals. Applying them writes files sequentially, so a mid-write error can leave a partially applied project. It does not automatically install dependencies, run a build, or execute React/TypeScript projects in its HTML iframe.
+- Image generation is hard-wired to a Gemini image model and requires a Gemini key. Motion/video and several other Studio modes are interactive visual prototypes, not fully connected generative provider workflows. Do not describe those modes as production-complete.
+- The CI smoke test proves the packaged executable starts and remains alive; it does not prove chat, editor saves, provider settings, sandbox behavior, orchestration, or studio flows work end-to-end. These still need focused integration tests and manual runtime checks.
+
+
 Audit date: 2026-10-10  
 Repository: `younuspe/Stud`  
 Audited branch: `fix/functional-implementation-audit`  

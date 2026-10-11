@@ -91,6 +91,22 @@ function parseGeneratedProject(responseText: string): { summary: string; files: 
   return { summary: String(parsed.summary || 'Project changes are ready for review.'), files };
 }
 
+function sandboxPreviewDocument(source: string): string {
+  // Generated HTML is untrusted. Keep its origin opaque in the iframe and deny
+  // outbound requests, remote scripts, nested frames, plugins, and form posts.
+  const policy = '<meta http-equiv="Content-Security-Policy" content="default-src &#39;none&#39;; script-src &#39;unsafe-inline&#39;; style-src &#39;unsafe-inline&#39; data:; img-src data: blob:; font-src data:; connect-src &#39;none&#39;; frame-src &#39;none&#39;; object-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;">';
+  const head = source.match(/<head(?:\\s[^>]*)?>/i);
+  if (head && typeof head.index === 'number') {
+    const end = head.index + head[0].length;
+    return source.slice(0, end) + policy + source.slice(end);
+  }
+  const html = source.match(/<html(?:\\s[^>]*)?>/i);
+  if (html && typeof html.index === 'number') {
+    const end = html.index + html[0].length;
+    return source.slice(0, end) + '<head>' + policy + '</head>' + source.slice(end);
+  }
+  return '<!DOCTYPE html><html><head>' + policy + '</head><body>' + source + '</body></html>';
+}
 function readStudioStorage<T>(key: string, fallback: T): T {
   try {
     const value = localStorage.getItem(key);
@@ -1239,7 +1255,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                 {currentResultApp ? (
                   <iframe
                     title="Generated application sandbox preview"
-                    srcDoc={currentResultApp}
+                    srcDoc={sandboxPreviewDocument(currentResultApp)}
                     sandbox="allow-scripts"
                     referrerPolicy="no-referrer"
                     className="min-h-[360px] flex-1 w-full rounded-xl border border-white/10 bg-white"
