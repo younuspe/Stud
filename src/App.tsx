@@ -1359,6 +1359,13 @@ export default function App() {
         onClose={() => setIsImageStudioOpen(false)}
         initialSourceImage={imageStudioPhoto}
         initialPrompt={imageStudioPrompt}
+        imageApiKey={
+          activeCustomModel?.provider === 'gemini'
+            ? activeCustomModel.apiKey || (localConfig.provider === 'gemini_cloud' ? localConfig.apiKey : undefined)
+            : localConfig.provider === 'gemini_cloud'
+              ? localConfig.apiKey
+              : undefined
+        }
         onAnimateWithVeo={handleAnimateFromImageStudio}
         onSendToChat={handleSendMediaToChat}
       />
