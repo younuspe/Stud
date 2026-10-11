@@ -43,6 +43,8 @@ function requireLocal(req: express.Request, res: express.Response): boolean {
 
 const GITHUB_SEGMENT = /^[A-Za-z0-9._-]+$/;
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 // Initialize Google Gemini SDK
 const apiKey = process.env.GEMINI_API_KEY || '';
 const ai = new GoogleGenAI({
@@ -369,16 +371,26 @@ app.post('/api/generate-image', async (req, res) => {
       };
       const [w, h] = dims[selectedAspectRatio] || [1024, 1024];
       const seed = Math.floor(Math.random() * 1_000_000);
-      // The free tier throttles large canvases; retry once at a small size.
+      // The free tier throttles large canvases and occasionally 402/429s; pin
+      // the working `flux` model, retry a couple of times, then fall back to a
+      // small canvas.
       const attempts: Array<[number, number]> = [
+        [w, h],
         [w, h],
         [256, 256],
       ];
-      for (const [aw, ah] of attempts) {
+      for (let i = 0; i < attempts.length; i++) {
+        const [aw, ah] = attempts[i];
         try {
-          const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${aw}&height=${ah}&nologo=true&seed=${seed}`;
-          const imgRes = await fetch(url, { signal: AbortSignal.timeout(45000) });
-          if (!imgRes.ok) continue;
+          const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${aw}&height=${ah}&nologo=true&model=flux&seed=${seed}`;
+          const imgRes = await fetch(url, {
+            headers: { Referer: 'https://supru.local', 'User-Agent': 'Supru-AI/2.6' },
+            signal: AbortSignal.timeout(45000),
+          });
+          if (!imgRes.ok) {
+            if (i < attempts.length - 1) await sleep(700 * (i + 1));
+            continue;
+          }
           const type = imgRes.headers.get('content-type') || 'image/jpeg';
           const buf = Buffer.from(await imgRes.arrayBuffer());
           if (buf.length > 1000) {
@@ -392,6 +404,7 @@ app.post('/api/generate-image', async (req, res) => {
           }
         } catch (pollErr) {
           console.warn('Pollinations image synthesis failed:', (pollErr as any)?.message);
+          if (i < attempts.length - 1) await sleep(700 * (i + 1));
         }
       }
     }
