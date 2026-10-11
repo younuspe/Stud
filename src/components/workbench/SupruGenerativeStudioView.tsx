@@ -628,20 +628,20 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           const path = value.replace(/\\/g, '/');
           const lower = path.toLowerCase();
           const base = lower.split('/').pop() || '';
-          if (/(^|\\/)\\.env(?:\\.|$)/i.test(path) ||
-              /(^|\\/)(?:secrets?|credentials?)(?:\\.|$)/i.test(path) ||
-              /(^|\\/)(?:\.npmrc|\.pypirc|\.netrc|id_rsa|id_ed25519)(?:$|\\.)/i.test(path) ||
-              /\\.(?:pem|key|p12|pfx|keystore|jks|sqlite|db|lock|map|wasm|png|jpe?g|gif|webp|ico|icns|pdf|zip|gz|dmg|mp4|mov|mp3|wav)$/i.test(path) ||
+          if (/(^|\/)\.env(?:\.|$)/i.test(path) ||
+              /(^|\/)(?:secrets?|credentials?)(?:[./]|$)/i.test(path) ||
+              /(^|\/)(?:\.npmrc|\.pypirc|\.netrc|id_rsa|id_ed25519)(?:$|\.)/i.test(path) ||
+              /\.(?:pem|key|p12|pfx|keystore|jks|sqlite|db|lock|map|wasm|png|jpe?g|gif|webp|ico|icns|pdf|zip|gz|dmg|mp4|mov|mp3|wav)$/i.test(path) ||
               ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lockb', 'cargo.lock', 'poetry.lock'].includes(base)) return false;
           const dot = base.lastIndexOf('.');
           return dot > 0 && safeTextExtensions.has(base.slice(dot));
         };
         const priority = (path: string) => {
           const p = path.toLowerCase();
-          if (/^(package\\.json|index\\.html|vite\\.config\\.[^/]+|tsconfig\\.json|cargo\\.toml|pyproject\\.toml|requirements\\.txt)$/.test(p)) return 0;
-          if (/^(src\\/)?(app|main|index|entry|lib)\\.[^/]+$/.test(p)) return 1;
-          if (/^(src\\/)?(app|main|index)\\//.test(p)) return 2;
-          if (/^(src|app|pages|components|lib|routes)\\//.test(p)) return 3;
+          if (/^(package\.json|index\.html|vite\.config\.[^/]+|tsconfig\.json|cargo\.toml|pyproject\.toml|requirements\.txt)$/.test(p)) return 0;
+          if (/^(src\/)?(app|main|index|entry|lib)\.[^/]+$/.test(p)) return 1;
+          if (/^(src\/)?(app|main|index)\//.test(p)) return 2;
+          if (/^(src|app|pages|components|lib|routes)\//.test(p)) return 3;
           return 4;
         };
         const candidatePaths = listedPaths
