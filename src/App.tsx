@@ -216,7 +216,7 @@ export default function App() {
   };
 
   // File buffer for opening in Supru Code
-  const [activeFileBuffer, setActiveFileBuffer] = useState<{ name: string; content: string } | null>(null);
+  const [activeFileBuffer, setActiveFileBuffer] = useState<{ name: string; content: string; workspacePath?: string } | null>(null);
 
   // Incoming external prompt for Supru Code Copilot (from Floating Chat Pill)
   const [externalEditorPrompt, setExternalEditorPrompt] = useState<{ id: string; text: string } | null>(null);
@@ -947,8 +947,27 @@ export default function App() {
     setWorkspaceView('agent');
   };
 
-  const handleOpenInEditor = (fileName: string, content: string) => {
-    setActiveFileBuffer({ name: fileName, content });
+  const handleOpenInEditor = async (fileName: string, content: string) => {
+    // Generated Studio apps should become real project files when a workspace is selected.
+    // Without a workspace, keep the existing temporary editor-tab behavior.
+    if (workspaceRoot && isTauri()) {
+      const workspacePath = `generated-app-${Date.now()}.html`;
+      try {
+        const result = await invoke<string>('write_workspace_file', {
+          workspaceRoot,
+          relativePath: workspacePath,
+          content,
+        });
+        console.info(result);
+        setActiveFileBuffer({ name: workspacePath, content, workspacePath });
+      } catch (error) {
+        console.error('Could not save generated app to the selected workspace:', error);
+        window.alert(`Could not save the generated app into the selected workspace. It will open as a temporary editor tab instead.\n\n${String(error)}`);
+        setActiveFileBuffer({ name: fileName, content });
+      }
+    } else {
+      setActiveFileBuffer({ name: fileName, content });
+    }
     setWorkspaceView('editor');
   };
 
