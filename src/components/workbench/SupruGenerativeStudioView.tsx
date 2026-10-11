@@ -520,13 +520,14 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     };
   }, [activeTab, mediaMode, refractiveIndex, emotionalFrequency, rotationAngle]);
 
-  const atomicComponent = `<!-- 🐾 Sovereign Component: ${prompt.slice(0, 24) || 'Untitled'} -->
+  const atomicPromptLabel = prompt.slice(0, 32).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string)) || 'Sovereign Component';
+  const atomicComponent = `<!-- 🐾 Sovereign Component: ${atomicPromptLabel} -->
 <div class="rounded-3xl p-6 border border-amber-500/40 bg-[#0e0e18]/90 text-white font-sans max-w-md mx-auto">
   <div class="flex items-center justify-between mb-4">
     <span class="text-xs font-mono font-bold tracking-widest text-amber-300 uppercase">SOVEREIGN CORE</span>
     <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">${emotionalFrequency}Hz</span>
   </div>
-  <h3 class="text-xl font-black mb-2">${prompt.slice(0, 32) || 'Sovereign Component'}</h3>
+  <h3 class="text-xl font-black mb-2">${atomicPromptLabel}</h3>
   <p class="text-xs text-gray-400 leading-relaxed mb-5">Synthesized in Supru Studio · refractive n=${refractiveIndex.toFixed(2)}</p>
   <button class="w-full py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-500 to-amber-600 text-neutral-950">Engage Protocol</button>
 </div>`;

@@ -30,6 +30,7 @@ const HelpModal = lazy(() => import('./components/modals/HelpModal').then((m) =>
 const LocalProviderModal = lazy(() => import('./components/modals/LocalProviderModal').then((m) => ({ default: m.LocalProviderModal })));
 const SupruTeamModal = lazy(() => import('./components/modals/SupruTeamModal').then((m) => ({ default: m.SupruTeamModal })));
 const MacOSInstallModal = lazy(() => import('./components/modals/MacOSInstallModal').then((m) => ({ default: m.MacOSInstallModal })));
+const ChatInputDock = lazy(() => import('./components/ChatInputDock').then((m) => ({ default: m.ChatInputDock })));
 const FloatingChatPill = lazy(() => import('./components/FloatingChatPill').then((m) => ({ default: m.FloatingChatPill })));
 import { ChatThread, Message, PersonaType, UserSettings, Attachment, ServerStatus } from './types/chat';
 import { WorkspaceView, LocalHostConfig, CodingSpaceLayout, StudioWindowId, StudioWindowState, ExternalAIModelConfig } from './types/workbench';
@@ -927,7 +928,7 @@ export default function App() {
                     onOpenMacOSInstall={() => setIsMacOSModalOpen(true)}
                   />
                 ) : (
-                  <div className="flex flex-1 flex-col overflow-hidden pb-20">
+                  <div className="flex flex-1 flex-col overflow-hidden">
                     {statusNotice && (
                       <div className="mx-4 mt-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
                         <span className="mt-0.5">⚠️</span>
@@ -947,6 +948,17 @@ export default function App() {
                       onAnimateWithVeo={(img) => handleOpenVeoStudio(img)}
                       onEditWithImageStudio={(img) => handleOpenImageStudio(img)}
                       onOpenInEditor={handleOpenInEditor}
+                    />
+                    <ChatInputDock
+                      onSendMessage={handleSendMessage}
+                      isGenerating={isGenerating}
+                      onStopGeneration={handleStopGeneration}
+                      onOpenImageStudio={(img) => handleOpenImageStudio(img)}
+                      onOpenVeoStudio={(img) => handleOpenVeoStudio(img)}
+                      onOpenGenerativeStudio={() => {
+                        soundFx.playClick();
+                        setWorkspaceView('generative');
+                      }}
                     />
                   </div>
                 )}
@@ -1138,7 +1150,7 @@ export default function App() {
       />
 
       {/* Universal Floating Chat Pill (Can move across any tab, link Supru Code, open any ecosystem tool) */}
-      {!(workspaceView === 'chat' && activeMessages.length === 0) && (
+      {workspaceView !== 'chat' && (
         <FloatingChatPill
           onSendMessage={(text, attachment) => {
             if (workspaceView === 'editor') {
@@ -1147,9 +1159,7 @@ export default function App() {
               return;
             }
             handleSendMessage(text, attachment);
-            if (workspaceView !== 'chat') {
-              setWorkspaceView('chat');
-            }
+            setWorkspaceView('chat');
           }}
           isGenerating={isGenerating}
           onStopGeneration={handleStopGeneration}

@@ -23,6 +23,26 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+/**
+ * Endpoints that spawn shell commands or run project tooling are only safe to
+ * expose to the local desktop client. Allow loopback and private-network
+ * callers; refuse anything else. Set SUPRU_ALLOW_REMOTE_EXEC=1 to opt out
+ * (e.g. behind an authenticated reverse proxy).
+ */
+function isLocalRequest(req: express.Request): boolean {
+  if (process.env.SUPRU_ALLOW_REMOTE_EXEC === '1') return true;
+  const raw = (req.socket?.remoteAddress || req.ip || '').replace(/^::ffff:/, '');
+  return raw === '127.0.0.1' || raw === '::1' || raw === 'localhost' || raw.startsWith('10.') || raw.startsWith('192.168.') || /^172\.(1[6-9]|2\d|3[01])\./.test(raw);
+}
+
+function requireLocal(req: express.Request, res: express.Response): boolean {
+  if (isLocalRequest(req)) return true;
+  res.status(403).json({ error: 'Command execution is restricted to the local Supru client.' });
+  return false;
+}
+
+const GITHUB_SEGMENT = /^[A-Za-z0-9._-]+$/;
+
 // Initialize Google Gemini SDK
 const apiKey = process.env.GEMINI_API_KEY || '';
 const ai = new GoogleGenAI({
@@ -888,6 +908,7 @@ function generateSimulatedSupruResponse(prompt: string, persona: string): string
 // CLI & TERMINAL COMMAND RUNNER
 // ==========================================
 app.post('/api/terminal/execute', async (req, res) => {
+  if (!requireLocal(req, res)) return;
   const { command, cwd = process.cwd() } = req.body;
   if (!command || typeof command !== 'string') {
     return res.status(400).json({ error: 'Command string is required' });
@@ -998,6 +1019,9 @@ app.post('/api/github/repo', async (req, res) => {
   if (!owner || !repo) {
     return res.status(400).json({ error: 'owner and repo are required' });
   }
+  if (!GITHUB_SEGMENT.test(owner) || !GITHUB_SEGMENT.test(repo)) {
+    return res.status(400).json({ error: 'Invalid owner or repo name' });
+  }
 
   try {
     const headers: Record<string, string> = {
@@ -1035,6 +1059,17 @@ app.post('/api/github/contents', async (req, res) => {
   if (!owner || !repo) {
     return res.status(400).json({ error: 'owner and repo are required' });
   }
+  if (!GITHUB_SEGMENT.test(owner) || !GITHUB_SEGMENT.test(repo)) {
+    return res.status(400).json({ error: 'Invalid owner or repo name' });
+  }
+  if (typeof branch !== 'string' || !GITHUB_SEGMENT.test(branch)) {
+    return res.status(400).json({ error: 'Invalid branch name' });
+  }
+  const safePath = String(filePath).split('/').filter(Boolean);
+  if (safePath.some((seg) => seg === '..' || !/^[A-Za-z0-9._-]+$/.test(seg))) {
+    return res.status(400).json({ error: 'Invalid repository path' });
+  }
+  const cleanPath = safePath.join('/');
 
   try {
     const headers: Record<string, string> = {
@@ -1045,7 +1080,7 @@ app.post('/api/github/contents', async (req, res) => {
       headers.Authorization = `Bearer ${token}`;
     }
 
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${filePath}?ref=${branch}`;
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${cleanPath}?ref=${encodeURIComponent(branch)}`;
     const fileRes = await fetch(url, { headers });
     if (!fileRes.ok) {
       return res.status(fileRes.status).json({ error: `GitHub API error: ${fileRes.statusText}` });
@@ -1086,6 +1121,7 @@ app.post('/api/github/contents', async (req, res) => {
 // HEADLESS AGENT RUNNER API
 // ==========================================
 const handleAgentStep = async (req: express.Request, res: express.Response) => {
+  if (!requireLocal(req, res)) return;
   const { objective, step, previousOutputs = [] } = req.body;
 
   try {
@@ -1159,6 +1195,7 @@ app.post('/api/agent/step', handleAgentStep);
 // Runs genuine project checks instead of returning canned strings, so the
 // Akhada / Orchestrator tool panel reflects the actual workspace state.
 app.post('/api/orchestrator/tool', async (req, res) => {
+  if (!requireLocal(req, res)) return;
   const { tool, project = 'supru', chunkSize = 4096 } = req.body || {};
   const root = process.cwd();
   const run = async (cmd: string, timeout = 60000) => {
@@ -1334,11 +1371,12 @@ app.delete('/api/keys/:provider', (req, res) => {
 
 app.post('/api/keys/test', async (req, res) => {
   const { provider, key } = req.body;
-  return res.json({
-    status: 'online',
-    message: `Provider ${provider || 'AI'} credentials verified.`,
-    latencyMs: 18,
+  const result = await testProvider({
+    provider,
+    modelId: defaultModelFor(provider || 'gemini'),
+    apiKey: key,
   });
+  return res.json(result);
 });
 
 // Google AI Studio style prompt to code generator ("Generate by Message")
@@ -2166,6 +2204,20 @@ function synthesizeCreativeCode(prompt: string, currentCode: string, lang: strin
   };
 }
 
+
+// Unmatched API routes should return JSON, never the SPA shell.
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: `Unknown API route: ${req.method} ${req.originalUrl}` });
+});
+
+// Centralised error handler: malformed JSON bodies and thrown route errors
+// become clean JSON responses instead of stack traces or crashes.
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const status = err?.status || (err?.type === 'entity.parse.failed' ? 400 : 500);
+  const message = err?.type === 'entity.parse.failed' ? 'Malformed JSON request body' : (err?.message || 'Internal server error');
+  if (status >= 500) console.error('Unhandled server error:', err);
+  if (!res.headersSent) res.status(status).json({ error: message });
+});
 
 // Vite middleware or static serving
 async function startServer() {

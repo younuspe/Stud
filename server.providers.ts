@@ -68,10 +68,26 @@ export function normalizeProvider(provider: string | undefined): string {
   return PROVIDER_ALIASES[p] || p;
 }
 
+/** Reject endpoint URLs that are not plain HTTP(S) or that target the cloud
+ *  metadata service. Local hosts stay allowed because connecting to a local
+ *  model server is an intended feature. */
+export function isSafeEndpointUrl(raw: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  if (parsed.hostname === '169.254.169.254') return false;
+  return true;
+}
+
 /** Resolve the base URL for an OpenAI-compatible provider. */
 function resolveBaseUrl(req: ProviderRequest): string {
   const meta = getProviderMeta(normalizeProvider(req.provider) || 'custom');
-  const base = req.endpointUrl?.trim() || meta.baseUrl;
+  const candidate = req.endpointUrl?.trim() || meta.baseUrl;
+  const base = isSafeEndpointUrl(candidate) ? candidate : meta.baseUrl;
   return base.replace(/\/$/, '');
 }
 
