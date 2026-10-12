@@ -125,3 +125,12 @@ every write — git push, `POST /git/refs`, `PUT /contents` — returns
 "Resource not accessible by integration" (403). Use a fine-grained PAT with
 Contents: Read+Write as a one-off push URL (never stored in git config) to update
 the branch. `feat/production-hardening` is pushed and current on origin.
+
+`fix/studio-functional-wiring` (off `feat/production-hardening`) is committed
+locally but **not pushed** — same 403. It wires the dead Generative Studio
+controls (3D World / UI Code Generate, header Presets + directives, shared
+device viewport, in-chat "Open in Editor" signature) and fixes the two server
+issues found while exercising them: `app.set('trust proxy', ...)` (rate limiter
+threw `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR` behind the preview proxy) and
+`allowedHosts: true` on the Vite dev middleware. `veo-3.1-fast-generate-preview`
+is a valid Veo 3.1 Fast ID — do not "fix" it.
