@@ -135,3 +135,22 @@ fixes the two server issues found while exercising them:
 `allowedHosts: true` on the Vite dev middleware. `veo-3.1-fast-generate-preview`
 is a valid Veo 3.1 Fast ID — do not "fix" it. This branch is pushed and current
 on origin.
+
+### Production-readiness hardening (commit 0832c15)
+
+Supru Git now authenticates server-side: `server.ts` reads
+`GITHUB_TOKEN` / `GH_TOKEN` / `GITHUB_PAT` (first set wins) and uses it for
+`/api/github/*`, falling back to a client-supplied PAT only when one is passed.
+`/api/status` returns `hasGithubToken`; `GitHubView` shows a "Server Token"
+badge. The injected `GITHUB_TOKEN` in this sandbox has **empty OAuth scopes**
+(limited fine-grained), so it can read the API but git push is still 403 — push
+with a user PAT as a one-off URL.
+
+Also added: unauthenticated `/api/health` (uptime + version) for probes;
+optional `SUPRU_ACCESS_TOKEN` gate over `/api` (off by default, `/api/health`
+and `/api/status` stay open; web client sends it via `src/utils/apiAuth.ts` from
+`VITE_SUPRU_ACCESS_TOKEN` or localStorage `supru_access_token`); graceful
+`SIGTERM`/`SIGINT` shutdown with a 10s drain; a boot warning for a malformed
+`GEMINI_API_KEY`; `Dockerfile` + `.dockerignore`; `npm run start:prod`
+(`NODE_ENV=production`). Still open for true public production: persistent
+rate-limit store, error monitoring, and integration/e2e tests.
