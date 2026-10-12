@@ -30,7 +30,8 @@ import {
   Camera,
   Cpu,
   Key,
-  AlertCircle
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { soundFx } from '../../utils/audio';
 import { useSpeechListener } from '../../utils/useSpeechListener';
@@ -141,6 +142,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   const [currentResultImage, setCurrentResultImage] = useState<string | null>(null);
   const [currentResultVideo, setCurrentResultVideo] = useState<string | null>(null);
   const [manifestedArtifacts, setManifestedArtifacts] = useState<ManifestedArtifact[]>([]);
+  const [mediaError, setMediaError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -339,6 +341,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     if (!text || isSynthesizing) return;
     soundFx.playChime();
     setIsSynthesizing(true);
+    setMediaError(null);
 
     try {
       if (mediaMode === 'visual') {
@@ -364,6 +367,8 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
             ...prev,
           ]);
           soundFx.playChime();
+        } else {
+          setMediaError(data.error || `Image synthesis failed (HTTP ${res.status}). The free image service may be rate-limited — try again shortly.`);
         }
       } else if (mediaMode === 'motion') {
         const res = await fetch('/api/generate-video', {
@@ -375,6 +380,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
         if (res.ok && data.videoUrl) setCurrentResultVideo(data.videoUrl);
         else if (res.ok && data.operationName) {
           // Poll the operation until it completes.
+          let completed = false;
           for (let i = 0; i < 40; i++) {
             await new Promise((r) => setTimeout(r, 3000));
             const st = await fetch('/api/video-status', {
@@ -384,13 +390,18 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
             }).then((r) => r.json()).catch(() => ({ done: true }));
             if (st.done) {
               setCurrentResultVideo(`/api/video-download?operationName=${encodeURIComponent(data.operationName)}`);
+              completed = true;
               break;
             }
           }
+          if (!completed) setMediaError('Video generation timed out. Please try again.');
+        } else {
+          setMediaError(data.error || `Video synthesis failed (HTTP ${res.status}). Veo requires a configured Gemini API key.`);
         }
       }
     } catch (err) {
       logger.error('Media synthesis error:', err);
+      setMediaError(err instanceof Error ? err.message : 'Media synthesis failed.');
     } finally {
       setIsSynthesizing(false);
     }
@@ -819,6 +830,20 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                         </div>
                       )}
                     </div>
+
+                    {mediaError && (
+                      <div className="flex items-start gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-[11.5px] text-rose-200">
+                        <span className="mt-[1px] shrink-0 font-bold">⚠</span>
+                        <span className="break-words">{mediaError}</span>
+                        <button
+                          onClick={() => setMediaError(null)}
+                          className="ml-auto shrink-0 text-rose-300/70 hover:text-white"
+                          aria-label="Dismiss error"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )}
 
                     {currentResultImage && (
                       <div className="flex flex-wrap items-center gap-2">

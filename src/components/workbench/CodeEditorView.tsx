@@ -147,6 +147,7 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
   const [appliedNotice, setAppliedNotice] = useState<string | null>(null);
   const [copiedSnippetId, setCopiedSnippetId] = useState<string | null>(null);
   const copilotScrollRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Files in the editor
   const [files, setFiles] = useState<EditorFile[]>([
@@ -268,6 +269,8 @@ export class SupruPipeline {
   // Listen for console logs & runtime errors from inside the sandbox iframe
   useEffect(() => {
     function handleIframeMessage(e: MessageEvent) {
+      // Only trust messages from our own sandbox iframe.
+      if (iframeRef.current && e.source !== iframeRef.current.contentWindow) return;
       if (e.data && e.data.source === 'supru-sandbox') {
         if (e.data.type === 'log') {
           setConsoleLogs((prev) => [
@@ -873,10 +876,11 @@ export class SupruPipeline {
             }`}
           >
             <iframe
+              ref={iframeRef}
               key={iframeKey}
               srcDoc={sandboxHtml}
               title="Supru Live Sandbox"
-              sandbox="allow-scripts allow-modals allow-forms allow-same-origin"
+              sandbox="allow-scripts allow-modals allow-forms"
               className="h-full w-full border-none bg-black"
             />
           </div>

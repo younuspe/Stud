@@ -87,6 +87,14 @@ path segments. Provider `endpointUrl` is screened by `isSafeEndpointUrl()`.
 IP across `/api`, with a tighter 20/min budget on AI, exec, and key-test routes.
 CSP is intentionally left off (Vite inline scripts + Studio sandboxed iframes).
 
+The Code IDE live preview renders untrusted generated code in an `<iframe
+sandbox="allow-scripts allow-modals allow-forms">` — deliberately **without**
+`allow-same-origin`, so previewed code is cross-origin and cannot read the
+parent's `localStorage` (where provider keys live). The console bridge still
+works because the iframe posts `postMessage` to `window.parent`; the parent
+handler additionally drops any message whose `event.source` is not the sandbox
+iframe's `contentWindow`.
+
 ## Desktop (Tauri) build
 
 `src-tauri/` is a Tauri 2 shell (`supru-core`) that wraps the same web app.
