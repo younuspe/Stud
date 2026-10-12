@@ -143,6 +143,9 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   const [currentResultVideo, setCurrentResultVideo] = useState<string | null>(null);
   const [manifestedArtifacts, setManifestedArtifacts] = useState<ManifestedArtifact[]>([]);
   const [mediaError, setMediaError] = useState<string | null>(null);
+  const [worldSeed, setWorldSeed] = useState(0);
+  const [generatedComponentCode, setGeneratedComponentCode] = useState<string | null>(null);
+  const [atomicExplanation, setAtomicExplanation] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -349,7 +352,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
         const res = await fetch('/api/generate-image', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: enhanced, aspectRatio: selectedAspectRatio }),
+          body: JSON.stringify({ prompt: enhanced, aspectRatio: selectedAspectRatio, seed }),
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok && data.imageUrl) {
@@ -397,6 +400,72 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
           if (!completed) setMediaError('Video generation timed out. Please try again.');
         } else {
           setMediaError(data.error || `Video synthesis failed (HTTP ${res.status}). Veo requires a configured Gemini API key.`);
+        }
+      } else if (mediaMode === 'world3d') {
+        // Reframe the particle manifold with the prompt + resonance and capture it.
+        const nextWorldSeed = Math.floor(Math.random() * 999999);
+        setWorldSeed(nextWorldSeed);
+        await new Promise((r) => setTimeout(r, 260));
+        const canvas = canvasRef.current;
+        if (canvas) {
+          try {
+            const dataUrl = canvas.toDataURL('image/png');
+            setCurrentResultImage(dataUrl);
+            setManifestedArtifacts((prev) => [
+              {
+                id: `art-${Date.now()}`,
+                type: 'world-state',
+                title: text.slice(0, 36),
+                prompt: text,
+                dataUrl,
+                timestamp: Date.now(),
+                metadata: { resonance: emotionalFrequency, refractiveIndex, seed: nextWorldSeed },
+              },
+              ...prev,
+            ]);
+            soundFx.playChime();
+          } catch (captureErr) {
+            logger.warn('World capture failed:', captureErr);
+            setMediaError('Could not capture the 3D world-state.');
+          }
+        }
+      } else if (mediaMode === 'atomic') {
+        const res = await fetch('/api/studio/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: text,
+            currentCode: '',
+            language: 'html',
+            modelConfig: {
+              provider: selectedModel?.provider || 'gemini',
+              modelId: selectedModel?.modelId,
+              apiKey: selectedApiKey,
+              endpointUrl: selectedModel?.endpointUrl,
+            },
+            settings: { systemInstruction, temperature, maxOutputTokens },
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data.code) {
+          setGeneratedComponentCode(data.code);
+          setAtomicExplanation(data.explanation || '');
+          setManifestedArtifacts((prev) => [
+            {
+              id: `art-${Date.now()}`,
+              type: 'component',
+              title: text.slice(0, 36),
+              prompt: text,
+              dataUrl: '',
+              codeSnippet: data.code,
+              timestamp: Date.now(),
+              metadata: { model: data.model, provider: data.provider },
+            },
+            ...prev,
+          ]);
+          soundFx.playChime();
+        } else {
+          setMediaError(data.error || `UI code synthesis failed (HTTP ${res.status}).`);
         }
       }
     } catch (err) {
@@ -458,15 +527,24 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     const numParticles = 420;
     const radius = Math.min(width, height) * 0.35;
     const colors = ['#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#10b981', '#ffffff'];
+    // Deterministic RNG so a given world seed always rebuilds the same manifold.
+    let rngState = (worldSeed >>> 0) || 0x9e3779b9;
+    const rand = () => {
+      rngState |= 0;
+      rngState = (rngState + 0x6d2b79f5) | 0;
+      let t = Math.imul(rngState ^ (rngState >>> 15), 1 | rngState);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
     for (let i = 0; i < numParticles; i++) {
-      const theta = Math.acos(2 * Math.random() - 1);
-      const phi = Math.random() * Math.PI * 2;
+      const theta = Math.acos(2 * rand() - 1);
+      const phi = rand() * Math.PI * 2;
       particles.push({
         baseX: radius * Math.sin(theta) * Math.cos(phi),
         baseY: radius * Math.sin(theta) * Math.sin(phi),
         baseZ: radius * Math.cos(theta),
         color: colors[i % colors.length],
-        size: 1.5 + Math.random() * 2.5,
+        size: 1.5 + rand() * 2.5,
       });
     }
 
@@ -532,10 +610,10 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
     return () => {
       if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     };
-  }, [activeTab, mediaMode, refractiveIndex, emotionalFrequency, rotationAngle]);
+  }, [activeTab, mediaMode, refractiveIndex, emotionalFrequency, rotationAngle, worldSeed]);
 
   const atomicPromptLabel = prompt.slice(0, 32).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string)) || 'Sovereign Component';
-  const atomicComponent = `<!-- 🐾 Sovereign Component: ${atomicPromptLabel} -->
+  const defaultAtomicComponent = `<!-- 🐾 Sovereign Component: ${atomicPromptLabel} -->
 <div class="rounded-3xl p-6 border border-amber-500/40 bg-[#0e0e18]/90 text-white font-sans max-w-md mx-auto">
   <div class="flex items-center justify-between mb-4">
     <span class="text-xs font-mono font-bold tracking-widest text-amber-300 uppercase">SOVEREIGN CORE</span>
@@ -545,6 +623,9 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   <p class="text-xs text-gray-400 leading-relaxed mb-5">Synthesized in Supru Studio · refractive n=${refractiveIndex.toFixed(2)}</p>
   <button class="w-full py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-500 to-amber-600 text-neutral-950">Engage Protocol</button>
 </div>`;
+
+  // Use AI-generated code when available, otherwise the built-in scaffold.
+  const atomicComponent = generatedComponentCode || defaultAtomicComponent;
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-[#050508] text-gray-200 select-none">
@@ -895,12 +976,17 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
 
                 {mediaMode === 'atomic' && (
                   <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 lg:flex-row">
-                    <div className="flex flex-1 items-center justify-center rounded-2xl border border-white/[0.08] bg-black/40 p-6">
+                    <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-2xl border border-white/[0.08] bg-black/40 p-6">
                       <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(atomicComponent) }} />
+                      {atomicExplanation && (
+                        <p className="max-w-md text-center text-[11px] leading-relaxed text-gray-400">{atomicExplanation}</p>
+                      )}
                     </div>
                     <div className="flex w-full flex-col rounded-2xl border border-white/[0.08] bg-[#0c0c16] p-4 text-xs font-mono lg:w-96">
                       <div className="mb-3 flex items-center justify-between border-b border-white/[0.06] pb-2">
-                        <span className="flex items-center gap-1.5 font-bold text-purple-400"><Code2 size={13} /> Generated HTML</span>
+                        <span className="flex items-center gap-1.5 font-bold text-purple-400">
+                          <Code2 size={13} /> {generatedComponentCode ? 'AI-generated HTML' : 'Generated HTML'}
+                        </span>
                         <button
                           onClick={() => { copyText(atomicComponent); setCopiedCode(true); setTimeout(() => setCopiedCode(false), 2000); }}
                           className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-white"
@@ -910,6 +996,14 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                         </button>
                       </div>
                       <pre className="flex-1 overflow-auto whitespace-pre-wrap rounded-xl border border-white/[0.04] bg-black/50 p-2.5 text-[10.5px] text-gray-300 custom-scrollbar">{atomicComponent}</pre>
+                      {generatedComponentCode && (
+                        <button
+                          onClick={() => { soundFx.playClick(); setGeneratedComponentCode(null); setAtomicExplanation(''); }}
+                          className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] py-2 font-bold text-gray-300 hover:text-white"
+                        >
+                          <RotateCcw size={12} /> Reset to scaffold
+                        </button>
+                      )}
                       {onOpenInEditor && (
                         <button
                           onClick={() => { soundFx.playChime(); onOpenInEditor('SovereignComponent.html', atomicComponent); }}
@@ -935,7 +1029,17 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                     {manifestedArtifacts.map((art) => (
                       <button
                         key={art.id}
-                        onClick={() => { soundFx.playClick(); if (art.dataUrl) { setCurrentResultImage(art.dataUrl); setMediaMode('visual'); } setPrompt(art.prompt); }}
+                        onClick={() => {
+                          soundFx.playClick();
+                          setPrompt(art.prompt);
+                          if (art.type === 'component' && art.codeSnippet) {
+                            setGeneratedComponentCode(art.codeSnippet);
+                            setMediaMode('atomic');
+                          } else if (art.dataUrl) {
+                            setCurrentResultImage(art.dataUrl);
+                            setMediaMode(art.type === 'video' ? 'motion' : 'visual');
+                          }
+                        }}
                         className="flex shrink-0 items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.02] p-1.5 pr-3 text-left transition-all hover:border-pink-500/40 hover:bg-white/[0.06]"
                       >
                         {art.dataUrl && <img src={art.dataUrl} alt={art.title} className="h-8 w-8 rounded-lg border border-white/[0.1] object-cover" />}
@@ -1040,7 +1144,13 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
 
             {activeTab === 'media' && (
               <div className="space-y-3 rounded-xl border border-white/[0.08] bg-black/30 p-3">
-                <div className="text-[11px] font-bold text-amber-300">Physics (3D world)</div>
+                <div className="text-[11px] font-bold text-amber-300">
+                  {mediaMode === 'world3d'
+                    ? 'Physics (3D world)'
+                    : mediaMode === 'atomic'
+                    ? 'Generation settings'
+                    : 'Synthesis parameters'}
+                </div>
                 <div className="space-y-1">
                   <div className="flex justify-between text-[10.5px] font-mono text-gray-400">
                     <span>Refractive index</span><span className="text-amber-400">{refractiveIndex.toFixed(2)}</span>
@@ -1056,7 +1166,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
                 <div className="flex items-center justify-between text-[10.5px]">
                   <span className="font-mono text-gray-400">Seed #{seed}</span>
                   <div className="flex items-center gap-1">
-                    <button onClick={() => { soundFx.playClick(); setSeed(Math.floor(Math.random() * 999999)); }} className="flex items-center gap-1 rounded bg-white/[0.06] px-2 py-0.5 text-gray-300 hover:bg-white/[0.1]">
+                    <button onClick={() => { soundFx.playClick(); setSeed(Math.floor(Math.random() * 999999)); if (mediaMode === 'world3d') setWorldSeed(Math.floor(Math.random() * 999999)); }} className="flex items-center gap-1 rounded bg-white/[0.06] px-2 py-0.5 text-gray-300 hover:bg-white/[0.1]">
                       <RotateCcw size={10} /> Randomize
                     </button>
                     <button onClick={toggleNeuralAudio} className={`flex items-center gap-1 rounded px-2 py-0.5 ${isPlayingAudio ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/[0.06] text-gray-300 hover:bg-white/[0.1]'}`} title="Toggle resonance tone">
@@ -1078,7 +1188,15 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') handleManifest(); }}
-              placeholder="Describe the image or scene you want to generate…"
+              placeholder={
+                mediaMode === 'visual'
+                  ? 'Describe the image you want to generate…'
+                  : mediaMode === 'motion'
+                  ? 'Describe the motion / camera move for the video…'
+                  : mediaMode === 'world3d'
+                  ? 'Describe the 3D world-state, then press Generate to rebuild it…'
+                  : 'Describe the UI component you want the AI to build…'
+              }
               className="flex-1 rounded-xl border border-white/[0.1] bg-black/40 px-3 py-2.5 text-sm text-white placeholder-gray-500 outline-none focus:border-pink-500/50"
             />
             <button
@@ -1087,7 +1205,13 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
               className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-pink-500 to-rose-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {isSynthesizing ? <RefreshCw size={13} className="animate-spin" /> : <Wand2 size={13} />}
-              <span>{isSynthesizing ? 'Generating…' : 'Generate'}</span>
+              <span>
+                {isSynthesizing
+                  ? 'Generating…'
+                  : mediaMode === 'atomic'
+                  ? 'Generate code'
+                  : 'Generate'}
+              </span>
             </button>
           </div>
         </div>

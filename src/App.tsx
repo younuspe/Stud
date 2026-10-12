@@ -33,16 +33,16 @@ const MacOSInstallModal = lazy(() => import('./components/modals/MacOSInstallMod
 const ChatInputDock = lazy(() => import('./components/ChatInputDock').then((m) => ({ default: m.ChatInputDock })));
 const FloatingChatPill = lazy(() => import('./components/FloatingChatPill').then((m) => ({ default: m.FloatingChatPill })));
 import { ChatThread, Message, PersonaType, UserSettings, Attachment, ServerStatus } from './types/chat';
-import { WorkspaceView, LocalHostConfig, CodingSpaceLayout, StudioWindowId, StudioWindowState, ExternalAIModelConfig } from './types/workbench';
+import { WorkspaceView, LocalHostConfig, StudioWindowId, StudioWindowState, ExternalAIModelConfig } from './types/workbench';
 import { soundFx } from './utils/audio';
 import { useToast } from './components/ui/Toast';
 import { ConfirmDialog } from './components/ui/ConfirmDialog';
 import { LoadingFallback } from './components/ui/LoadingFallback';
+import { PRESET_TEMPLATES } from './components/workbench/editor/presetTemplates';
 
 const STORAGE_KEY_THREADS = 'supru_ai_threads_v1';
 const STORAGE_KEY_SETTINGS = 'supru_ai_settings_v1';
 const STORAGE_KEY_LOCAL_CONFIG = 'supru_ai_local_config_v1';
-const STORAGE_KEY_CODING_LAYOUT = 'supru_ai_coding_layout_v1';
 const STORAGE_KEY_SIDEBAR_WIDTH = 'supru_sidebar_width_v1';
 const STORAGE_KEY_STUDIO_WINDOWS = 'supru_studio_windows_v2';
 
@@ -173,17 +173,6 @@ export default function App() {
   // Active Workspace View (Supru Chat, Supru Code, Supru CLI, Supru Hunter, Supru Git)
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>('chat');
 
-  // Coding Space Window Layout (Single, Split with Terminal, Split with Hunter, Split with Git)
-  const [codingLayout, setCodingLayout] = useState<CodingSpaceLayout>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_CODING_LAYOUT);
-      if (saved) return saved as CodingSpaceLayout;
-    } catch {
-      // Default
-    }
-    return 'single';
-  });
-
   // Collapsible Left Panel Tab State
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [sidebarMobileOpen, setSidebarMobileOpen] = useState(false);
@@ -258,6 +247,12 @@ export default function App() {
 
   // Incoming external prompt for Supru Code Copilot (from Floating Chat Pill)
   const [externalEditorPrompt, setExternalEditorPrompt] = useState<{ id: string; text: string } | null>(null);
+
+  // Shared device-viewport for the Code IDE preview (driven by the header View menu)
+  const [deviceViewport, setDeviceViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+
+  // Pending chat prefill (from header Presets/Chat Starters/Directives)
+  const [pendingChatPrompt, setPendingChatPrompt] = useState<{ id: string; text: string } | null>(null);
 
   // Agent target objective buffer
   const [agentInitialObjective, setAgentInitialObjective] = useState<string>('');
@@ -374,7 +369,7 @@ export default function App() {
     });
   };
 
-  // Creative Studio Modals (gemini-3.1-flash-image-preview & veo-3.1-fast-generate-preview)
+  // Creative Studio Modals (gemini-2.5-flash-image & veo-3.1-fast-generate-preview)
   const [isImageStudioOpen, setIsImageStudioOpen] = useState(false);
   const [imageStudioPhoto, setImageStudioPhoto] = useState<string | null>(null);
   const [imageStudioPrompt, setImageStudioPrompt] = useState<string>('');
@@ -436,7 +431,7 @@ export default function App() {
     const assistantMsg: Message = {
       id: `asst-${Date.now()}`,
       role: 'assistant',
-      content: `Here is the visual generated with **gemini-3.1-flash-image-preview**:\n\n*"${promptText}"*`,
+      content: `Here is the visual generated with **gemini-2.5-flash-image**:\n\n*"${promptText}"*`,
       timestamp: Date.now(),
       attachment: {
         name: 'Synthesized Artwork.png',
@@ -485,14 +480,6 @@ export default function App() {
       // LocalStorage error
     }
   }, [localConfig]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_CODING_LAYOUT, codingLayout);
-    } catch {
-      // LocalStorage error
-    }
-  }, [codingLayout]);
 
   useEffect(() => {
     fetch('/api/status')
@@ -865,6 +852,34 @@ export default function App() {
     setWorkspaceView('editor');
   };
 
+  // Chat code blocks hand us (code, language); derive a filename from the language.
+  const handleOpenCodeInEditor = (code: string, language: string) => {
+    const ext = language === 'typescript' || language === 'ts' ? 'ts'
+      : language === 'javascript' || language === 'js' ? 'js'
+      : language === 'python' || language === 'py' ? 'py'
+      : language === 'rust' || language === 'rs' ? 'rs'
+      : language === 'css' ? 'css'
+      : language === 'json' ? 'json'
+      : 'html';
+    handleOpenInEditor(`snippet.${ext}`, code);
+  };
+
+  // Header preset templates load a ready-made file straight into the Code IDE.
+  const handleSelectPresetTemplate = (templateId: string) => {
+    const template = PRESET_TEMPLATES.find((t) => t.file.id === templateId);
+    if (!template) return;
+    soundFx.playChime();
+    setActiveFileBuffer({ name: template.file.name, content: template.file.content });
+    setWorkspaceView('editor');
+    toast.success('Preset loaded', template.name);
+  };
+
+  // Header chat starters / directives prefill the chat composer for review.
+  const handleApplyDirective = (directive: string) => {
+    setPendingChatPrompt({ id: `chat-${Date.now()}`, text: directive });
+    setWorkspaceView('chat');
+  };
+
   const handleDownloadFile = () => {
     soundFx.playClick();
     const content =
@@ -928,6 +943,10 @@ export default function App() {
         activeModelName={activeCustomModel?.name || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'Gemini 2.5 Flash')}
         onOpenGetCode={() => setIsGetCodeModalOpen(true)}
         onOpenMacOSInstall={() => setIsMacOSModalOpen(true)}
+        onSelectPresetTemplate={handleSelectPresetTemplate}
+        onApplyDirective={handleApplyDirective}
+        deviceViewport={deviceViewport}
+        onChangeDeviceViewport={setDeviceViewport}
       />
 
       {/* Main Workspace Frame */}
@@ -1022,7 +1041,7 @@ export default function App() {
                       onRegenerate={handleRegenerate}
                       onAnimateWithVeo={(img) => handleOpenVeoStudio(img)}
                       onEditWithImageStudio={(img) => handleOpenImageStudio(img)}
-                      onOpenInEditor={handleOpenInEditor}
+                      onOpenInEditor={handleOpenCodeInEditor}
                     />
                     <ChatInputDock
                       onSendMessage={handleSendMessage}
@@ -1034,6 +1053,8 @@ export default function App() {
                         soundFx.playClick();
                         setWorkspaceView('generative');
                       }}
+                      pendingPrompt={pendingChatPrompt}
+                      onConsumePendingPrompt={() => setPendingChatPrompt(null)}
                     />
                   </div>
                 )}
@@ -1071,8 +1092,6 @@ export default function App() {
                 }}
                 externalPrompt={externalEditorPrompt}
                 onClearExternalPrompt={() => setExternalEditorPrompt(null)}
-                codingLayout={codingLayout}
-                onChangeCodingLayout={setCodingLayout}
                 localConfig={localConfig}
                 onOpenLocalSettings={() => setIsLocalModalOpen(true)}
                 onTriggerAgent={handleTriggerAgent}
@@ -1087,6 +1106,8 @@ export default function App() {
                 onOpenAddModels={() => setIsAddAIModelModalOpen(true)}
                 activeModelName={activeCustomModel?.name || (localConfig.provider !== 'gemini_cloud' ? localConfig.modelName : 'Gemini 2.5 Flash')}
                 activeCustomModel={activeCustomModel}
+                deviceViewport={deviceViewport}
+                onChangeDeviceViewport={setDeviceViewport}
               />
             )}
 

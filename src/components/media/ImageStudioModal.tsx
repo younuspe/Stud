@@ -112,7 +112,7 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
       soundFx.playPurr();
     } catch (err: any) {
       logger.error('Image gen error:', err);
-      setErrorMessage(err.message || 'Error communicating with gemini-3.1-flash-image-preview');
+      setErrorMessage(err.message || 'Error communicating with gemini-2.5-flash-image');
     } finally {
       setIsGenerating(false);
     }
@@ -139,7 +139,7 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-white">Image Studio</h3>
                 <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-semibold text-amber-300 border border-amber-500/30">
-                  gemini-3.1-flash-image-preview
+                  gemini-2.5-flash-image
                 </span>
               </div>
               <p className="text-xs text-gray-400">Create new visuals or edit existing photos with text prompts</p>
@@ -333,7 +333,7 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
                 {isGenerating ? (
                   <>
                     <RefreshCw size={16} className="animate-spin text-neutral-950" />
-                    <span>Synthesizing with gemini-3.1-flash-image-preview...</span>
+                    <span>Synthesizing with gemini-2.5-flash-image...</span>
                   </>
                 ) : (
                   <>
@@ -427,7 +427,7 @@ export const ImageStudioModal: React.FC<ImageStudioModalProps> = ({
                 <div className="max-w-md space-y-1">
                   <h4 className="text-base font-bold text-white">Your Canvas is Ready</h4>
                   <p className="text-xs text-gray-400 leading-relaxed">
-                    Type a prompt on the left or upload a photo to edit with <span className="text-amber-400 font-semibold">gemini-3.1-flash-image-preview</span>. You can then animate your artwork into a video using <span className="text-amber-400 font-semibold">Veo</span>!
+                    Type a prompt on the left or upload a photo to edit with <span className="text-amber-400 font-semibold">gemini-2.5-flash-image</span>. You can then animate your artwork into a video using <span className="text-amber-400 font-semibold">Veo</span>!
                   </p>
                 </div>
               </div>

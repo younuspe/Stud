@@ -34,7 +34,6 @@ export interface StratifiedStackState {
   z3InvarianceScore: number;
 }
 
-export type CodingSpaceLayout = 'single' | 'split-terminal' | 'split-hunter' | 'split-github' | 'split-preview';
 
 export type AIProviderType = 'gemini_cloud' | 'nvidia' | 'pollinations' | 'ollama_local' | 'lmstudio_local' | 'custom_local' | 'offline_core';
 

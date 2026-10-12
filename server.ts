@@ -20,6 +20,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+// Reverse proxies (container previews, the Tauri local shell, hosting ingress)
+// forward the client IP via X-Forwarded-For. Trusting only loopback and private
+// networks keeps express-rate-limit keying on the real client without letting a
+// public caller spoof the header to evade limits. Override with SUPRU_TRUST_PROXY.
+app.set('trust proxy', process.env.SUPRU_TRUST_PROXY || 'loopback, linklocal, uniquelocal');
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 // The desktop shell binds the API to loopback; the web server keeps the previous
 // all-interfaces default so container/remote previews still work.
@@ -334,6 +339,7 @@ open -a "$APP_DIR" 2>/dev/null || open "${appUrl}"
 app.post('/api/generate-image', async (req, res) => {
   try {
     const { prompt, sourceImage, mimeType = 'image/png', aspectRatio = '1:1' } = req.body;
+    const requestedSeed = Number.isFinite(Number(req.body.seed)) ? Math.floor(Number(req.body.seed)) : null;
 
     if (!prompt || typeof prompt !== 'string') {
       return res.status(400).json({ error: 'Text prompt is required for image creation/editing.' });
@@ -406,7 +412,7 @@ app.post('/api/generate-image', async (req, res) => {
         '3:4': [768, 1024],
       };
       const [w, h] = dims[selectedAspectRatio] || [1024, 1024];
-      const seed = Math.floor(Math.random() * 1_000_000);
+      const seed = requestedSeed ?? Math.floor(Math.random() * 1_000_000);
       // The free tier throttles large canvases and occasionally 402/429s; pin
       // the working `flux` model, retry a couple of times, then fall back to a
       // small canvas.
@@ -2288,7 +2294,9 @@ async function startServer() {
     // Imported lazily so a packaged build (no node_modules) never resolves vite.
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      // `allowedHosts: true` lets the dev server run behind a reverse proxy /
+      // tunnel (host names are otherwise rejected by Vite's host check).
+      server: { middlewareMode: true, allowedHosts: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);

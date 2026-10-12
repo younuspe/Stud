@@ -25,6 +25,8 @@ interface ChatInputDockProps {
   onOpenImageStudio?: (image?: string) => void;
   onOpenVeoStudio?: (image?: string) => void;
   onOpenGenerativeStudio?: () => void;
+  pendingPrompt?: { id: string; text: string } | null;
+  onConsumePendingPrompt?: () => void;
 }
 
 export const ChatInputDock: React.FC<ChatInputDockProps> = ({
@@ -34,12 +36,21 @@ export const ChatInputDock: React.FC<ChatInputDockProps> = ({
   onOpenImageStudio,
   onOpenVeoStudio,
   onOpenGenerativeStudio,
+  pendingPrompt,
+  onConsumePendingPrompt,
 }) => {
   const [input, setInput] = useState('');
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Prefill the composer when a header preset/directive is applied.
+  useEffect(() => {
+    if (!pendingPrompt) return;
+    setInput(pendingPrompt.text);
+    onConsumePendingPrompt?.();
+  }, [pendingPrompt, onConsumePendingPrompt]);
 
   // Robust speech listener
   const {

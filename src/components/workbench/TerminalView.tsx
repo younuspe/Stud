@@ -168,7 +168,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({
       const statusText = `AI PROVIDER STATUS:
 Provider: ${localConfig.provider}
 Endpoint: ${localConfig.endpointUrl || 'Default Generative Cloud'}
-Model:    ${localConfig.modelName || 'gemini-3.8-flash'}
+Model:    ${localConfig.modelName || 'gemini-2.5-flash'}
 API Key:  ${localConfig.provider === 'gemini_cloud' ? 'Configured or fallback' : 'Not required (Localhost)'}`;
 
       setHistory((prev) => [

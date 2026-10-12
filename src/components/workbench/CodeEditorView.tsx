@@ -44,7 +44,6 @@ import {
 import { 
   EditorFile, 
   SupportedLanguage, 
-  CodingSpaceLayout, 
   LocalHostConfig,
   ExternalAIModelConfig,
   StudioModelSettings,
@@ -65,8 +64,6 @@ import { useSplitResize } from './editor/useSplitResize';
 interface CodeEditorViewProps {
   onRunInTerminal: (command: string) => void;
   onSendToChat: (codePrompt: string) => void;
-  codingLayout?: CodingSpaceLayout;
-  onChangeCodingLayout?: (layout: CodingSpaceLayout) => void;
   localConfig: LocalHostConfig;
   onOpenLocalSettings: () => void;
   onTriggerAgent: (objective: string) => void;
@@ -84,6 +81,8 @@ interface CodeEditorViewProps {
   activeCustomModel?: ExternalAIModelConfig | null;
   externalPrompt?: { id: string; text: string } | null;
   onClearExternalPrompt?: () => void;
+  deviceViewport?: 'desktop' | 'tablet' | 'mobile';
+  onChangeDeviceViewport?: (viewport: 'desktop' | 'tablet' | 'mobile') => void;
 }
 
 
@@ -114,6 +113,8 @@ export const CodeEditorView: React.FC<CodeEditorViewProps> = ({
   activeCustomModel,
   externalPrompt,
   onClearExternalPrompt,
+  deviceViewport: deviceViewportProp,
+  onChangeDeviceViewport,
 }) => {
   // Robust continuous speech listener for code generator
   const {
@@ -212,8 +213,13 @@ export class SupruPipeline {
     } catch {}
   }, [drawerHeight]);
 
-  // Preview device viewport simulation
-  const [deviceViewport, setDeviceViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  // Preview device viewport simulation (controlled by the header when provided)
+  const [localDeviceViewport, setLocalDeviceViewport] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
+  const deviceViewport = deviceViewportProp ?? localDeviceViewport;
+  const setDeviceViewport = (v: 'desktop' | 'tablet' | 'mobile') => {
+    setLocalDeviceViewport(v);
+    onChangeDeviceViewport?.(v);
+  };
   const [previewTab, setPreviewTab] = useState<'preview' | 'console'>('preview');
 
   // Preview Execution State
