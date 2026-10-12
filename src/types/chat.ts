@@ -44,6 +44,7 @@ export interface UserSettings {
 export interface ServerStatus {
   status: string;
   hasApiKey: boolean;
+  hasGithubToken?: boolean;
   model: string;
   version: string;
 }

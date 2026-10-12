@@ -24,6 +24,7 @@ import { soundFx } from '../../utils/audio';
 interface GitHubViewProps {
   onOpenInEditor: (fileName: string, content: string) => void;
   onTriggerAgent: (objective: string) => void;
+  serverTokenAvailable?: boolean;
 }
 
 const PRESET_REPOS = [
@@ -36,6 +37,7 @@ const PRESET_REPOS = [
 export const GitHubView: React.FC<GitHubViewProps> = ({
   onOpenInEditor,
   onTriggerAgent,
+  serverTokenAvailable = false,
 }) => {
   const [owner, setOwner] = useState('expressjs');
   const [repo, setRepo] = useState('express');
@@ -163,8 +165,14 @@ export const GitHubView: React.FC<GitHubViewProps> = ({
               onClick={() => setShowTokenInput(!showTokenInput)}
               className="flex items-center gap-1 rounded-lg border border-[#262638] bg-[#14141f] px-2.5 py-1 text-[11px] text-gray-300 hover:text-white"
             >
-              <Key size={12} className="text-amber-400" />
-              <span>{token ? 'PAT Configured' : 'Personal Token'}</span>
+              <Key size={12} className={serverTokenAvailable ? 'text-emerald-400' : 'text-amber-400'} />
+              <span>
+                {token
+                  ? 'PAT Configured'
+                  : serverTokenAvailable
+                  ? 'Server Token'
+                  : 'Personal Token'}
+              </span>
             </button>
           </div>
         </div>
@@ -172,6 +180,12 @@ export const GitHubView: React.FC<GitHubViewProps> = ({
         {/* Token Input Drawer */}
         {showTokenInput && (
           <div className="mt-2.5 rounded-xl border border-[#28283a] bg-[#13131e] p-2.5">
+            {serverTokenAvailable && (
+              <div className="mb-2 flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-300">
+                <ShieldCheck size={11} />
+                <span>Using the server's GITHUB_TOKEN — no PAT needed. Paste one below only to override it.</span>
+              </div>
+            )}
             <label className="text-[11px] font-semibold text-gray-300">GitHub Personal Access Token (PAT)</label>
             <p className="text-[10px] text-gray-500 mb-1.5">For private repositories or rate limits.</p>
             <input

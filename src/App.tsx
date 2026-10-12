@@ -1138,6 +1138,7 @@ export default function App() {
               <GitHubView
                 onOpenInEditor={handleOpenInEditor}
                 onTriggerAgent={handleTriggerAgent}
+                serverTokenAvailable={serverStatus.hasGithubToken}
               />
             )}
 

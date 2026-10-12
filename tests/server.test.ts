@@ -87,3 +87,20 @@ describe('security headers', () => {
     expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
   });
 });
+
+describe('GET /api/health', () => {
+  it('reports ok with uptime and version', async () => {
+    const res = await request(app).get('/api/health');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+    expect(typeof res.body.uptimeSeconds).toBe('number');
+    expect(res.body.version).toBeTruthy();
+  });
+});
+
+describe('server-side GitHub token', () => {
+  it('exposes hasGithubToken in /api/status as a boolean', async () => {
+    const res = await request(app).get('/api/status');
+    expect(typeof res.body.hasGithubToken).toBe('boolean');
+  });
+});

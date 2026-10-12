@@ -64,6 +64,23 @@ const heavyPaths = [
 ];
 app.use(heavyPaths, heavyLimiter);
 
+// Optional shared-secret gate for the whole API. Off unless SUPRU_ACCESS_TOKEN
+// is set, so local/desktop use is unaffected. When set, every /api call must
+// present it via `Authorization: Bearer <token>` or `x-supru-token`. Health and
+// status stay open so probes and the login screen work.
+const accessToken = process.env.SUPRU_ACCESS_TOKEN || '';
+if (accessToken) {
+  // Mounted at '/api', so req.path here is relative ('/health', '/status').
+  const openPaths = new Set(['/health', '/status']);
+  app.use('/api', (req, res, next) => {
+    if (openPaths.has(req.path)) return next();
+    const bearer = req.get('authorization')?.replace(/^Bearer\s+/i, '');
+    const provided = bearer || req.get('x-supru-token');
+    if (provided === accessToken) return next();
+    return res.status(401).json({ error: 'Unauthorized: missing or invalid access token' });
+  });
+}
+
 /**
  * Endpoints that spawn shell commands or run project tooling are only safe to
  * expose to the local desktop client. Allow loopback and private-network
@@ -83,6 +100,11 @@ function requireLocal(req: express.Request, res: express.Response): boolean {
 }
 
 const GITHUB_SEGMENT = /^[A-Za-z0-9._-]+$/;
+// Server-side GitHub token so Supru Git works without the user pasting a PAT.
+// GITHUB_TOKEN first (CI/agent environments), then a dedicated GH_TOKEN, then
+// the conventional GITHUB_PAT. The client can still override per-request.
+const serverGithubToken =
+  process.env.GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_PAT || '';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -138,6 +160,7 @@ app.get('/api/status', (req, res) => {
   res.json({
     status: 'online',
     hasApiKey: Boolean(apiKey && apiKey !== 'MY_GEMINI_API_KEY'),
+    hasGithubToken: Boolean(serverGithubToken),
     model: defaultModelFor('gemini'),
     imageModel: 'gemini-2.5-flash-image',
     videoModel: 'veo-3.1-fast-generate-preview',
@@ -1083,8 +1106,9 @@ app.post('/api/github/repo', async (req, res) => {
       'User-Agent': 'Supru-AI-Applet',
       Accept: 'application/vnd.github.v3+json',
     };
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
+    const activeToken = token || serverGithubToken;
+    if (activeToken) {
+      headers.Authorization = `Bearer ${activeToken}`;
     }
 
     const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
@@ -1132,8 +1156,9 @@ app.post('/api/github/contents', async (req, res) => {
       'User-Agent': 'Supru-AI-Applet',
       Accept: 'application/vnd.github.v3+json',
     };
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
+    const activeToken = token || serverGithubToken;
+    if (activeToken) {
+      headers.Authorization = `Bearer ${activeToken}`;
     }
 
     // Resolve the repo's real default branch rather than assuming "main";
@@ -2274,6 +2299,16 @@ function synthesizeCreativeCode(prompt: string, currentCode: string, lang: strin
 }
 
 
+// Liveness/readiness probe. Cheap, unauthenticated, no upstream calls.
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    uptimeSeconds: Math.round(process.uptime()),
+    version: '2.6.0',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Unmatched API routes should return JSON, never the SPA shell.
 app.use('/api', (req, res) => {
   res.status(404).json({ error: `Unknown API route: ${req.method} ${req.originalUrl}` });
@@ -2320,9 +2355,25 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, HOST, () => {
+  const server = app.listen(PORT, HOST, () => {
     logger.info(`Supru AI server active at http://${HOST}:${PORT}`);
   });
+
+  // Drain in-flight requests and stop accepting new ones on a deploy/restart
+  // signal, so container orchestrators don't kill live connections.
+  const shutdown = (signal: string) => {
+    logger.info(`${signal} received, shutting down gracefully...`);
+    server.close(() => {
+      logger.info('HTTP server closed.');
+      process.exit(0);
+    });
+    // Force-exit if connections refuse to drain.
+    setTimeout(() => process.exit(1), 10_000).unref();
+  };
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.once(signal, () => shutdown(signal));
+  }
+  return server;
 }
 
 export { app, startServer };
@@ -2330,5 +2381,15 @@ export { app, startServer };
 // Only boot when executed directly (tests import `app` instead).
 const entry = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : '';
 if (import.meta.url === entry) {
-  startServer();
+  // Surface misconfiguration immediately instead of failing on first request.
+  if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length < 20) {
+    logger.warn('GEMINI_API_KEY looks malformed; Gemini/Veo calls will be skipped.');
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    logger.info('Starting in development mode (Vite middleware). Set NODE_ENV=production to serve dist/.');
+  }
+  startServer().catch((err) => {
+    logger.error('Failed to start server:', err);
+    process.exit(1);
+  });
 }
