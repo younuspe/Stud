@@ -119,10 +119,9 @@ removed. The real config lives at `src-tauri/tauri.conf.json` and paths inside i
 
 ## Known blockers
 
-Pushing to `origin` (github.com/younuspe/Stud) fails with 403. The injected
-`GITHUB_TOKEN` is a GitHub App installation token with **read-only** contents
-access: repo metadata reports `push: true` (installation permission) but every
-write — git push, `POST /git/refs`, `PUT /contents` — returns
-"Resource not accessible by integration". A fine-grained PAT with Contents:
-Read+Write (or a write-enabled App install) is required. Local commits are
-safe and ready to push.
+The injected `GITHUB_TOKEN` is a GitHub App installation token with **read-only**
+contents access: repo metadata reports `push: true` (installation permission) but
+every write — git push, `POST /git/refs`, `PUT /contents` — returns
+"Resource not accessible by integration" (403). Use a fine-grained PAT with
+Contents: Read+Write as a one-off push URL (never stored in git config) to update
+the branch. `feat/production-hardening` is pushed and current on origin.
