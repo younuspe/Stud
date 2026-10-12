@@ -152,5 +152,23 @@ and `/api/status` stay open; web client sends it via `src/utils/apiAuth.ts` from
 `VITE_SUPRU_ACCESS_TOKEN` or localStorage `supru_access_token`); graceful
 `SIGTERM`/`SIGINT` shutdown with a 10s drain; a boot warning for a malformed
 `GEMINI_API_KEY`; `Dockerfile` + `.dockerignore`; `npm run start:prod`
-(`NODE_ENV=production`). Still open for true public production: persistent
-rate-limit store, error monitoring, and integration/e2e tests.
+(`NODE_ENV=production`).
+
+### Production hardening (commit 4bd17f4)
+
+- `compression()` gzips responses; every request gets an `X-Request-Id`
+  (inbound id preserved) and one structured access log line.
+- Explicit CSP in `server.ts` allows the Vite inline bootstrap, Google Fonts
+  (`fonts.googleapis.com` / `fonts.gstatic.com` — loaded by `index.html`), and
+  `srcdoc` Studio previews; blocks injected remote scripts (`object-src 'none'`).
+  Verify SPA still renders if you touch it.
+- `server.ratelimit.ts` — optional Redis store via `REDIS_URL`; `ioredis` +
+  `rate-limit-redis` are `optionalDependencies`, so the code degrades to the
+  in-memory store if they are absent. Covered by `tests/ratelimit-redis.test.ts`,
+  which spins a fake RESP server over TCP (no Redis daemon needed).
+- `unhandledRejection` / `uncaughtException` handlers; optional
+  `SUPRU_ERROR_WEBHOOK` POSTs a JSON payload for every 5xx.
+- `.github/workflows/ci.yml` runs typecheck, tests, build, and a prod boot
+  smoke test. `docker-compose.yml` = app + Redis. README has a deployment section.
+- `npm audit` still reports 3 dev-only advisories in vitest/tinypool; not in the
+  production bundle.
