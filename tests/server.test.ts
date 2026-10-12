@@ -86,6 +86,32 @@ describe('security headers', () => {
     expect(res.headers['x-content-type-options']).toBe('nosniff');
     expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
   });
+
+  it('sends a restrictive Content-Security-Policy', async () => {
+    const res = await request(app).get('/api/status');
+    const csp = res.headers['content-security-policy'];
+    expect(csp).toBeTruthy();
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).toContain("base-uri 'self'");
+  });
+});
+
+describe('request tracing', () => {
+  it('assigns an X-Request-Id and echoes an inbound one', async () => {
+    const generated = await request(app).get('/api/status');
+    expect(generated.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/);
+
+    const inbound = await request(app).get('/api/status').set('x-request-id', 'trace-abc-123');
+    expect(inbound.headers['x-request-id']).toBe('trace-abc-123');
+  });
+});
+
+describe('response compression', () => {
+  it('gzip-compresses a large JSON response', async () => {
+    const res = await request(app).get('/api/providers').set('Accept-Encoding', 'gzip');
+    expect(res.headers['content-encoding']).toBe('gzip');
+  });
 });
 
 describe('GET /api/health', () => {

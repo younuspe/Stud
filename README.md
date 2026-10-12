@@ -56,3 +56,56 @@ npm run tauri:dev    # native dev shell
 npm run tauri:build  # packaged macOS/Windows/Linux app
 ```
 
+## Production deployment
+
+The server runs the same code in dev and production; production just serves the
+built assets and enables graceful shutdown.
+
+```bash
+npm run build         # emits dist/
+npm run start:prod    # NODE_ENV=production, serves dist/ + /api on PORT
+```
+
+Container:
+
+```bash
+docker compose up --build   # app + Redis on http://localhost:3000
+```
+
+Health probe: `GET /api/health` returns `{ status, uptimeSeconds, version }`
+and is always unauthenticated, so point your orchestrator's liveness/readiness
+check at it. The server drains in-flight requests on `SIGTERM`/`SIGINT` (10s
+budget) before exiting.
+
+Operational environment variables (all optional):
+
+| Variable | Purpose |
+| --- | --- |
+| `PORT` / `SUPRU_HOST` | Listen port (default 3000) and interface (default 0.0.0.0). |
+| `GEMINI_API_KEY` | Enables Gemini + image/video generation. Without it the app runs keyless. |
+| `GITHUB_TOKEN` / `GH_TOKEN` / `GITHUB_PAT` | Server-side token for the Supru Git module. |
+| `SUPRU_ACCESS_TOKEN` | Gates the whole API behind a bearer token (leave unset for local use). |
+| `REDIS_URL` | Shares rate-limit counters across instances (needs `ioredis` + `rate-limit-redis`). |
+| `SUPRU_ERROR_WEBHOOK` | Receives a JSON payload for every 5xx (Slack/Discord/Opsgenie/custom). |
+| `SUPRU_TRUST_PROXY` | Reverse-proxy trust setting for correct client-IP rate limiting. |
+| `SUPRU_ALLOW_REMOTE_EXEC` | Must be set (with an authenticated proxy) to expose exec routes off-box. |
+| `LOG_LEVEL` | `debug` \| `info` \| `warn` \| `error` (default: `info`). |
+
+Every response carries an `X-Request-Id` (inbound ids are preserved) and the
+server logs one structured access line per request. Responses are gzip-compressed
+and sent with a Content-Security-Policy that permits the SPA, Google Fonts, and
+sandboxed Studio previews while blocking injected remote scripts.
+
+### Security notes
+
+- Command-executing endpoints (`/api/terminal/execute`, `/api/agent/*`,
+  `/api/orchestrator/*`) are gated to local/private callers unless
+  `SUPRU_ALLOW_REMOTE_EXEC` is set.
+- For a public deployment, set `SUPRU_ACCESS_TOKEN`, terminate TLS at a proxy,
+  and set `SUPRU_TRUST_PROXY` so rate limiting keys on the real client IP.
+- Rate limits are in-memory per process by default; add Redis for a multi-instance
+  deployment.
+- `npm audit` currently flags three advisories in the `vitest`/`tinypool` dev
+  toolchain only; they are not in the production bundle. The fix is a breaking
+  `vitest` major upgrade.
+

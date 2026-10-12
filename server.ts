@@ -2,11 +2,14 @@ import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { exec, execSync } from 'child_process';
 import util from 'util';
 import { GoogleGenAI, GenerateVideosOperation } from '@google/genai';
+import compression from 'compression';
 import { callProvider, testProvider, defaultModelFor } from './server.providers';
+import { createRateLimitStore } from './server.ratelimit';
 import { PROVIDER_CATALOG, PROVIDER_ORDER, FREE_MODEL_PRESETS, getProviderMeta } from './src/lib/providers';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
@@ -30,21 +33,71 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 // all-interfaces default so container/remote previews still work.
 const HOST = process.env.SUPRU_HOST || '0.0.0.0';
 
-// Security headers. CSP is disabled because Vite injects inline scripts and the
-// Studio renders generated HTML in sandboxed iframes; the rest of the helmet
-// defaults still apply.
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+// Security headers. The CSP is written explicitly rather than left off: it keeps
+// the SPA and the sandboxed Studio previews working while blocking injected
+// remote scripts. `script-src 'unsafe-inline'` is required by Vite's inline
+// bootstrap; the preview iframes use `srcdoc` (about:srcdoc) so they are not
+// covered by script-src. Google Fonts (loaded by index.html) and user-supplied
+// provider endpoints are explicitly allowed.
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+        fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
+        connectSrc: ["'self'", 'https:', 'http:', 'ws:', 'wss:'],
+        workerSrc: ["'self'", 'blob:'],
+        mediaSrc: ["'self'", 'data:', 'blob:', 'https:'],
+        objectSrc: ["'none'"],
+        frameSrc: ["'self'"],
+        frameAncestors: ["'self'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  }),
+);
+
+// gzip/deflate responses over the size threshold; skips tiny payloads and
+// non-compressible content automatically.
+app.use(compression());
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Rate limiting. Tests disable it via SUPRU_DISABLE_RATE_LIMIT=1.
+// Request correlation + access logging. Every request gets an X-Request-Id
+// (honouring an inbound one so traces survive a proxy hop) and one structured
+// line is emitted on completion with method, path, status, and duration.
+app.use((req, res, next) => {
+  const requestId = req.get('x-request-id') || crypto.randomUUID();
+  (req as any).requestId = requestId;
+  res.setHeader('X-Request-Id', requestId);
+  const start = process.hrtime.bigint();
+  res.on('finish', () => {
+    const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
+    const line = `${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs.toFixed(1)}ms`;
+    if (res.statusCode >= 500) logger.error(line, { requestId });
+    else if (res.statusCode >= 400) logger.warn(line, { requestId });
+    else logger.info(line, { requestId });
+  });
+  next();
+});
+
+// Rate limiting. Tests disable it via SUPRU_DISABLE_RATE_LIMIT=1. When REDIS_URL
+// is set the counters are shared across instances and survive restarts.
 const rateLimitEnabled = process.env.SUPRU_DISABLE_RATE_LIMIT !== '1';
+const rateLimitStore = createRateLimitStore();
 const apiLimiter = rateLimit({
   windowMs: 60_000,
   limit: 120,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  store: rateLimitStore.store,
   skip: () => !rateLimitEnabled,
 });
 // Tighter budget for endpoints that cost money/quota or spawn processes.
@@ -53,6 +106,7 @@ const heavyLimiter = rateLimit({
   limit: 20,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
+  store: rateLimitStore.store,
   skip: () => !rateLimitEnabled,
 });
 app.use('/api', apiLimiter);
@@ -2314,12 +2368,37 @@ app.use('/api', (req, res) => {
   res.status(404).json({ error: `Unknown API route: ${req.method} ${req.originalUrl}` });
 });
 
+// Optional outbound error reporting. Point SUPRU_ERROR_WEBHOOK at any HTTPS
+// endpoint (Slack/Discord webhook, Opsgenie, custom collector) to receive a
+// compact JSON payload for every 5xx. Best-effort: failures never affect the
+// response. Kept dependency-free so no monitoring SDK is required.
+const errorWebhook = process.env.SUPRU_ERROR_WEBHOOK || '';
+function reportError(payload: Record<string, unknown>) {
+  if (!errorWebhook) return;
+  fetch(errorWebhook, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app: 'Supru AI', ...payload }),
+  }).catch((err) => logger.warn('Error webhook delivery failed:', err));
+}
+
 // Centralised error handler: malformed JSON bodies and thrown route errors
 // become clean JSON responses instead of stack traces or crashes.
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const status = err?.status || (err?.type === 'entity.parse.failed' ? 400 : 500);
   const message = err?.type === 'entity.parse.failed' ? 'Malformed JSON request body' : (err?.message || 'Internal server error');
-  if (status >= 500) logger.error('Unhandled server error:', err);
+  if (status >= 500) {
+    logger.error('Unhandled server error:', err);
+    reportError({
+      level: 'error',
+      message: err?.message || 'Internal server error',
+      stack: typeof err?.stack === 'string' ? err.stack.split('\n').slice(0, 6).join('\n') : undefined,
+      requestId: (req as any).requestId,
+      method: req.method,
+      path: req.originalUrl,
+      timestamp: new Date().toISOString(),
+    });
+  }
   if (!res.headersSent) res.status(status).json({ error: message });
 });
 
@@ -2365,6 +2444,7 @@ async function startServer() {
     logger.info(`${signal} received, shutting down gracefully...`);
     server.close(() => {
       logger.info('HTTP server closed.');
+      rateLimitStore.close?.();
       process.exit(0);
     });
     // Force-exit if connections refuse to drain.
@@ -2373,6 +2453,17 @@ async function startServer() {
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.once(signal, () => shutdown(signal));
   }
+
+  // A rejected promise or uncaught throw outside a request must not leave the
+  // process in an unknown state. Report it and exit so the orchestrator can
+  // restart cleanly rather than serving corrupted state.
+  process.on('unhandledRejection', (reason) => {
+    logger.error('Unhandled promise rejection:', reason);
+  });
+  process.on('uncaughtException', (err) => {
+    logger.error('Uncaught exception, exiting:', err);
+    shutdown('uncaughtException');
+  });
   return server;
 }
 

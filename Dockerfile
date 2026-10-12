@@ -15,7 +15,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
-COPY server.ts server.providers.ts ./
+COPY server.ts server.providers.ts server.ratelimit.ts ./
 # tsx runs the TypeScript server directly; no separate compile step needed.
 RUN npm install -g tsx@4
 

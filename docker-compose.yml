@@ -1,0 +1,26 @@
+# Optional local production stack: app + Redis-backed rate limiting.
+#   docker compose up --build
+# The app is served at http://localhost:3000. Set SUPRU_ACCESS_TOKEN in a .env
+# file (or your shell) to gate the API for public exposure.
+services:
+  app:
+    build: .
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      SUPRU_HOST: 0.0.0.0
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: info
+      # GEMINI_API_KEY: ${GEMINI_API_KEY}
+      # GITHUB_TOKEN: ${GITHUB_TOKEN}
+      # SUPRU_ACCESS_TOKEN: ${SUPRU_ACCESS_TOKEN}
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    restart: unless-stopped
