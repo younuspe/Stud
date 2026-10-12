@@ -37,6 +37,20 @@ describe('sanitizeHtml', () => {
     const out = sanitizeHtml('<a href="https://supru.dev/docs">docs</a>');
     expect(out).toContain('href="https://supru.dev/docs"');
   });
+
+  it('defeats common bypass attempts', () => {
+    expect(sanitizeHtml('<img src=x onerror=alert(1)>')).not.toContain('onerror');
+    expect(sanitizeHtml('<a href="java\nscript:alert(1)">x</a>')).not.toMatch(/javascript:/i);
+    expect(sanitizeHtml('<a href="data:text/html,<script>alert(1)</script>">x</a>')).not.toContain('data:text/html');
+    expect(sanitizeHtml('<svg onload="alert(1)"></svg>')).not.toContain('onload');
+    expect(sanitizeHtml('<math><mtext><script>alert(1)</script></mtext></math>')).not.toContain('<script');
+  });
+
+  it('drops inline style attributes', () => {
+    const out = sanitizeHtml('<div style="background:url(javascript:alert(1))">x</div>');
+    expect(out).not.toContain('style=');
+    expect(out).not.toMatch(/javascript:/i);
+  });
 });
 
 describe('escapeHtml', () => {

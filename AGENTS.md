@@ -172,3 +172,28 @@ and `/api/status` stay open; web client sends it via `src/utils/apiAuth.ts` from
   smoke test. `docker-compose.yml` = app + Redis. README has a deployment section.
 - `npm audit` still reports 3 dev-only advisories in vitest/tinypool; not in the
   production bundle.
+
+### Security fixes (audit remediation)
+
+Full audit in `AUDIT.md`. Fixed:
+
+- **Exec guard (was C1/RCE).** `isLocalRequest` now requires the TCP peer to be
+  loopback AND no `X-Forwarded-For`/`X-Real-IP` header. A same-host reverse proxy
+  connects from loopback, so header presence is what distinguishes a real local
+  client from a proxied remote one. `requireLocal` also requires
+  `SUPRU_ALLOW_REMOTE_EXEC=1` **and** `SUPRU_ACCESS_TOKEN` for remote use, and is
+  enforced as middleware on `EXEC_PATHS` (`/api/terminal/execute`, `/api/agent/*`).
+- **Safe bind.** `assertSafeBind()` refuses a non-loopback bind in production
+  without `SUPRU_ACCESS_TOKEN` (dev warns); override `SUPRU_ALLOW_INSECURE_PUBLIC=1`.
+  The dev/canvas run uses that override — keep it when restarting the preview.
+- **SSRF.** `isSafeEndpointUrl` is now async and rejects loopback/private/
+  link-local/CGNAT/metadata (and DNS names resolving to them) when
+  `SUPRU_ALLOW_PRIVATE_ENDPOINTS=0`. Metadata is always rejected.
+- **Token in bundle (was H2).** `src/utils/apiAuth.ts` reads the token from
+  localStorage at runtime only — never `import.meta.env` (Vite would inline it).
+- **Bodies/errors.** `SUPRU_MAX_BODY_MB` (default 8) with a clean 413; 5xx bodies
+  are generic (`Internal server error`) plus `requestId`.
+- **Sanitizer.** `src/utils/sanitize.ts` now wraps DOMPurify.
+
+Regression tests live in `tests/server.test.ts` (exec guard, body limits),
+`tests/providers.test.ts` (SSRF), `tests/sanitize.test.ts` (DOMPurify bypasses).

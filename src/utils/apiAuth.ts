@@ -3,13 +3,13 @@
  *
  * The server only enforces a token when SUPRU_ACCESS_TOKEN is set (public
  * deployments). Local/desktop runs have no token, so this is a no-op there.
- * The token comes from VITE_SUPRU_ACCESS_TOKEN at build time or from
- * localStorage ('supru_access_token') at runtime, whichever is present.
+ *
+ * The token is read from localStorage at runtime ONLY. It is deliberately not
+ * read from `import.meta.env`: Vite inlines those values into the shipped JS, so
+ * a build-time token would be readable by anyone and would defeat the gate.
  */
 const TOKEN =
-  (import.meta as any).env?.VITE_SUPRU_ACCESS_TOKEN ||
-  (typeof localStorage !== 'undefined' ? localStorage.getItem('supru_access_token') : '') ||
-  '';
+  (typeof localStorage !== 'undefined' ? localStorage.getItem('supru_access_token') : '') || '';
 
 if (TOKEN) {
   const originalFetch = window.fetch.bind(window);

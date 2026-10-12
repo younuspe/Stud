@@ -10,6 +10,8 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
+import dns from 'node:dns';
+import net from 'node:net';
 import { getProviderMeta, isOpenAICompatible } from './src/lib/providers';
 import { logger } from './src/utils/logger';
 
@@ -69,10 +71,46 @@ export function normalizeProvider(provider: string | undefined): string {
   return PROVIDER_ALIASES[p] || p;
 }
 
-/** Reject endpoint URLs that are not plain HTTP(S) or that target the cloud
- *  metadata service. Local hosts stay allowed because connecting to a local
- *  model server is an intended feature. */
-export function isSafeEndpointUrl(raw: string): boolean {
+/** True when the process may reach private/loopback/link-local hosts. Defaults
+ *  to local (so local model servers work); a public deployment should set
+ *  SUPRU_ALLOW_PRIVATE_ENDPOINTS=0 to close the SSRF surface. */
+function privateEndpointsAllowed(): boolean {
+  return process.env.SUPRU_ALLOW_PRIVATE_ENDPOINTS !== '0';
+}
+
+/** True for loopback, private, link-local, CGNAT, unique-local, and other
+ *  addresses that must not be reachable when SSRF protection is on. */
+export function isPrivateAddress(host: string): boolean {
+  let h = host.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (!h) return true;
+  if (h === 'localhost' || h.endsWith('.localhost')) return true;
+  // IPv4-mapped IPv6 (::ffff:127.0.0.1).
+  h = h.replace(/^::ffff:/, '');
+  const v4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true; // link-local + cloud metadata
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    if (a >= 224) return true; // multicast / reserved
+    return false;
+  }
+  if (h === '::1' || h === '::' || h === '0.0.0.0') return true;
+  if (/^f[cd][0-9a-f]{2}:/i.test(h)) return true; // fc00::/7 unique-local
+  if (/^fe[89ab][0-9a-f]:/i.test(h)) return true; // fe80::/10 link-local
+  return false;
+}
+
+/**
+ * Reject endpoint URLs that are not plain HTTP(S), that target the cloud
+ * metadata service, or — when private endpoints are disallowed — that point at
+ * any loopback/private/link-local host. A literal IP is checked directly; a
+ * hostname is resolved and every answer is checked, so a public name that
+ * resolves to an internal address (DNS-rebinding style) is rejected too.
+ */
+export async function isSafeEndpointUrl(raw: string): Promise<boolean> {
   let parsed: URL;
   try {
     parsed = new URL(raw);
@@ -80,15 +118,24 @@ export function isSafeEndpointUrl(raw: string): boolean {
     return false;
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
-  if (parsed.hostname === '169.254.169.254') return false;
-  return true;
+  const host = parsed.hostname;
+  if (host === '169.254.169.254') return false;
+  if (privateEndpointsAllowed()) return true;
+  if (isPrivateAddress(host)) return false;
+  if (net.isIP(host)) return true;
+  try {
+    const records = await dns.promises.lookup(host, { all: true });
+    return records.length > 0 && records.every((r) => !isPrivateAddress(r.address));
+  } catch {
+    return false;
+  }
 }
 
 /** Resolve the base URL for an OpenAI-compatible provider. */
-function resolveBaseUrl(req: ProviderRequest): string {
+async function resolveBaseUrl(req: ProviderRequest): Promise<string> {
   const meta = getProviderMeta(normalizeProvider(req.provider) || 'custom');
   const candidate = req.endpointUrl?.trim() || meta.baseUrl;
-  const base = isSafeEndpointUrl(candidate) ? candidate : meta.baseUrl;
+  const base = (await isSafeEndpointUrl(candidate)) ? candidate : meta.baseUrl;
   return base.replace(/\/$/, '');
 }
 
@@ -189,7 +236,7 @@ export async function callProvider(
     if (isOpenAICompatible(provider)) {
       // Local providers (ollama / lmstudio / custom) need no key.
       const meta = getProviderMeta(provider);
-      const base = resolveBaseUrl(req);
+      const base = await resolveBaseUrl(req);
       const isOllamaNative = provider === 'ollama' || provider === 'ollama_local';
 
       // Ollama exposes a native /api/chat endpoint; prefer it when talking to a
@@ -294,7 +341,7 @@ export async function testProvider(req: ProviderRequest): Promise<{
 
   // Local servers: probe their model-listing endpoints.
   if (provider === 'ollama' || provider === 'ollama_local') {
-    const base = resolveBaseUrl(req).replace(/\/v1$/, '');
+    const base = (await resolveBaseUrl(req)).replace(/\/v1$/, '');
     try {
       const r = await fetch(`${base}/api/tags`, { signal: AbortSignal.timeout(3500) });
       if (r.ok) {
@@ -313,12 +360,12 @@ export async function testProvider(req: ProviderRequest): Promise<{
     return {
       status: 'offline',
       latencyMs: Date.now() - started,
-      message: `Could not reach Ollama at ${resolveBaseUrl(req)}. Is it running?`,
+      message: `Could not reach Ollama at ${base}. Is it running?`,
     };
   }
 
   if (provider === 'lmstudio' || provider === 'custom' || provider === 'lmstudio_local' || provider === 'custom_local') {
-    const base = resolveBaseUrl(req);
+    const base = await resolveBaseUrl(req);
     try {
       const r = await fetch(`${base}/models`, { signal: AbortSignal.timeout(3500) });
       if (r.ok) {

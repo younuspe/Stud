@@ -84,7 +84,10 @@ Operational environment variables (all optional):
 | `PORT` / `SUPRU_HOST` | Listen port (default 3000) and interface (default 0.0.0.0). |
 | `GEMINI_API_KEY` | Enables Gemini + image/video generation. Without it the app runs keyless. |
 | `GITHUB_TOKEN` / `GH_TOKEN` / `GITHUB_PAT` | Server-side token for the Supru Git module. |
-| `SUPRU_ACCESS_TOKEN` | Gates the whole API behind a bearer token (leave unset for local use). |
+| `SUPRU_ACCESS_TOKEN` | Gates the whole API behind a bearer token. **Required** for a non-loopback production bind. |
+| `SUPRU_ALLOW_INSECURE_PUBLIC` | Escape hatch: allow a non-loopback bind with no gate (not recommended). |
+| `SUPRU_MAX_BODY_MB` | Max request body size in MB (default 8). |
+| `SUPRU_ALLOW_PRIVATE_ENDPOINTS` | `1` (default) allows local/private provider endpoints; `0` blocks them (SSRF protection for public deploys). |
 | `REDIS_URL` | Shares rate-limit counters across instances (needs `ioredis` + `rate-limit-redis`). |
 | `SUPRU_ERROR_WEBHOOK` | Receives a JSON payload for every 5xx (Slack/Discord/Opsgenie/custom). |
 | `SUPRU_TRUST_PROXY` | Reverse-proxy trust setting for correct client-IP rate limiting. |
@@ -98,10 +101,21 @@ sandboxed Studio previews while blocking injected remote scripts.
 
 ### Security notes
 
-- Command-executing endpoints (`/api/terminal/execute`, `/api/agent/*`,
-  `/api/orchestrator/*`) are gated to local/private callers unless
-  `SUPRU_ALLOW_REMOTE_EXEC` is set.
-- For a public deployment, set `SUPRU_ACCESS_TOKEN`, terminate TLS at a proxy,
+- Command-executing endpoints (`/api/terminal/execute`, `/api/agent/*`) are
+  gated to *direct* local callers. A forwarded request (`X-Forwarded-For` /
+  `X-Real-IP` present) is never treated as local, even though a reverse proxy on
+  the same host connects from loopback — this closes the proxy-bypass that made
+  those routes remotely reachable. Remote exec additionally requires
+  `SUPRU_ALLOW_REMOTE_EXEC=1` **and** `SUPRU_ACCESS_TOKEN`.
+- A production server bound to a non-loopback interface refuses to start unless
+  `SUPRU_ACCESS_TOKEN` (or `SUPRU_ALLOW_INSECURE_PUBLIC=1`) is set.
+- Provider `endpointUrl` values are validated against SSRF. Set
+  `SUPRU_ALLOW_PRIVATE_ENDPOINTS=0` on a public deployment to reject loopback,
+  private, link-local, and metadata addresses (including DNS names that resolve
+  to them).
+- The access token is never inlined into the client bundle; the web client reads
+  it from `localStorage` at runtime only.
+- For a public deployment: set `SUPRU_ACCESS_TOKEN`, terminate TLS at a proxy,
   and set `SUPRU_TRUST_PROXY` so rate limiting keys on the real client IP.
 - Rate limits are in-memory per process by default; add Redis for a multi-instance
   deployment.

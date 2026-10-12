@@ -2,6 +2,8 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 
 process.env.SUPRU_DISABLE_RATE_LIMIT = '1';
+// Keep the body limit small so the oversized-payload test stays cheap.
+process.env.SUPRU_MAX_BODY_MB = '1';
 
 let app: any;
 beforeAll(async () => {
@@ -114,6 +116,18 @@ describe('response compression', () => {
   });
 });
 
+describe('request body limits', () => {
+  it('rejects an oversized JSON body with 413', async () => {
+    const big = 'x'.repeat(1024 * 1024 + 1024); // just over the 1mb test limit
+    const res = await request(app)
+      .post('/api/terminal/execute')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ command: big }));
+    expect(res.status).toBe(413);
+    expect(res.body.error).toMatch(/too large/i);
+  });
+});
+
 describe('GET /api/health', () => {
   it('reports ok with uptime and version', async () => {
     const res = await request(app).get('/api/health');
@@ -128,5 +142,37 @@ describe('server-side GitHub token', () => {
   it('exposes hasGithubToken in /api/status as a boolean', async () => {
     const res = await request(app).get('/api/status');
     expect(typeof res.body.hasGithubToken).toBe('boolean');
+  });
+});
+
+describe('exec guard (C1 regression)', () => {
+  it('allows a direct loopback caller', async () => {
+    const res = await request(app)
+      .post('/api/terminal/execute')
+      .send({ command: 'echo ok' });
+    expect(res.status).toBe(200);
+    expect(res.body.output).toContain('ok');
+  });
+
+  it('rejects a forwarded (proxied) request even from a loopback socket', async () => {
+    const res = await request(app)
+      .post('/api/terminal/execute')
+      .set('X-Forwarded-For', '203.0.113.7')
+      .send({ command: 'id' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/restricted to the local/i);
+  });
+
+  it('rejects a forwarded request to /api/agent/step', async () => {
+    const res = await request(app)
+      .post('/api/agent/step')
+      .set('X-Real-IP', '203.0.113.7')
+      .send({ command: 'whoami' });
+    expect(res.status).toBe(403);
+  });
+
+  it('leaves non-exec routes reachable through the proxy', async () => {
+    const res = await request(app).get('/api/providers').set('X-Forwarded-For', '203.0.113.7');
+    expect(res.status).toBe(200);
   });
 });

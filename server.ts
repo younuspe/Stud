@@ -3,6 +3,9 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import os from 'os';
+import net from 'net';
+import dns from 'dns';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { exec, execSync } from 'child_process';
 import util from 'util';
@@ -67,8 +70,12 @@ app.use(
 // non-compressible content automatically.
 app.use(compression());
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Request body limits. Chat/image payloads can carry base64 data URLs, so the
+// default is a few MB rather than the previous 50 MB (which was a trivial
+// memory/DoS surface). Override with SUPRU_MAX_BODY_MB when you need larger.
+const bodyLimitMb = Math.max(1, parseInt(process.env.SUPRU_MAX_BODY_MB || '8', 10) || 8);
+app.use(express.json({ limit: `${bodyLimitMb}mb` }));
+app.use(express.urlencoded({ extended: true, limit: `${bodyLimitMb}mb` }));
 
 // Request correlation + access logging. Every request gets an X-Request-Id
 // (honouring an inbound one so traces survive a proxy hop) and one structured
@@ -123,6 +130,11 @@ app.use(heavyPaths, heavyLimiter);
 // present it via `Authorization: Bearer <token>` or `x-supru-token`. Health and
 // status stay open so probes and the login screen work.
 const accessToken = process.env.SUPRU_ACCESS_TOKEN || '';
+
+// Command-executing routes. They are only safe for a trusted local caller, so
+// they get their own guard (below) on top of the optional global gate.
+const EXEC_PATHS = ['/api/terminal/execute', '/api/agent/step', '/api/agent/execute-step'];
+
 if (accessToken) {
   // Mounted at '/api', so req.path here is relative ('/health', '/status').
   const openPaths = new Set(['/health', '/status']);
@@ -136,22 +148,38 @@ if (accessToken) {
 }
 
 /**
- * Endpoints that spawn shell commands or run project tooling are only safe to
- * expose to the local desktop client. Allow loopback and private-network
- * callers; refuse anything else. Set SUPRU_ALLOW_REMOTE_EXEC=1 to opt out
- * (e.g. behind an authenticated reverse proxy).
+ * True when the request arrived directly from this machine — i.e. the TCP peer
+ * is loopback AND no proxy forwarded it. Checking `req.ip` alone is unsafe: the
+ * server trusts private-network proxies (see `trust proxy`), so behind a reverse
+ * proxy `req.ip` is the proxy's private address and every remote caller would
+ * look "local". A forwarded request always carries an X-Forwarded-For header,
+ * so its presence means the peer is a proxy, not the end user.
  */
 function isLocalRequest(req: express.Request): boolean {
-  if (process.env.SUPRU_ALLOW_REMOTE_EXEC === '1') return true;
-  const raw = (req.socket?.remoteAddress || req.ip || '').replace(/^::ffff:/, '');
-  return raw === '127.0.0.1' || raw === '::1' || raw === 'localhost' || raw.startsWith('10.') || raw.startsWith('192.168.') || /^172\.(1[6-9]|2\d|3[01])\./.test(raw);
+  const raw = (req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+  const isLoopbackPeer =
+    raw === '127.0.0.1' || raw === '::1' || raw === 'localhost' || raw.startsWith('127.');
+  if (!isLoopbackPeer) return false;
+  return !req.get('x-forwarded-for') && !req.get('x-real-ip');
 }
 
+/**
+ * Guard for shell/agent execution. Allowed only for a direct local caller, or
+ * when SUPRU_ALLOW_REMOTE_EXEC=1 is set *and* the API gate is active — so a
+ * deliberate remote opt-in can never leave execution unauthenticated.
+ */
 function requireLocal(req: express.Request, res: express.Response): boolean {
   if (isLocalRequest(req)) return true;
+  if (process.env.SUPRU_ALLOW_REMOTE_EXEC === '1' && accessToken) return true;
   res.status(403).json({ error: 'Command execution is restricted to the local Supru client.' });
   return false;
 }
+
+// Belt-and-braces: enforce the exec guard as middleware so any future
+// command-running route is covered even if it forgets the inline check.
+app.use(EXEC_PATHS, (req, res, next) => {
+  if (requireLocal(req, res)) next();
+});
 
 const GITHUB_SEGMENT = /^[A-Za-z0-9._-]+$/;
 // Server-side GitHub token so Supru Git works without the user pasting a PAT.
@@ -2383,10 +2411,16 @@ function reportError(payload: Record<string, unknown>) {
 }
 
 // Centralised error handler: malformed JSON bodies and thrown route errors
-// become clean JSON responses instead of stack traces or crashes.
+// become clean JSON responses instead of stack traces or crashes. Client errors
+// (4xx) keep a helpful message; server errors (5xx) return a generic message
+// plus the request id so internals are never echoed to the caller.
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  const status = err?.status || (err?.type === 'entity.parse.failed' ? 400 : 500);
-  const message = err?.type === 'entity.parse.failed' ? 'Malformed JSON request body' : (err?.message || 'Internal server error');
+  const status = err?.status || err?.statusCode || (err?.type === 'entity.parse.failed' ? 400 : 500);
+  let message: string;
+  if (err?.type === 'entity.parse.failed') message = 'Malformed JSON request body';
+  else if (err?.type === 'entity.too.large' || status === 413) message = 'Request body too large';
+  else if (status >= 500) message = 'Internal server error';
+  else message = err?.message || 'Request failed';
   if (status >= 500) {
     logger.error('Unhandled server error:', err);
     reportError({
@@ -2399,7 +2433,9 @@ app.use((err: any, req: express.Request, res: express.Response, _next: express.N
       timestamp: new Date().toISOString(),
     });
   }
-  if (!res.headersSent) res.status(status).json({ error: message });
+  if (!res.headersSent) {
+    res.status(status).json({ error: message, requestId: (req as any).requestId });
+  }
 });
 
 // Vite middleware or static serving
@@ -2469,6 +2505,25 @@ async function startServer() {
 
 export { app, startServer };
 
+/**
+ * Warn (dev) or refuse (production) to bind a non-loopback interface without an
+ * API gate. An unauthenticated server on 0.0.0.0 exposes shell execution and
+ * paid AI calls to anyone who can reach it. Set SUPRU_ACCESS_TOKEN to gate the
+ * API, or SUPRU_ALLOW_INSECURE_PUBLIC=1 to explicitly accept the risk.
+ */
+function assertSafeBind() {
+  const loopbackHosts = new Set(['127.0.0.1', '::1', 'localhost']);
+  if (loopbackHosts.has(HOST)) return;
+  if (accessToken || process.env.SUPRU_ALLOW_INSECURE_PUBLIC === '1') return;
+  const msg =
+    `Binding ${HOST} without authentication exposes shell execution and paid AI calls. ` +
+    `Set SUPRU_ACCESS_TOKEN to gate the API, or SUPRU_ALLOW_INSECURE_PUBLIC=1 to override (not recommended).`;
+  if (process.env.NODE_ENV === 'production' || process.env.SUPRU_REQUIRE_AUTH === '1') {
+    throw new Error(msg);
+  }
+  logger.warn(`${msg} (development mode: continuing without the gate.)`);
+}
+
 // Only boot when executed directly (tests import `app` instead).
 const entry = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : '';
 if (import.meta.url === entry) {
@@ -2478,6 +2533,15 @@ if (import.meta.url === entry) {
   }
   if (process.env.NODE_ENV !== 'production') {
     logger.info('Starting in development mode (Vite middleware). Set NODE_ENV=production to serve dist/.');
+  }
+  if (process.env.SUPRU_ALLOW_REMOTE_EXEC === '1' && !accessToken) {
+    logger.warn('SUPRU_ALLOW_REMOTE_EXEC is set without SUPRU_ACCESS_TOKEN; remote exec stays blocked until the gate is enabled.');
+  }
+  try {
+    assertSafeBind();
+  } catch (err) {
+    logger.error((err as Error).message);
+    process.exit(1);
   }
   startServer().catch((err) => {
     logger.error('Failed to start server:', err);
