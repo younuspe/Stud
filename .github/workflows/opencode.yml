@@ -14,23 +14,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
-      contents: write # Required for the agent to push PR fixes natively
-      issues: write   # Required to read issue description fields
+      contents: write 
+      issues: write   
       pull-requests: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 1
-          persist-credentials: true # Crucial: set to true so agent can commit code changes
+          persist-credentials: true 
 
-      - name: Run OpenCode with NVIDIA Backend
+      - name: Run OpenCode with Google Backend
         uses: anomalyco/opencode/github@latest
         env:
-          # 1. Map your safe environment secret key
-          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
-          # 2. Fix the client endpoint routing bug directly inside the runner environment
-          OPENAI_BASE_URL: https://nvidia.com
+          # Map your safe Google API Studio key
+          GEMINI_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         with:
-          # Use the verified optimization model identifier string
-          model: nvidia/nemotron-3.5-lightning-30b
+          # Use Google's active flagship free coding engine
+          model: google/gemini-3.8-flash
