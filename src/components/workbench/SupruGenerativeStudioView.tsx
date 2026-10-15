@@ -1,37 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { 
-  Sparkles, 
-  Wand2, 
-  Image as ImageIcon, 
-  Film, 
-  Box, 
-  Sliders, 
-  Volume2, 
-  VolumeX, 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  Download, 
-  Copy, 
-  Check, 
-  Send, 
-  Code2, 
-  Maximize2, 
-  RefreshCw, 
-  Layers, 
-  Zap, 
-  Terminal, 
-  ExternalLink,
-  Mic,
-  MicOff,
-  Trash2,
-  ChevronRight,
-  Eye,
-  Camera,
-  Cpu
+import React, { useState } from 'react';
+import {
+  Settings, ArrowUpRight, Share2, Upload, ChevronDown, Folder, Search, Plus,
+  ChevronUp, ChevronRight, Code2, Eye, RefreshCw, Maximize, Monitor, Smartphone,
+  Pencil, Hand, MousePointer2, Eraser, ArrowRight, Square, Circle, Image as ImageIcon,
+  Palette, FileText, Type, Mic, Sparkles, SlidersHorizontal, Shapes, MoreHorizontal,
+  Undo2, Redo2, Play, Send, Cat, X
 } from 'lucide-react';
-import { soundFx } from '../../utils/audio';
-import { useSpeechListener } from '../../utils/useSpeechListener';
 
 interface SupruGenerativeStudioViewProps {
   onSendToChat?: (content: string, imageUrl?: string) => void;
@@ -41,954 +15,208 @@ interface SupruGenerativeStudioViewProps {
   onOpenVeoStudio?: (imageUrl?: string) => void;
 }
 
-export type GenerativeMode = 'visual' | 'motion' | 'world3d' | 'atomic' | 'audio';
+type CanvasTool = 'hand' | 'select' | 'pencil' | 'eraser' | 'arrow' | 'rectangle' | 'circle' | 'image' | 'text';
 
-interface ManifestedArtifact {
-  id: string;
-  type: 'image' | 'video' | 'world-state' | 'component' | 'audio';
-  title: string;
-  prompt: string;
-  dataUrl?: string;
-  codeSnippet?: string;
-  timestamp: number;
-  metadata?: Record<string, any>;
-}
-
-const STYLE_PRESETS = [
-  { id: 'sovereign-dark', label: 'Sovereign Dark', icon: '🌌', desc: 'Obsidian void, deep amber filaments & atmospheric neon bloom' },
-  { id: 'cyberpunk-neon', label: 'Neo-Noir Cyberpunk', icon: '⚡', desc: 'Rain-soaked asphalt, holographic reflections & cyan-magenta neon' },
-  { id: 'hyper-real', label: 'Hyper-Real 8K', icon: '📸', desc: 'Optical cinematic depth of field, anamorphic bokeh & RAW textures' },
-  { id: 'anime-shonen', label: 'Cyber Anime', icon: '⚔️', desc: 'Makoto Shinkai celestial lighting, high-contrast cel-shaded lines' },
-  { id: 'surrealist', label: 'Surrealist Dream', icon: '🔮', desc: 'Gravity-defying physics, liquid metals & dreamlike geometry' },
-  { id: 'editorial', label: 'High-Fashion Vogue', icon: '💎', desc: 'Studio strobe lighting, avant-garde textures & high-gloss editorial' },
-  { id: 'voxel-3d', label: 'Isometric Voxel 3D', icon: '🧊', desc: 'Raytraced micro-diorama, tactile voxel lighting & tilt-shift blur' },
-  { id: 'synthwave', label: 'Retro Synthwave', icon: '🌆', desc: '1984 wireframe horizon, chrome text & outrun sunset grid' },
-];
-
-const ASPECT_RATIOS = [
-  { id: '1:1', label: '1:1 Square', width: 1024, height: 1024 },
-  { id: '16:9', label: '16:9 Cinema Wide', width: 1280, height: 720 },
-  { id: '9:16', label: '9:16 Mobile Story', width: 720, height: 1280 },
-  { id: '4:3', label: '4:3 Classic Photo', width: 1024, height: 768 },
-  { id: '21:9', label: '21:9 Ultrawide', width: 1536, height: 658 },
-];
-
-const PROMPT_SUGGESTIONS = [
-  'A sovereign robotic tuxedo cat with glowing amber whiskers overlooking a neon neo-Tokyo citadel in heavy rain',
-  '4D quantum singularity world-state with liquid obsidian floating structures and holographic crystal rings',
-  'Futuristic glass neural interface control console with floating particle telemetry and chromatic aberration',
-  'Sleek cyberpunk mech tiger poised on a skyscraper spire, cinematic volumetric fog and golden hour lighting',
-  'Hyper-detailed microscopic view of an organic cybernetic microprocessor pulsating with emerald light',
+const toolItems: { id: CanvasTool; label: string; icon: React.ElementType }[] = [
+  { id: 'hand', label: 'Pan canvas', icon: Hand },
+  { id: 'select', label: 'Select', icon: MousePointer2 },
+  { id: 'pencil', label: 'Draw', icon: Pencil },
+  { id: 'eraser', label: 'Eraser', icon: Eraser },
+  { id: 'arrow', label: 'Connector', icon: ArrowRight },
+  { id: 'rectangle', label: 'Rectangle', icon: Square },
+  { id: 'circle', label: 'Ellipse', icon: Circle },
+  { id: 'image', label: 'Add image', icon: ImageIcon },
+  { id: 'text', label: 'Text', icon: Type },
 ];
 
 export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps> = ({
   onSendToChat,
   onOpenInEditor,
-  onRunInTerminal,
-  onOpenImageStudio,
-  onOpenVeoStudio,
 }) => {
-  const [activeMode, setActiveMode] = useState<GenerativeMode>('visual');
-  const [prompt, setPrompt] = useState(PROMPT_SUGGESTIONS[0]);
-  const [selectedStyle, setSelectedStyle] = useState('sovereign-dark');
-  const [selectedAspectRatio, setSelectedAspectRatio] = useState('16:9');
-  const [isSynthesizing, setIsSynthesizing] = useState(false);
-  const [guidanceScale, setGuidanceScale] = useState(7.5);
-  const [refractiveIndex, setRefractiveIndex] = useState(1.42);
-  const [emotionalFrequency, setEmotionalFrequency] = useState(432); // Hz
-  const [seed, setSeed] = useState(42069);
-  const [currentResultImage, setCurrentResultImage] = useState<string | null>(null);
-  const [currentResultVideo, setCurrentResultVideo] = useState<string | null>(null);
-  const [manifestedArtifacts, setManifestedArtifacts] = useState<ManifestedArtifact[]>([
-    {
-      id: 'art-1',
-      type: 'image',
-      title: 'Sovereign Cyber Cat',
-      prompt: 'A sovereign tuxedo cat with cybernetic amber whiskers perched on a skyscraper overlooking Neo-Shinjuku in volumetric rain',
-      dataUrl: '/cat_icon.png',
-      timestamp: Date.now() - 3600000,
-    },
-  ]);
-  const [copiedCode, setCopiedCode] = useState(false);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const oscillatorRef = useRef<OscillatorNode | null>(null);
-  const gainNodeRef = useRef<GainNode | null>(null);
+  const [projectName, setProjectName] = useState('Project name');
+  const [activeTopTab, setActiveTopTab] = useState('App.tsx');
+  const [activeRightTab, setActiveRightTab] = useState<'code' | 'preview'>('code');
+  const [activeTool, setActiveTool] = useState<CanvasTool>('hand');
+  const [activeNode, setActiveNode] = useState('Main Idea');
+  const [prompt, setPrompt] = useState('');
+  const [showOmniCanvas, setShowOmniCanvas] = useState(false);
+  const [showFileExplorer, setShowFileExplorer] = useState(true);
+  const [showConcepts, setShowConcepts] = useState(true);
+  const [zoom, setZoom] = useState(80);
+  const [notice, setNotice] = useState('');
 
-  // 3D Liquid Canvas state
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
-  const [rotationAngle, setRotationAngle] = useState({ x: 0.2, y: 0.4 });
-  const isDraggingRef = useRef(false);
-  const lastMousePosRef = useRef({ x: 0, y: 0 });
-
-  // Voice speech listener
-  const {
-    isListening,
-    startListening,
-    stopListening,
-    voiceNotice,
-    setVoiceNotice,
-  } = useSpeechListener();
-
-  // Handle Speech dictation
-  const toggleSpeech = () => {
-    if (isListening) {
-      stopListening();
-    } else {
-      startListening(prompt, (newText) => {
-        setPrompt(newText);
-      });
-    }
+  const notify = (message: string) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(''), 2200);
   };
 
-  // 3D Liquid Canvas Simulation Effect
-  useEffect(() => {
-    if (activeMode !== 'world3d') return;
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let width = (canvas.width = canvas.parentElement?.clientWidth || 800);
-    let height = (canvas.height = canvas.parentElement?.clientHeight || 500);
-
-    const particles: Array<{
-      x: number;
-      y: number;
-      z: number;
-      baseX: number;
-      baseY: number;
-      baseZ: number;
-      color: string;
-      size: number;
-    }> = [];
-
-    const numParticles = 420;
-    const radius = Math.min(width, height) * 0.35;
-
-    for (let i = 0; i < numParticles; i++) {
-      const theta = Math.acos(2 * Math.random() - 1);
-      const phi = Math.random() * Math.PI * 2;
-      const x = radius * Math.sin(theta) * Math.cos(phi);
-      const y = radius * Math.sin(theta) * Math.sin(phi);
-      const z = radius * Math.cos(theta);
-      const colors = ['#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#10b981', '#ffffff'];
-      particles.push({
-        x,
-        y,
-        z,
-        baseX: x,
-        baseY: y,
-        baseZ: z,
-        color: colors[i % colors.length],
-        size: 1.5 + Math.random() * 2.5,
-      });
-    }
-
-    let angleY = rotationAngle.y;
-    let angleX = rotationAngle.x;
-    let t = 0;
-
-    const render = () => {
-      t += 0.015;
-      angleY += 0.005;
-
-      ctx.fillStyle = '#06060c';
-      ctx.fillRect(0, 0, width, height);
-
-      // Ambient backlight glow based on Refractive Index & Emotional Frequency
-      const gradient = ctx.createRadialGradient(
-        width / 2,
-        height / 2,
-        20,
-        width / 2,
-        height / 2,
-        radius * 1.5
-      );
-      gradient.addColorStop(0, `rgba(245, 158, 11, ${0.12 * refractiveIndex})`);
-      gradient.addColorStop(0.5, `rgba(236, 72, 153, ${0.08 * (emotionalFrequency / 432)})`);
-      gradient.addColorStop(1, 'rgba(6, 6, 12, 0)');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
-
-      const cx = width / 2;
-      const cy = height / 2;
-      const fov = 400;
-
-      // Draw connection filaments between nearby particles
-      ctx.lineWidth = 0.5;
-
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
-
-        // Modulation wave
-        const wave = Math.sin(t + i * 0.1) * (refractiveIndex * 12);
-        const rCurrent = 1 + wave / radius;
-
-        // Rotate Y
-        let rx1 = p.baseX * rCurrent * Math.cos(angleY) + p.baseZ * rCurrent * Math.sin(angleY);
-        let rz1 = -p.baseX * rCurrent * Math.sin(angleY) + p.baseZ * rCurrent * Math.cos(angleY);
-
-        // Rotate X
-        let ry2 = p.baseY * rCurrent * Math.cos(angleX) - rz1 * Math.sin(angleX);
-        let rz2 = p.baseY * rCurrent * Math.sin(angleX) + rz1 * Math.cos(angleX);
-
-        const depth = fov / (fov + rz2 + 200);
-        const projX = cx + rx1 * depth;
-        const projY = cy + ry2 * depth;
-        const alpha = Math.max(0.15, Math.min(1, (rz2 + radius) / (radius * 2)));
-
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = alpha;
-        ctx.beginPath();
-        ctx.arc(projX, projY, Math.max(0.8, p.size * depth), 0, Math.PI * 2);
-        ctx.fill();
-
-        // Connect nearby points
-        for (let j = i + 1; j < Math.min(i + 5, particles.length); j++) {
-          const p2 = particles[j];
-          let rx2 = p2.baseX * Math.cos(angleY) + p2.baseZ * Math.sin(angleY);
-          let rz_2 = -p2.baseX * Math.sin(angleY) + p2.baseZ * Math.cos(angleY);
-          let ry_2 = p2.baseY * Math.cos(angleX) - rz_2 * Math.sin(angleX);
-          let rz_final = p2.baseY * Math.sin(angleX) + rz_2 * Math.cos(angleX);
-
-          const depth2 = fov / (fov + rz_final + 200);
-          const px2 = cx + rx2 * depth2;
-          const py2 = cy + ry_2 * depth2;
-
-          const dist = Math.hypot(projX - px2, projY - py2);
-          if (dist < 45) {
-            ctx.strokeStyle = p.color;
-            ctx.globalAlpha = (1 - dist / 45) * 0.3 * alpha;
-            ctx.beginPath();
-            ctx.moveTo(projX, projY);
-            ctx.lineTo(px2, py2);
-            ctx.stroke();
-          }
-        }
-      }
-
-      ctx.globalAlpha = 1;
-
-      // HUD overlay: 120 FPS Direct-to-Metal
-      ctx.fillStyle = '#f59e0b';
-      ctx.font = '10px monospace';
-      ctx.fillText(`WORLD-STATE: 4D MANIFOLD | REFRACTIVE: ${refractiveIndex.toFixed(2)}n | FREQ: ${emotionalFrequency}Hz`, 16, 24);
-      ctx.fillStyle = '#10b981';
-      ctx.fillText(`HARDWARE: GPU-NATIVE BEVY/WGPU 120 FPS | PARTICLES: ${numParticles}`, 16, 40);
-
-      animationFrameRef.current = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [activeMode, refractiveIndex, emotionalFrequency, rotationAngle]);
-
-  // Audio Synthesizer Control
-  const toggleNeuralAudio = () => {
-    soundFx.playClick();
-    if (isPlayingAudio) {
-      if (oscillatorRef.current) {
-        try { oscillatorRef.current.stop(); } catch {}
-      }
-      setIsPlayingAudio(false);
-      return;
-    }
-
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      const ctx = new AudioCtx();
-      audioContextRef.current = ctx;
-
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(emotionalFrequency, ctx.currentTime);
-
-      gain.gain.setValueAtTime(0.08, ctx.currentTime);
-
-      // Low pass filter
-      const filter = ctx.createBiquadFilter();
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(800, ctx.currentTime);
-
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start();
-      oscillatorRef.current = osc;
-      gainNodeRef.current = gain;
-      setIsPlayingAudio(true);
-    } catch (e) {
-      console.warn('Audio synthesis unavailable:', e);
-    }
+  const sendPrompt = () => {
+    const text = prompt.trim();
+    if (!text) return;
+    onSendToChat?.(text);
+    setPrompt('');
+    notify('Prompt sent');
   };
 
-  // Synthesize / Manifest Reality
-  const handleManifest = async () => {
-    if (!prompt.trim() || isSynthesizing) return;
-    soundFx.playChime();
-    setIsSynthesizing(true);
-
-    try {
-      if (activeMode === 'visual') {
-        const enhancedPrompt = `${prompt}, ${selectedStyle} style, 8k resolution, volumetric atmospheric cinematic lighting, highly detailed masterpiece`;
-        const res = await fetch('/api/generate-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: enhancedPrompt,
-            aspectRatio: selectedAspectRatio,
-          }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data.imageUrl) {
-            setCurrentResultImage(data.imageUrl);
-            const newArtifact: ManifestedArtifact = {
-              id: `art-${Date.now()}`,
-              type: 'image',
-              title: prompt.slice(0, 36) + '...',
-              prompt: prompt,
-              dataUrl: data.imageUrl,
-              timestamp: Date.now(),
-              metadata: { style: selectedStyle, aspectRatio: selectedAspectRatio, seed },
-            };
-            setManifestedArtifacts((prev) => [newArtifact, ...prev]);
-            soundFx.playChime();
-          }
-        } else {
-          // Synthetic high-res fallback
-          setCurrentResultImage('/cat_icon.png');
-        }
-      } else if (activeMode === 'motion') {
-        // Trigger Veo Video API
-        const res = await fetch('/api/generate-video', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: prompt,
-            motionStyle: 'Cinematic Tracking Shot',
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.videoUrl) {
-            setCurrentResultVideo(data.videoUrl);
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Genesis Manifestation error:', err);
-    } finally {
-      setIsSynthesizing(false);
-    }
+  const openFile = (name: string) => {
+    setActiveTopTab(name);
+    onOpenInEditor?.(name, '');
   };
 
-  // Atomic Manipulator Semantic Object Example
-  const currentAtomicComponent = `<!-- 🐾 Sovereign Synthesized Component: ${prompt.slice(0, 24)} -->
-<div class="relative group rounded-3xl p-6 border border-amber-500/40 bg-[#0e0e18]/90 backdrop-blur-2xl shadow-[0_0_50px_rgba(245,158,11,0.2)] text-white font-sans max-w-md mx-auto transition-all hover:scale-105">
-  <div class="flex items-center justify-between mb-4">
-    <div class="flex items-center gap-2">
-      <span class="h-3 w-3 rounded-full bg-amber-400 animate-pulse shadow-[0_0_10px_#f59e0b]"></span>
-      <span class="text-xs font-mono font-bold tracking-widest text-amber-300 uppercase">SOVEREIGN CORE</span>
-    </div>
-    <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30">${emotionalFrequency}Hz</span>
-  </div>
-  <h3 class="text-xl font-black mb-2 text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-amber-100 to-amber-500">${prompt.slice(0, 32)}</h3>
-  <p class="text-xs text-gray-400 leading-relaxed mb-5">Synthesized via Supru Generative Studio with physical refractive index n=${refractiveIndex.toFixed(2)} and zero-latency GPU rendering.</p>
-  <button class="w-full py-2.5 rounded-xl font-bold text-xs bg-gradient-to-r from-amber-500 to-amber-600 text-neutral-950 shadow-lg hover:brightness-110 active:scale-95 transition-all">
-    Engage Sovereign Protocol
-  </button>
-</div>`;
+  const nodes = [
+    { id: 'Idea', x: 50, y: 20, w: 86 },
+    { id: 'Idea', x: 25, y: 32, w: 86 },
+    { id: 'Idea', x: 70, y: 32, w: 86 },
+    { id: 'Main Idea', x: 50, y: 48, w: 126 },
+    { id: 'Idea', x: 25, y: 63, w: 86 },
+    { id: 'Idea', x: 70, y: 63, w: 86 },
+    { id: 'Idea', x: 50, y: 76, w: 86 },
+  ];
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-[#050508] text-gray-200 select-none">
-      {/* =========================================================================
-          TOP BAR: SUPRU GENERATIVE STUDIO IDENTITY & MODE SELECTOR
-          ========================================================================= */}
-      <div className="flex items-center justify-between border-b border-white/[0.08] bg-[#090912]/95 px-4 py-2 backdrop-blur-2xl">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 to-rose-600 text-white shadow-[0_0_15px_rgba(236,72,153,0.4)]">
-            <Sparkles size={17} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-black text-sm tracking-wider text-white uppercase font-sans">
-                SUPRU <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-rose-300 to-amber-400">GENERATIVE STUDIO</span>
-              </span>
-              <span className="rounded bg-pink-500/20 px-1.5 py-0.2 text-[9px] font-mono font-bold text-pink-300 border border-pink-500/30">
-                GENESIS PROTOCOL
-              </span>
-            </div>
-            <div className="text-[10px] text-gray-400 font-mono flex items-center gap-2">
-              <span className="flex items-center gap-1 text-emerald-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Liquid GPU Canvas Ready
-              </span>
-              <span>•</span>
-              <span className="text-pink-400">World-State Manifestation</span>
-            </div>
-          </div>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#292728] text-[#e8e5e5] font-sans">
+      <header className="flex h-[70px] shrink-0 items-center border-b border-white/10 bg-[#302d2e]">
+        <div className="flex h-full min-w-0 flex-1 items-center justify-center border-r border-white/10 px-4">
+          <input
+            aria-label="Project name"
+            value={projectName}
+            onChange={(event) => setProjectName(event.target.value)}
+            className="w-full max-w-md bg-transparent text-center text-[22px] font-medium text-[#e7e3e4] outline-none placeholder:text-gray-500"
+          />
         </div>
-
-        {/* Studio Mode Selector Pills */}
-        <div className="flex items-center gap-1 rounded-xl border border-white/[0.08] bg-black/40 p-1">
-          <button
-            onClick={() => {
-              soundFx.playClick();
-              setActiveMode('visual');
-            }}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-              activeMode === 'visual'
-                ? 'bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-md'
-                : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
-            }`}
-          >
-            <ImageIcon size={13} />
-            <span>2D Visual</span>
-          </button>
-
-          <button
-            onClick={() => {
-              soundFx.playClick();
-              setActiveMode('motion');
-            }}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-              activeMode === 'motion'
-                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-neutral-950 shadow-md'
-                : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
-            }`}
-          >
-            <Film size={13} />
-            <span>4D Motion</span>
-          </button>
-
-          <button
-            onClick={() => {
-              soundFx.playClick();
-              setActiveMode('world3d');
-            }}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-              activeMode === 'world3d'
-                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-md'
-                : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
-            }`}
-          >
-            <Box size={13} />
-            <span>3D World</span>
-          </button>
-
-          <button
-            onClick={() => {
-              soundFx.playClick();
-              setActiveMode('atomic');
-            }}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
-              activeMode === 'atomic'
-                ? 'bg-gradient-to-r from-purple-500 to-violet-600 text-white shadow-md'
-                : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
-            }`}
-          >
-            <Code2 size={13} />
-            <span>Atomic UI</span>
-          </button>
-
-          <button
-            onClick={toggleNeuralAudio}
-            className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-all ${
-              isPlayingAudio
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 animate-pulse'
-                : 'text-gray-400 hover:text-emerald-400 hover:bg-white/[0.04]'
-            }`}
-            title="Toggle Neural Harmonic Soundscape"
-          >
-            {isPlayingAudio ? <Volume2 size={13} className="text-emerald-400" /> : <VolumeX size={13} />}
-            <span className="hidden sm:inline">Audio</span>
-          </button>
+        <div className="flex h-full shrink-0 items-center gap-1 px-3">
+          <button aria-label="Settings" onClick={() => notify('Settings')} className="rounded-lg p-3 hover:bg-white/10"><Settings size={25} /></button>
+          <button onClick={() => notify('Remix project')} className="flex items-center gap-2 rounded-lg px-3 py-2 text-[18px] hover:bg-white/10"><ArrowUpRight size={20} /> Remix</button>
+          <button onClick={() => notify('Share options')} className="rounded-full border border-white/5 bg-[#3a3738] px-5 py-2 text-[17px] hover:bg-white/10">Share</button>
+          <button onClick={() => notify('Publish options')} className="rounded-full border border-white/5 bg-[#3a3738] px-5 py-2 text-[17px] hover:bg-white/10">Publish</button>
+          <button onClick={() => notify('Export options')} className="flex items-center gap-2 bg-[#211f20] px-4 py-2 text-[17px] hover:bg-black/40">Export <ChevronDown size={16} /></button>
         </div>
-      </div>
+      </header>
 
-      {/* =========================================================================
-          MAIN STUDIO WORKSPACE: SPLIT CONTROLS (LEFT) & MANIFESTATION STAGE (RIGHT)
-          ========================================================================= */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* LEFT PANEL: SOVEREIGN PROMPTING & CONTROLS DOCK */}
-        <div className="w-full sm:w-[380px] lg:w-[420px] flex flex-col border-r border-white/[0.08] bg-[#080810]/95 p-4 overflow-y-auto custom-scrollbar shrink-0 space-y-4">
-          {/* Manifest Prompt Input */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs font-bold text-gray-300">
-              <span className="flex items-center gap-1.5">
-                <Wand2 size={13} className="text-pink-400" />
-                <span>Manifestation Intent</span>
-              </span>
-              <button
-                type="button"
-                onClick={toggleSpeech}
-                className={`flex items-center gap-1 rounded-lg px-2 py-0.5 text-[11px] font-semibold transition-all ${
-                  isListening
-                    ? 'bg-rose-500 text-white animate-pulse'
-                    : 'text-gray-400 hover:text-amber-400 hover:bg-white/[0.06]'
-                }`}
-                title="Voice Dictation"
-              >
-                {isListening ? <MicOff size={12} /> : <Mic size={12} />}
-                <span>{isListening ? 'Listening...' : 'Dictate'}</span>
+      <div className="flex min-h-0 flex-1">
+        <main className="flex min-w-0 flex-[1.62] flex-col border-r border-white/10 bg-[#111112]">
+          <div className="flex h-[72px] shrink-0 items-center justify-between border-b border-white/10 px-4">
+            <button onClick={() => setActiveTool('pencil')} className="flex items-center gap-3 bg-[#343132] px-4 py-2 text-[20px] font-medium hover:bg-[#454142]">
+              <Pencil size={24} /> Edit tool
+            </button>
+            <div className="flex h-full items-end gap-1">
+              <button onClick={() => setActiveTopTab('metadata.json')} className={`flex h-[54px] items-center gap-2 rounded-t-lg px-5 text-[16px] ${activeTopTab === 'metadata.json' ? 'bg-[#1c1b1d] text-gray-100' : 'text-gray-400 hover:bg-white/5'}`}>
+                <span className="text-amber-300">{'{ }'}</span> metadata.json <X size={16} />
+              </button>
+              <button onClick={() => setActiveTopTab('App.tsx')} className={`flex h-[54px] items-center gap-2 rounded-t-lg px-5 text-[16px] ${activeTopTab === 'App.tsx' ? 'bg-[#3b3b4d] text-gray-100' : 'text-gray-400 hover:bg-white/5'}`}>
+                <Code2 size={17} className="text-sky-300" /> App.tsx <X size={16} />
               </button>
             </div>
-
-            <div className="relative">
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Describe the 4D world-state, scene lighting, material, emotion, and aesthetic..."
-                rows={3}
-                className="w-full rounded-2xl border border-white/[0.1] bg-black/50 p-3 text-xs text-white placeholder-gray-500 outline-none focus:border-pink-500/60 focus:ring-1 focus:ring-pink-500/30 transition-all font-sans resize-none"
-              />
-              {prompt && (
-                <button
-                  onClick={() => setPrompt('')}
-                  className="absolute right-2.5 top-2.5 text-gray-500 hover:text-rose-400 p-1"
-                  title="Clear Prompt"
-                >
-                  <Trash2 size={12} />
-                </button>
-              )}
-            </div>
-
-            {/* Prompt Starter Chips */}
-            <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 text-[10.5px]">
-              <span className="text-gray-500 shrink-0 font-mono">Quick:</span>
-              {PROMPT_SUGGESTIONS.slice(0, 3).map((item, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => {
-                    soundFx.playClick();
-                    setPrompt(item);
-                  }}
-                  className="rounded-lg bg-white/[0.04] hover:bg-pink-500/15 hover:text-pink-300 border border-white/[0.06] px-2 py-0.5 text-gray-400 truncate max-w-[150px] shrink-0 transition-colors"
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
           </div>
 
-          {/* Aesthetic Singularity Presets */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
-              <span>🎨</span>
-              <span>Aesthetic Singularity</span>
-            </span>
-            <div className="grid grid-cols-2 gap-1.5">
-              {STYLE_PRESETS.map((preset) => {
-                const isSelected = selectedStyle === preset.id;
+          <div className="relative min-h-0 flex-1 overflow-hidden bg-[#111112]">
+            <div className="absolute right-4 top-3 z-10 flex items-center gap-2">
+              <button onClick={() => setShowConcepts((v) => !v)} className={`rounded-lg px-3 py-1.5 text-[12px] font-medium ${showConcepts ? 'bg-[#33313b] text-gray-200' : 'bg-[#222124] text-gray-500'}`}>▤ Concepts</button>
+              <button aria-label="Canvas settings" onClick={() => notify('Canvas settings')} className="rounded-full bg-[#28262a] p-1.5 hover:bg-[#3b3940]"><Settings size={14} /></button>
+              <button aria-label="Canvas link" onClick={() => notify('Canvas link copied')} className="rounded-full bg-[#28262a] p-1.5 hover:bg-[#3b3940]"><Share2 size={14} /></button>
+            </div>
+
+            {showConcepts && <div className="pointer-events-none absolute inset-0 opacity-70">
+              <svg className="h-full w-full" viewBox="0 0 1000 760" preserveAspectRatio="none" aria-hidden="true">
+                <g stroke="#3e3b5f" strokeWidth="2" fill="none">
+                  <path d="M500 390 L500 180 M500 390 L310 285 M500 390 L690 285 M500 390 L310 500 M500 390 L690 500 M500 390 L500 590" />
+                  <path d="M500 180 L465 130 M500 180 L535 130 M310 285 L280 240 M310 285 L340 240 M690 285 L660 240 M690 285 L720 240 M310 500 L280 550 M310 500 L340 550 M690 500 L660 550 M690 500 L720 550 M500 590 L465 640 M500 590 L535 640" strokeDasharray="5 7" opacity=".6" />
+                </g>
+              </svg>
+            </div>}
+
+            <div className="absolute inset-0">
+              {nodes.map((node, index) => {
+                const isMain = node.id === 'Main Idea';
+                const labels = ['Idea', 'Idea', 'Idea', 'Main Idea', 'Idea', 'Idea', 'Idea'];
                 return (
                   <button
-                    key={preset.id}
-                    onClick={() => {
-                      soundFx.playClick();
-                      setSelectedStyle(preset.id);
-                    }}
-                    className={`flex items-start gap-2 rounded-xl p-2 text-left transition-all ${
-                      isSelected
-                        ? 'border border-pink-500/80 bg-pink-500/15 text-white font-semibold shadow-sm'
-                        : 'border border-white/[0.06] bg-white/[0.02] text-gray-400 hover:bg-white/[0.06] hover:text-gray-200'
-                    }`}
-                  >
-                    <span className="text-base">{preset.icon}</span>
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-bold text-white truncate">{preset.label}</div>
-                      <div className="text-[9.5px] text-gray-400 line-clamp-1">{preset.desc}</div>
-                    </div>
-                  </button>
+                    key={index}
+                    onClick={() => setActiveNode(labels[index])}
+                    style={{ left: `${node.x}%`, top: `${node.y}%`, width: node.w }}
+                    className={`absolute z-[1] -translate-x-1/2 -translate-y-1/2 rounded-xl border px-3 py-3 text-center font-serif italic shadow-sm transition-colors ${isMain ? 'h-[60px] border-[#8c83ff] bg-[#8980ff] text-[#17152c] text-[19px] font-semibold' : 'h-[46px] border-[#292832] bg-[#222127] text-[#c7c2e2] text-[14px] hover:border-[#5c568c]'} ${activeNode === node.id && !isMain ? 'ring-1 ring-[#8c83ff]' : ''}`}
+                  >{node.id}</button>
                 );
               })}
+              <div className="absolute left-1/2 top-[48%] z-0 w-[180px] -translate-x-1/2 translate-y-14 text-center text-[12px] leading-5 text-[#77738c]">
+                Start typing... Use # for headings, • for lists, [] to link
+              </div>
+            </div>
+
+            <div className="absolute bottom-3 left-4 z-20 flex max-w-[calc(100%-2rem)] items-center gap-1 overflow-x-auto rounded-xl border border-[#4b4964] bg-[#252432]/95 px-2 py-2 shadow-xl">
+              <button onClick={() => setShowOmniCanvas((v) => !v)} className={`mr-1 flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold ${showOmniCanvas ? 'bg-[#8b80ff] text-[#151321]' : 'bg-[#373448] text-[#d9d5ff] hover:bg-[#45415d]'}`}><Sparkles size={15} /> Omni Canvas</button>
+              <span className="mx-1 h-6 w-px bg-white/10" />
+              <button aria-label="More canvas tools" onClick={() => notify('Canvas tools')} className="rounded-md p-2 text-gray-400 hover:bg-white/10"><MoreHorizontal size={17} /></button>
+              <button aria-label="Undo" onClick={() => notify('Undo')} className="rounded-md p-2 text-gray-400 hover:bg-white/10"><Undo2 size={17} /></button>
+              <button aria-label="Redo" onClick={() => notify('Redo')} className="rounded-md p-2 text-gray-400 hover:bg-white/10"><Redo2 size={17} /></button>
+              <button onClick={() => setZoom((z) => Math.max(25, z - 10))} className="rounded-md px-2 py-2 text-[12px] text-gray-300 hover:bg-white/10">{zoom}%</button>
+              {toolItems.map(({ id, label, icon: Icon }) => <button key={id} aria-label={label} title={label} onClick={() => setActiveTool(id)} className={`rounded-md p-2 transition-colors ${activeTool === id ? 'bg-[#6658ef] text-white' : 'text-gray-300 hover:bg-white/10'}`}><Icon size={16} /></button>)}
+              <button onClick={() => setZoom((z) => Math.min(150, z + 10))} className="rounded-md px-2 py-2 text-[12px] text-gray-300 hover:bg-white/10">+</button>
             </div>
           </div>
+        </main>
 
-          {/* Aspect Ratio Selector */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
-              <span>📐</span>
-              <span>Aspect Ratio</span>
-            </span>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {ASPECT_RATIOS.map((ratio) => (
-                <button
-                  key={ratio.id}
-                  onClick={() => {
-                    soundFx.playClick();
-                    setSelectedAspectRatio(ratio.id);
-                  }}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
-                    selectedAspectRatio === ratio.id
-                      ? 'bg-amber-500/20 border border-amber-500/50 text-amber-300 font-bold'
-                      : 'border border-white/[0.06] bg-white/[0.02] text-gray-400 hover:text-white'
-                  }`}
-                >
-                  {ratio.id}
-                </button>
-              ))}
-            </div>
+        <aside className="flex min-w-0 flex-[1] flex-col">
+          <div className="flex h-[72px] shrink-0 items-center gap-2 border-b border-white/10 bg-[#302d2e] px-3">
+            <button aria-label="Toggle file explorer" onClick={() => setShowFileExplorer((v) => !v)} className="rounded-lg p-2 hover:bg-white/10"><Folder size={24} /></button>
+            <button onClick={() => setActiveRightTab('code')} className={`flex items-center gap-2 rounded-md px-4 py-2 text-[16px] ${activeRightTab === 'code' ? 'bg-[#242223] text-white' : 'text-gray-400 hover:bg-white/5'}`}><Code2 size={20} /> Code</button>
+            <button aria-label="Preview" onClick={() => setActiveRightTab('preview')} className={`rounded-md p-2 ${activeRightTab === 'preview' ? 'bg-[#242223] text-white' : 'text-gray-400 hover:bg-white/5'}`}><Eye size={23} /></button>
+            <button aria-label="Refresh preview" onClick={() => notify('Preview refreshed')} className="rounded-md p-2 hover:bg-white/10"><RefreshCw size={22} /></button>
+            <button aria-label="Fullscreen" onClick={() => notify('Fullscreen preview')} className="rounded-md p-2 hover:bg-white/10"><Maximize size={21} /></button>
+            <button aria-label="Device preview" onClick={() => notify('Device preview')} className="rounded-md p-2 hover:bg-white/10"><Monitor size={21} /></button>
           </div>
 
-          {/* 4D World-State Variables (Refractive Index, Emotional Frequency, Guidance) */}
-          <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-black/40 p-3">
-            <div className="flex items-center justify-between text-xs font-bold text-amber-300">
-              <span className="flex items-center gap-1.5">
-                <Sliders size={12} />
-                <span>4D World-State Variables</span>
-              </span>
-              <span className="text-[10px] font-mono text-gray-400">Physics Core</span>
-            </div>
-
-            {/* Refractive Index Slider */}
-            <div className="space-y-1">
-              <div className="flex justify-between text-[11px] text-gray-400 font-mono">
-                <span>Material Refractive Index (n)</span>
-                <span className="text-amber-400 font-bold">{refractiveIndex.toFixed(2)}</span>
-              </div>
-              <input
-                type="range"
-                min="1.0"
-                max="2.5"
-                step="0.02"
-                value={refractiveIndex}
-                onChange={(e) => setRefractiveIndex(parseFloat(e.target.value))}
-                className="w-full accent-amber-400 h-1 rounded-lg cursor-pointer bg-white/[0.1]"
-              />
-            </div>
-
-            {/* Emotional Frequency Slider */}
-            <div className="space-y-1">
-              <div className="flex justify-between text-[11px] text-gray-400 font-mono">
-                <span>Emotional Resonance Frequency</span>
-                <span className="text-pink-400 font-bold">{emotionalFrequency} Hz</span>
-              </div>
-              <input
-                type="range"
-                min="200"
-                max="852"
-                step="1"
-                value={emotionalFrequency}
-                onChange={(e) => setEmotionalFrequency(parseInt(e.target.value, 10))}
-                className="w-full accent-pink-500 h-1 rounded-lg cursor-pointer bg-white/[0.1]"
-              />
-            </div>
-
-            {/* Seed Randomizer */}
-            <div className="flex items-center justify-between pt-1 text-[11px]">
-              <span className="text-gray-400 font-mono">Entropy Seed: #{seed}</span>
-              <button
-                onClick={() => {
-                  soundFx.playClick();
-                  setSeed(Math.floor(Math.random() * 999999));
-                }}
-                className="flex items-center gap-1 rounded bg-white/[0.06] hover:bg-white/[0.1] px-2 py-0.5 text-gray-300 transition-colors"
-              >
-                <RotateCcw size={10} />
-                <span>Randomize</span>
-              </button>
-            </div>
-          </div>
-
-          {/* MANIFEST REALITY BUTTON */}
-          <button
-            type="button"
-            onClick={handleManifest}
-            disabled={isSynthesizing || !prompt.trim()}
-            className={`w-full py-3 rounded-2xl font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-2xl transition-all duration-300 active:scale-98 ${
-              isSynthesizing
-                ? 'bg-pink-600/50 text-pink-200 cursor-wait animate-pulse'
-                : 'bg-gradient-to-r from-pink-500 via-rose-500 to-amber-500 text-white shadow-[0_0_30px_rgba(236,72,153,0.4)] hover:brightness-110 hover:shadow-[0_0_40px_rgba(236,72,153,0.6)]'
-            }`}
-          >
-            {isSynthesizing ? (
-              <>
-                <RefreshCw size={16} className="animate-spin" />
-                <span>Manifesting 4D State...</span>
-              </>
-            ) : (
-              <>
-                <Zap size={16} className="fill-white" />
-                <span>Manifest Reality</span>
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* RIGHT PANEL: LIQUID CANVAS & MANIFESTATION STAGE */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-[#040407] relative">
-          {/* Active Mode Stage Header */}
-          <div className="flex items-center justify-between border-b border-white/[0.06] bg-black/40 px-4 py-2 text-xs">
-            <div className="flex items-center gap-2 font-mono text-gray-400">
-              <span className="text-white font-bold">STAGE:</span>
-              <span className="uppercase text-pink-400">{activeMode} MANIFESTATION</span>
-              <span>•</span>
-              <span className="text-[10px] text-gray-500">Seed: {seed}</span>
-            </div>
-
-            {/* Quick action buttons on stage */}
-            <div className="flex items-center gap-1.5">
-              {currentResultImage && onOpenImageStudio && (
-                <button
-                  onClick={() => onOpenImageStudio(currentResultImage)}
-                  className="flex items-center gap-1 rounded-lg border border-pink-500/30 bg-pink-500/10 px-2 py-1 text-[11px] font-semibold text-pink-300 hover:bg-pink-500/20"
-                >
-                  <Sparkles size={11} />
-                  <span>Refine in Vision Studio</span>
-                </button>
-              )}
-
-              {currentResultImage && onOpenVeoStudio && (
-                <button
-                  onClick={() => onOpenVeoStudio(currentResultImage)}
-                  className="flex items-center gap-1 rounded-lg border border-orange-500/30 bg-orange-500/10 px-2 py-1 text-[11px] font-semibold text-orange-300 hover:bg-orange-500/20"
-                >
-                  <Film size={11} />
-                  <span>Animate in Veo</span>
-                </button>
-              )}
-
-              {onSendToChat && currentResultImage && (
-                <button
-                  onClick={() => {
-                    soundFx.playClick();
-                    onSendToChat(`[Manifested from Supru Generative Studio]\n\nPrompt: "${prompt}"\nStyle: ${selectedStyle}`, currentResultImage);
-                  }}
-                  className="flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] font-semibold text-amber-300 hover:bg-amber-500/20"
-                >
-                  <Send size={11} />
-                  <span>Send to Chat</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* ACTIVE MODE VIEWPORTS */}
-          <div className="flex-1 overflow-auto p-4 flex flex-col items-center justify-center relative">
-            {/* 1. VISUAL 2D MODE */}
-            {activeMode === 'visual' && (
-              <div className="w-full h-full flex flex-col items-center justify-center max-w-4xl">
-                {currentResultImage ? (
-                  <div className="relative group rounded-3xl overflow-hidden border-2 border-pink-500/50 shadow-[0_0_50px_rgba(236,72,153,0.3)] max-h-[75vh] max-w-full">
-                    <img
-                      src={currentResultImage}
-                      alt={prompt}
-                      className="w-full h-full object-contain max-h-[70vh] rounded-3xl"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
-                      <div className="text-sm font-bold text-white truncate">{prompt}</div>
-                      <div className="text-xs text-pink-300 font-mono mt-1 flex items-center gap-3">
-                        <span>Ratio: {selectedAspectRatio}</span>
-                        <span>Style: {selectedStyle}</span>
-                        <a
-                          href={currentResultImage}
-                          download={`supru-genesis-${Date.now()}.png`}
-                          className="flex items-center gap-1 text-amber-400 hover:underline"
-                        >
-                          <Download size={12} />
-                          <span>Download</span>
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center p-8 rounded-3xl border border-white/[0.08] bg-white/[0.02] max-w-md">
-                    <div className="h-16 w-16 mx-auto rounded-3xl bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-pink-400 mb-4">
-                      <Sparkles size={28} />
-                    </div>
-                    <h3 className="text-lg font-bold text-white mb-2">Genesis Canvas Awaiting Intent</h3>
-                    <p className="text-xs text-gray-400 leading-relaxed mb-4">
-                      Adjust your prompt and physics variables on the left, then click <strong>"Manifest Reality"</strong> to synthesize 8K world-states.
-                    </p>
-                    <button
-                      onClick={handleManifest}
-                      className="px-4 py-2 rounded-xl bg-pink-500/20 border border-pink-500/40 text-pink-300 text-xs font-bold hover:bg-pink-500/30 transition-all"
-                    >
-                      Manifest Sample Scene
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 2. 4D MOTION MODE (Veo 3.1) */}
-            {activeMode === 'motion' && (
-              <div className="w-full h-full flex flex-col items-center justify-center max-w-4xl">
-                {currentResultVideo ? (
-                  <div className="relative rounded-3xl overflow-hidden border-2 border-orange-500/50 shadow-2xl max-h-[75vh]">
-                    <video
-                      src={currentResultVideo}
-                      controls
-                      autoPlay
-                      loop
-                      className="max-h-[70vh] rounded-3xl"
-                    />
-                  </div>
-                ) : (
-                  <div className="text-center p-8 rounded-3xl border border-white/[0.08] bg-white/[0.02] max-w-md">
-                    <div className="h-16 w-16 mx-auto rounded-3xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-400 mb-4">
-                      <Film size={28} />
-                    </div>
-                    <h3 className="text-lg font-bold text-white mb-2">Veo 3.1 4D Motion Studio</h3>
-                    <p className="text-xs text-gray-400 leading-relaxed mb-4">
-                      Synthesize fluid 720p cinematic tracking shots with continuous camera physics and neon reflections.
-                    </p>
-                    <button
-                      onClick={handleManifest}
-                      className="px-4 py-2 rounded-xl bg-orange-500/20 border border-orange-500/40 text-orange-300 text-xs font-bold hover:bg-orange-500/30 transition-all"
-                    >
-                      Generate Motion Scene
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 3. 3D WORLD-STATE LIQUID CANVAS */}
-            {activeMode === 'world3d' && (
-              <div className="w-full h-full relative rounded-2xl overflow-hidden border border-white/[0.08]">
-                <canvas
-                  ref={canvasRef}
-                  className="w-full h-full cursor-grab active:cursor-grabbing"
-                  onMouseDown={(e) => {
-                    isDraggingRef.current = true;
-                    lastMousePosRef.current = { x: e.clientX, y: e.clientY };
-                  }}
-                  onMouseMove={(e) => {
-                    if (!isDraggingRef.current) return;
-                    const dx = e.clientX - lastMousePosRef.current.x;
-                    const dy = e.clientY - lastMousePosRef.current.y;
-                    setRotationAngle((prev) => ({
-                      x: prev.x + dy * 0.005,
-                      y: prev.y + dx * 0.005,
-                    }));
-                    lastMousePosRef.current = { x: e.clientX, y: e.clientY };
-                  }}
-                  onMouseUp={() => { isDraggingRef.current = false; }}
-                  onMouseLeave={() => { isDraggingRef.current = false; }}
-                />
-
-                <div className="absolute bottom-3 left-3 bg-black/70 backdrop-blur-md rounded-xl p-2.5 border border-white/[0.08] text-[11px] text-gray-300 space-y-1">
-                  <div className="font-bold text-cyan-400 flex items-center gap-1.5">
-                    <Box size={12} />
-                    <span>Hardware-Native Interactive Canvas</span>
-                  </div>
-                  <div className="text-[10px] text-gray-400">
-                    Click & drag to rotate orbital pitch/yaw • Adjust variables on left
-                  </div>
+          <div className="flex min-h-0 flex-[1.12] border-b border-white/10">
+            {showFileExplorer && <div className="w-[220px] shrink-0 overflow-auto border-r border-white/10 bg-[#292728] px-3 py-3 text-[14px]">
+              <div className="mb-3 flex items-center justify-between text-gray-300"><span>File explorer</span><div className="flex gap-2"><Search size={16} /><Plus size={17} /></div></div>
+              <div className="space-y-2 text-gray-300">
+                <div className="flex items-center gap-2"><ChevronDown size={14} /><Folder size={16} /> public</div>
+                <div className="flex items-center gap-2"><ChevronDown size={14} /><Folder size={16} /> src</div>
+                <div className="ml-5 flex items-center gap-2"><ChevronRight size={13} /><Folder size={16} /> components</div>
+                <div className="ml-5 flex items-center gap-2"><ChevronRight size={13} /><Folder size={16} /> hooks</div>
+                <div className="ml-5 flex items-center gap-2"><ChevronRight size={13} /><Folder size={16} /> services</div>
+                {['App.tsx', 'index.css', 'main.tsx', 'types.ts'].map((name, i) => <button key={name} onClick={() => openFile(name)} className={`ml-5 flex w-[calc(100%-1.25rem)] items-center gap-2 rounded px-1 py-1 text-left ${activeTopTab === name ? 'bg-white/10 text-white' : 'text-gray-300 hover:bg-white/5'}`}><span className={i === 0 ? 'text-sky-300' : i === 1 ? 'text-pink-400' : 'text-gray-400'}>{i === 1 ? '▰' : i === 0 ? '≡' : '⋯'}</span>{name}</button>)}
+                <div className="mt-2 space-y-1 border-t border-white/10 pt-2">
+                  {['.env.example', '.gitignore', 'bun.lock', 'cat_icon.png', 'icon.png', 'index.html', 'metadata.json', 'package.json', 'server.ts', 'tsconfig.json', 'vite.config.ts'].map((name) => <button key={name} onClick={() => openFile(name)} className={`flex w-full items-center gap-2 rounded px-1 py-1 text-left hover:bg-white/5 ${activeTopTab === name ? 'bg-white/10' : ''}`}><FileText size={14} className="text-gray-400" />{name}</button>)}
                 </div>
               </div>
-            )}
-
-            {/* 4. ATOMIC MANIPULATOR (PRO-TOOLS WORKBENCH) */}
-            {activeMode === 'atomic' && (
-              <div className="w-full h-full flex flex-col lg:flex-row gap-4 items-stretch max-w-5xl">
-                {/* Visual Component Render */}
-                <div className="flex-1 flex items-center justify-center p-6 rounded-3xl border border-white/[0.08] bg-black/40 relative">
-                  <div
-                    dangerouslySetInnerHTML={{ __html: currentAtomicComponent }}
-                  />
+            </div>}
+            <div className="min-w-0 flex-1 bg-[#2c292a]">
+              {activeRightTab === 'code' ? (
+                <div className="h-full w-full p-4 font-mono text-[12px] text-gray-500">
+                  <div className="mb-3 text-gray-300">{activeTopTab}</div>
+                  <div className="space-y-2 opacity-70"><div><span className="text-purple-300">import</span> React <span className="text-purple-300">from</span> 'react';</div><div className="pl-4"><span className="text-purple-300">export default function</span> App() {'{'}</div><div className="pl-8 text-gray-400">return (</div><div className="pl-12 text-sky-300">{'<main>'}</div><div className="pl-16 text-gray-400">{'/* Your app code */'}</div><div className="pl-12 text-sky-300">{'</main>'}</div><div className="pl-8">);</div><div className="pl-4">{'}'}</div></div>
                 </div>
-
-                {/* Code Export & Editor Integration */}
-                <div className="w-full lg:w-96 flex flex-col rounded-3xl border border-white/[0.08] bg-[#0c0c16] p-4 text-xs font-mono">
-                  <div className="flex items-center justify-between pb-2 border-b border-white/[0.06] mb-3">
-                    <span className="font-bold text-purple-400 flex items-center gap-1.5">
-                      <Code2 size={13} />
-                      <span>Synthesized JSX / HTML</span>
-                    </span>
-                    <button
-                      onClick={() => {
-                        soundFx.playClick();
-                        navigator.clipboard.writeText(currentAtomicComponent);
-                        setCopiedCode(true);
-                        setTimeout(() => setCopiedCode(false), 2000);
-                      }}
-                      className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-white"
-                    >
-                      {copiedCode ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                      <span>{copiedCode ? 'Copied' : 'Copy'}</span>
-                    </button>
-                  </div>
-
-                  <pre className="flex-1 overflow-auto text-[10.5px] text-gray-300 custom-scrollbar whitespace-pre-wrap bg-black/50 p-2.5 rounded-xl border border-white/[0.04]">
-                    {currentAtomicComponent}
-                  </pre>
-
-                  {/* 1-Click Send to Supru Code IDE */}
-                  {onOpenInEditor && (
-                    <button
-                      onClick={() => {
-                        soundFx.playChime();
-                        onOpenInEditor('SovereignComponent.tsx', currentAtomicComponent);
-                      }}
-                      className="mt-3 w-full py-2 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 font-bold hover:bg-purple-500/30 transition-all flex items-center justify-center gap-1.5"
-                    >
-                      <ExternalLink size={12} />
-                      <span>Open in Supru Code IDE</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
+              ) : <div className="flex h-full items-center justify-center text-sm text-gray-500">Live preview will appear here</div>}
+            </div>
           </div>
 
-          {/* ARTIFACTS GALLERY FOOTER STREAM */}
-          {manifestedArtifacts.length > 0 && (
-            <div className="border-t border-white/[0.06] bg-[#06060c] p-2.5">
-              <div className="flex items-center justify-between mb-1.5 px-1">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-gray-400 font-bold flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-pink-400" />
-                  <span>Manifestation Stream</span>
-                </span>
-                <span className="text-[9px] font-mono text-gray-500">{manifestedArtifacts.length} Artifacts</span>
-              </div>
-
-              <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1">
-                {manifestedArtifacts.map((art) => (
-                  <button
-                    key={art.id}
-                    onClick={() => {
-                      soundFx.playClick();
-                      if (art.dataUrl) {
-                        setCurrentResultImage(art.dataUrl);
-                        setActiveMode('visual');
-                      }
-                      setPrompt(art.prompt);
-                    }}
-                    className="flex items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.06] hover:border-pink-500/40 p-1.5 pr-3 shrink-0 transition-all text-left"
-                  >
-                    {art.dataUrl && (
-                      <img
-                        src={art.dataUrl}
-                        alt={art.title}
-                        className="h-8 w-8 rounded-lg object-cover border border-white/[0.1]"
-                      />
-                    )}
-                    <div>
-                      <div className="text-[11px] font-bold text-white truncate max-w-[140px]">{art.title}</div>
-                      <div className="text-[9px] text-gray-500 font-mono">{art.type.toUpperCase()}</div>
-                    </div>
-                  </button>
-                ))}
+          <div className="flex min-h-0 flex-[0.88] flex-col bg-[#292728]">
+            <div className="flex-1 p-4">
+              <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Make changes, add new features, ask anything..." className="h-full min-h-[90px] w-full resize-none bg-transparent text-[16px] text-gray-200 outline-none placeholder:text-gray-500" />
+            </div>
+            <div className="flex shrink-0 items-center justify-between border-t border-white/10 px-4 py-2">
+              <div className="flex items-center gap-2"><button onClick={() => notify('Attach file')} className="rounded-full border border-white/10 p-2 hover:bg-white/10"><Plus size={19} /></button><button onClick={() => notify('Build options')} className="rounded-lg bg-[#3a3738] px-4 py-2 text-[15px] hover:bg-[#464243]">Build <ChevronDown size={14} className="ml-2 inline" /></button><button aria-label="Voice input" onClick={() => notify('Voice input')} className="rounded-lg p-2 hover:bg-white/10"><Mic size={19} /></button></div>
+              <button onClick={sendPrompt} className="flex items-center gap-2 rounded-lg border border-[#ff6a24] bg-[#f15a24] px-4 py-2 text-[14px] font-bold text-[#1f1714] shadow-[0_0_16px_rgba(241,90,36,.22)] hover:bg-[#ff7139]">Meow <Cat size={17} /></button>
+            </div>
+            <div className="flex h-[142px] shrink-0 items-center justify-center gap-4 border-t border-white/10 bg-[#181617] px-4">
+              <div className="flex h-[100px] w-[100px] items-center justify-center overflow-hidden rounded-2xl border border-[#d69b25] bg-black shadow-[0_0_14px_rgba(214,155,37,.12)]"><img src="/cat_icon.png" alt="Supru cat icon" className="h-full w-full object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} /><Cat size={32} className="text-amber-400" /></div>
+              <div className="min-w-0">
+                <div className="font-serif text-[30px] font-black tracking-[0.18em] text-[#d79b28] drop-shadow-[0_0_6px_rgba(215,155,40,.25)]">SUPRU</div>
+                <div className="text-center text-[18px] leading-tight text-gray-200">Generative<br /><span className="text-[27px] font-light">Studio</span></div>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        </aside>
       </div>
+
+      {showOmniCanvas && <div className="absolute bottom-20 left-4 z-50 w-[280px] rounded-xl border border-[#5a5486] bg-[#242230] p-4 shadow-2xl">
+        <div className="mb-2 flex items-center justify-between"><div className="flex items-center gap-2 font-semibold text-[#dcd7ff]"><Sparkles size={16} /> Omni Canvas</div><button aria-label="Close Omni Canvas" onClick={() => setShowOmniCanvas(false)} className="rounded p-1 hover:bg-white/10"><X size={14} /></button></div>
+        <p className="mb-3 text-xs leading-5 text-gray-400">One workspace for ideas, visuals, layouts, and app concepts.</p>
+        <button onClick={() => notify('Omni Canvas is ready')} className="w-full rounded-lg bg-[#8278f6] px-3 py-2 text-sm font-semibold text-[#171525] hover:bg-[#948cff]">Open Omni Canvas</button>
+      </div>}
+
+      {notice && <div role="status" className="absolute right-4 top-20 z-[60] rounded-lg border border-white/10 bg-[#1c1a1b] px-4 py-2 text-sm shadow-xl">{notice}</div>}
     </div>
   );
 };
