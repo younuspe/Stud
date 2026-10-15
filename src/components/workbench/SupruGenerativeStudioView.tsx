@@ -74,7 +74,7 @@ export const SupruGenerativeStudioView: React.FC<SupruGenerativeStudioViewProps>
   ];
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#292728] text-[#e8e5e5] font-sans">
+    <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden bg-[#292728] text-[#e8e5e5] font-sans">
       <header className="flex h-[70px] shrink-0 items-center border-b border-white/10 bg-[#302d2e]">
         <div className="flex h-full min-w-0 flex-1 items-center justify-center border-r border-white/10 px-4">
           <input
